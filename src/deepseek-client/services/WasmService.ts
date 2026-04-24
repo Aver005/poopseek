@@ -18,6 +18,52 @@ interface WasmExports
     ) => void;
 }
 
+function normalizeRelativeAssetPath(inputPath: string): string
+{
+    return inputPath.replace(/^[./\\]+/, "");
+}
+
+function collectWasmCandidates(wasmPath: string): string[]
+{
+    const relativeAssetPath = normalizeRelativeAssetPath(wasmPath);
+    const projectRootPath = path.resolve(import.meta.dir, "../../..");
+    const executableDirectory = path.dirname(process.execPath);
+    const searchBases = {
+        executableDirectory,
+        projectRootPath,
+        cwd: process.cwd(),
+    };
+
+    const orderedBases = Object.keys(searchBases)
+        .map((key) => searchBases[key as keyof typeof searchBases]);
+    const relativeCandidates = orderedBases.map(
+        (basePath) => path.resolve(basePath, relativeAssetPath),
+    );
+    const directCandidate = path.isAbsolute(wasmPath)
+        ? wasmPath
+        : path.resolve(process.cwd(), wasmPath);
+
+    const allCandidates = [directCandidate, ...relativeCandidates];
+    const dedupedCandidates = Array.from(new Set(allCandidates));
+    return dedupedCandidates;
+}
+
+async function readWasmBytes(wasmPath: string): Promise<Buffer>
+{
+    const candidates = collectWasmCandidates(wasmPath);
+    for (const candidatePath of candidates)
+    {
+        if (fs.existsSync(candidatePath))
+        {
+            return fs.promises.readFile(candidatePath);
+        }
+    }
+
+    throw new Error(
+        `WASM file not found. Checked: ${candidates.join(", ")}`,
+    );
+}
+
 export default class WasmService 
 {
     private instance: WebAssembly.Instance | null = null;
@@ -28,13 +74,7 @@ export default class WasmService
 
     async initialize(wasmPath: string): Promise<void> 
     {
-        const finalPath = path.resolve(process.cwd(), wasmPath);
-        if (!fs.existsSync(finalPath)) 
-        {
-            throw new Error(`WASM file not found: ${finalPath}`);
-        }
-
-        const wasmBytes = await fs.promises.readFile(finalPath);
+        const wasmBytes = await readWasmBytes(wasmPath);
         const wasmModule = await WebAssembly.compile(wasmBytes);
         const importObject = {
             env: {
