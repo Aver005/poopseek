@@ -16,7 +16,7 @@ export function createHistoryCommand(context: CommandsContext): Command
                 return true;
             }
 
-            context.clearHistory();
+            await context.clearHistory();
             writeLine("");
             writeLine("История диалога очищена");
             writeLine("");

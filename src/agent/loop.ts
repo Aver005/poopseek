@@ -55,21 +55,21 @@ function resolveAction(
 export default class AgentLoop
 {
     private readonly deepseekClient: DeepseekClient;
-    private readonly session: ChatSession;
+    private readonly getSession: () => ChatSession;
     private readonly contextManager: ContextManager;
     private readonly toolExecutor: ToolExecutor;
     private readonly options: AgentLoopOptions;
 
     constructor(
         deepseekClient: DeepseekClient,
-        session: ChatSession,
+        getSession: () => ChatSession,
         contextManager: ContextManager,
         toolExecutor: ToolExecutor,
         options: Partial<AgentLoopOptions> = {},
     )
     {
         this.deepseekClient = deepseekClient;
-        this.session = session;
+        this.getSession = getSession;
         this.contextManager = contextManager;
         this.toolExecutor = toolExecutor;
         this.options = {
@@ -83,19 +83,18 @@ export default class AgentLoop
         callbacks: AgentTurnCallbacks = {},
     ): Promise<AgentTurnResult>
     {
-        this.contextManager.addUser(userInput);
-
         let lastAssistantText = "";
         let toolCalls = 0;
+        let nextPrompt = this.contextManager.prepareUserTurn(userInput).prompt;
 
         for (let step = 0; step < this.options.maxStepsPerTurn; step += 1)
         {
-            const prompt = this.contextManager.buildPrompt();
+            const session = this.getSession();
             callbacks.onModelRequestStart?.();
             let collected: Awaited<ReturnType<typeof collectDeepseekOutput>>;
             try
             {
-                const response = await this.deepseekClient.sendMessage(prompt, this.session, {
+                const response = await this.deepseekClient.sendMessage(nextPrompt, session, {
                     model_type: this.options.getModelType?.(),
                 });
                 collected = await collectDeepseekOutput(response);
@@ -107,7 +106,7 @@ export default class AgentLoop
 
             if (collected.parentMessageId !== null)
             {
-                this.session.setParentMessageId(collected.parentMessageId);
+                session.setParentMessageId(collected.parentMessageId);
             }
 
             const assistantText = collected.text.trim();
@@ -151,7 +150,7 @@ export default class AgentLoop
             }
 
             const toolMessage = buildToolResultMessage(toolCall.tool, toolResult);
-            this.contextManager.addTool(toolCall.tool, toolMessage);
+            nextPrompt = this.contextManager.prepareToolTurn(toolCall.tool, toolMessage).prompt;
 
             if (action === "stop") break;
             if (action === "ask-user")

@@ -9,7 +9,7 @@ export interface CommandsContext
 {
     getSessionInfo?: () => string;
     getContextStats?: () => string;
-    clearHistory?: () => void;
+    clearHistory?: () => Promise<void> | void;
     compactContext?: () => Promise<{
         before: number;
         after: number;

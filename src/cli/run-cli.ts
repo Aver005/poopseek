@@ -62,7 +62,7 @@ export async function runCli(): Promise<void>
 
     const deepseekClient = new DeepseekClient(token);
     await deepseekClient.initialize();
-    const session = await deepseekClient.createSession();
+    let session = await deepseekClient.createSession();
 
     const prompts = await readPromptFiles();
     const variableProcessor = createVariableProcessor({ workspaceRoot: process.cwd() });
@@ -72,9 +72,14 @@ export async function runCli(): Promise<void>
         { maxMessages: 40 },
         variableProcessor,
     );
+    const resetMainSession = async (): Promise<void> =>
+    {
+        session = await deepseekClient.createSession();
+        contextManager.markSessionReset();
+    };
     const toolExecutor = new ToolExecutor(process.cwd());
     let modelType: ModelType = "default";
-    const agentLoop = new AgentLoop(deepseekClient, session, contextManager, toolExecutor, {
+    const agentLoop = new AgentLoop(deepseekClient, () => session, contextManager, toolExecutor, {
         maxStepsPerTurn: 12,
         getModelType: () => modelType,
     });
@@ -165,7 +170,7 @@ export async function runCli(): Promise<void>
             variableProcessor,
         );
         const sideTool = new ToolExecutor(process.cwd());
-        const sideLoop = new AgentLoop(deepseekClient, sideSession, sideContext, sideTool, {
+        const sideLoop = new AgentLoop(deepseekClient, () => sideSession, sideContext, sideTool, {
             maxStepsPerTurn: 6,
             getModelType: () => modelType,
         });
@@ -255,8 +260,16 @@ export async function runCli(): Promise<void>
     let commands = new Map<string, Command>();
     commands = createCommandHandlers(terminalInput, {
         getSessionInfo: () => `Session ID: ${session.getId()}`,
-        getContextStats: () => `Messages in context: ${contextManager.getMessageCount()}`,
-        clearHistory: () => contextManager.clearHistory(),
+        getContextStats: () => [
+            `Messages in local context: ${contextManager.getMessageCount()}`,
+            `Approx tokens since refresh: ${contextManager.getApproxTokensSinceRefresh()}/${contextManager.getRefreshEveryApproxTokens()}`,
+            `Bootstrap pending: ${contextManager.isBootstrapPending() ? "yes" : "no"}`,
+        ].join(" | "),
+        clearHistory: async () =>
+        {
+            contextManager.clearHistory();
+            await resetMainSession();
+        },
         getTheme: () => getColorMode().theme,
         setTheme: (theme) => setTheme(theme),
         getModelType: () => modelType,
@@ -284,6 +297,7 @@ export async function runCli(): Promise<void>
             if (summary.length === 0) throw new Error("Модель вернула пустую сводку");
 
             contextManager.replaceWithCompactSummary(summary);
+            await resetMainSession();
             return {
                 before,
                 after: contextManager.getMessageCount(),
