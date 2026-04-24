@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { toBooleanValue, toStringValue } from "../args";
 import type { ToolHandler } from "../types";
+import { writeTextFile } from "../utils/write-text-file";
 
 export const name = "file.edit";
 
@@ -30,7 +31,7 @@ export const handler: ToolHandler = async (args, context) =>
     const nextContent = replaceAll
         ? source.split(search).join(replace)
         : source.replace(search, replace);
-    await fs.promises.writeFile(targetPath, nextContent, "utf8");
+    await writeTextFile(targetPath, nextContent);
 
     return {
         ok: true,

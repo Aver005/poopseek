@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { toStringValue } from "../args";
 import type { ToolHandler } from "../types";
+import { writeTextFile } from "../utils/write-text-file";
 
 export const name = "git.edit";
 
@@ -181,7 +182,7 @@ export const handler: ToolHandler = async (args, context) =>
             return { ok: false, output: `${diffFile.newPath}: ${error}`, error };
         }
 
-        await fs.promises.writeFile(targetPath, content, "utf8");
+        await writeTextFile(targetPath, content);
         applied.push(diffFile.newPath);
     }
 

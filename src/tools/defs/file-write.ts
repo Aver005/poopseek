@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { toStringValue } from "../args";
 import type { ToolHandler } from "../types";
+import { writeTextFile } from "../utils/write-text-file";
 
 export const name = "file.write";
 
@@ -15,8 +16,7 @@ export const handler: ToolHandler = async (args, context) =>
     }
 
     const targetPath = context.resolvePath(requestedPath);
-    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.promises.writeFile(targetPath, content, "utf8");
+    await writeTextFile(targetPath, content);
 
     return {
         ok: true,
