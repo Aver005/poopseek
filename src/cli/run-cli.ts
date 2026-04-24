@@ -11,6 +11,7 @@ import ToolExecutor from "@/agent/tool-executor";
 import { createHintsRenderer } from "@/cli/command-hints";
 import { colors, getColorMode, setTheme } from "@/cli/colors";
 import { createGenerationIndicator } from "@/cli/generation-indicator";
+import { renderMarkdown } from "@/cli/markdown";
 import { getToolProgressMessage } from "@/cli/tool-progress-messages";
 import {
     createCommandCompleter,
@@ -365,7 +366,7 @@ export async function runCli(): Promise<void>
                         wroteAnyChunk = true;
                     }
 
-                    output.write(chunk);
+                    output.write(renderMarkdown(chunk));
                 },
                 onToolStart: (toolName) =>
                 {
@@ -381,7 +382,7 @@ export async function runCli(): Promise<void>
 
             if (!wroteAnyChunk && result.assistantText.length > 0)
             {
-                output.write(`\n${result.assistantText}`);
+                output.write(`\n${renderMarkdown(result.assistantText)}`);
             }
             output.write("\n\n");
         }
