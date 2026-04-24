@@ -31,26 +31,34 @@ export function createHintsRenderer(
     writer: { write: (value: string) => void },
 ): HintsRenderer
 {
+    let lastSnapshot = "";
+
     const repaint = (lines: string[]): void =>
     {
-        writer.write("\x1b7");
+        writer.write("\x1b[s");
         writer.write("\n");
-        writer.write("\x1b[0J");
+        writer.write("\x1b[J");
         if (lines.length > 0)
         {
             writer.write(`${colors.dim("Подсказки:")}\n`);
             writer.write(`${lines.join("\n")}\n`);
         }
-        writer.write("\x1b8");
+        writer.write("\x1b[u");
     };
 
     return {
         render: (inputLine: string, commands: Map<string, Command>): void =>
         {
-            repaint(buildHintLines(inputLine, commands));
+            const lines = buildHintLines(inputLine, commands);
+            const snapshot = lines.join("\n");
+            if (snapshot === lastSnapshot) return;
+            lastSnapshot = snapshot;
+            repaint(lines);
         },
         clear: (): void =>
         {
+            if (lastSnapshot.length === 0) return;
+            lastSnapshot = "";
             repaint([]);
         },
     };
