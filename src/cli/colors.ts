@@ -1,6 +1,6 @@
 const RESET = "\x1b[0m";
 
-type ThemeName = "dark" | "light";
+export type ThemeName = "dark" | "light";
 type Palette = Record<"cyan" | "green" | "yellow" | "red" | "magenta" | "dim", string>;
 
 const PALETTES: Record<ThemeName, Palette> = {
@@ -36,9 +36,13 @@ function resolveTheme(): ThemeName
     return "dark";
 }
 
-const activeTheme = resolveTheme();
-const colorEnabled = !isColorDisabled();
-const palette = PALETTES[activeTheme];
+let activeTheme: ThemeName = resolveTheme();
+let colorEnabled = !isColorDisabled();
+
+function getPalette(): Palette
+{
+    return PALETTES[activeTheme];
+}
 
 function wrap(code: string, value: string): string
 {
@@ -47,15 +51,28 @@ function wrap(code: string, value: string): string
 }
 
 export const colors = {
-    cyan: (value: string): string => wrap(palette.cyan, value),
-    green: (value: string): string => wrap(palette.green, value),
-    yellow: (value: string): string => wrap(palette.yellow, value),
-    red: (value: string): string => wrap(palette.red, value),
-    magenta: (value: string): string => wrap(palette.magenta, value),
-    dim: (value: string): string => wrap(palette.dim, value),
+    cyan: (value: string): string => wrap(getPalette().cyan, value),
+    green: (value: string): string => wrap(getPalette().green, value),
+    yellow: (value: string): string => wrap(getPalette().yellow, value),
+    red: (value: string): string => wrap(getPalette().red, value),
+    magenta: (value: string): string => wrap(getPalette().magenta, value),
+    dim: (value: string): string => wrap(getPalette().dim, value),
 } as const;
 
-export const colorMode = {
-    enabled: colorEnabled,
-    theme: activeTheme,
-} as const;
+export function getColorMode(): { enabled: boolean; theme: ThemeName }
+{
+    return {
+        enabled: colorEnabled,
+        theme: activeTheme,
+    };
+}
+
+export function setTheme(theme: ThemeName): void
+{
+    activeTheme = theme;
+}
+
+export function setColorEnabled(enabled: boolean): void
+{
+    colorEnabled = enabled;
+}

@@ -6,6 +6,7 @@ import { writeLine } from "./io";
 import { createQuitCommand } from "./quit";
 import { createSessionCommand } from "./session";
 import { createStatsCommand } from "./stats";
+import { createThemeCommand } from "./theme";
 import { createToolsCommand } from "./tools";
 import type { Command, CommandsContext } from "./types";
 
@@ -34,6 +35,7 @@ export function createCommandHandlers(
     registerCommand(createSessionCommand(context));
     registerCommand(createStatsCommand(context));
     registerCommand(createHistoryCommand(context));
+    registerCommand(createThemeCommand(context));
 
     return commands;
 }
@@ -52,11 +54,7 @@ export function createCommandCompleter(
     return (line: string): [string[], string] =>
     {
         const trimmed = line.trimStart().toLowerCase();
-        if (!trimmed.startsWith("/"))
-        {
-            return [[], line];
-        }
-
+        if (!trimmed.startsWith("/")) return [[], line];
         const slashCommands = getCommandNames(getCommands());
         const hits = slashCommands.filter((name) => name.startsWith(trimmed));
         return [hits.length > 0 ? hits : slashCommands, trimmed];
@@ -69,13 +67,10 @@ export async function handleCommand(
 ): Promise<boolean>
 {
     const trimmed = input.trim().toLowerCase();
-    if (!trimmed.startsWith("/"))
-    {
-        return true;
-    }
-
+    if (!trimmed.startsWith("/")) return true;
     const parts = trimmed.split(/\s+/);
     const cmdName = parts[0];
+    if (!cmdName) return true;
     const args = parts.slice(1);
     const command = commands.get(getCommandKeyByName(cmdName));
 

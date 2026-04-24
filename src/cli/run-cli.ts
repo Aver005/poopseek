@@ -7,7 +7,7 @@ import ContextManager from "@/agent/context-manager";
 import AgentLoop from "@/agent/loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { createHintsRenderer } from "@/cli/command-hints";
-import { colorMode, colors } from "@/cli/colors";
+import { colors, getColorMode, setTheme } from "@/cli/colors";
 import { getToolProgressMessage } from "@/cli/tool-progress-messages";
 import {
     createCommandCompleter,
@@ -16,6 +16,7 @@ import {
 } from "@/commands";
 import type { Command } from "@/commands/types";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
+import { createVariableProcessor } from "@/variables";
 
 function getRequiredEnv(name: string): string
 {
@@ -53,10 +54,14 @@ export async function runCli(): Promise<void>
     const session = await deepseekClient.createSession();
 
     const prompts = await readPromptFiles();
+    const variableProcessor = createVariableProcessor({
+        workspaceRoot: process.cwd(),
+    });
     const contextManager = new ContextManager(
         prompts.basePrompt,
         prompts.toolsPrompt,
         { maxMessages: 40 },
+        variableProcessor,
     );
     const toolExecutor = new ToolExecutor(process.cwd());
     const agentLoop = new AgentLoop(
@@ -79,6 +84,8 @@ export async function runCli(): Promise<void>
         getSessionInfo: () => `Session ID: ${session.getId()}`,
         getContextStats: () => `Messages in context: ${contextManager.getMessageCount()}`,
         clearHistory: () => contextManager.clearHistory(),
+        getTheme: () => getColorMode().theme,
+        setTheme: (theme) => setTheme(theme),
     });
     emitKeypressEvents(input);
     const onKeypress = (): void =>
@@ -88,6 +95,7 @@ export async function runCli(): Promise<void>
     input.on("keypress", onKeypress);
 
     output.write(`${colors.green("PoopSeek CLI запущен.")} Введите /help для списка команд.\n`);
+    const colorMode = getColorMode();
     output.write(
         `${colors.dim(`Цвета: ${colorMode.enabled ? "on" : "off"}, тема: ${colorMode.theme}`)}\n`,
     );

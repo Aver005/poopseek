@@ -1,4 +1,5 @@
 import type { AgentMessage } from "./types";
+import type { VariableProcessor } from "@/variables";
 
 export interface ContextManagerOptions
 {
@@ -23,16 +24,19 @@ export default class ContextManager
     private readonly basePrompt: string;
     private readonly toolsPrompt: string;
     private readonly options: ContextManagerOptions;
+    private readonly variableProcessor: VariableProcessor | null;
     private messages: AgentMessage[] = [];
 
     constructor(
         basePrompt: string,
         toolsPrompt: string,
         options: Partial<ContextManagerOptions> = {},
+        variableProcessor: VariableProcessor | null = null,
     )
     {
         this.basePrompt = basePrompt.trim();
         this.toolsPrompt = toolsPrompt.trim();
+        this.variableProcessor = variableProcessor;
         this.options = {
             ...DEFAULT_OPTIONS,
             ...options,
@@ -111,6 +115,8 @@ export default class ContextManager
             "Если инструмент не нужен, отвечай обычным текстом без JSON.",
         ];
 
-        return blocks.join("\n");
+        const rawPrompt = blocks.join("\n");
+        if (!this.variableProcessor) return rawPrompt;
+        return this.variableProcessor.process(rawPrompt);
     }
 }

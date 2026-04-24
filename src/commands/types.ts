@@ -10,6 +10,8 @@ export interface CommandsContext
     getSessionInfo?: () => string;
     getContextStats?: () => string;
     clearHistory?: () => void;
+    getTheme?: () => "dark" | "light";
+    setTheme?: (theme: "dark" | "light") => void;
 }
 
 export interface CommandModule
