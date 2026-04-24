@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { emitKeypressEvents } from "node:readline";
 import readline from "node:readline/promises";
@@ -21,22 +22,111 @@ import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type { ModelType } from "@/deepseek-client/types";
 import { createVariableProcessor } from "@/variables";
 
-function getRequiredEnv(name: string): string
-{
-    const value = process.env[name];
-    if (!value || value.trim().length === 0)
-    {
-        throw new Error(`Missing required env variable: ${name}`);
-    }
-    return value.trim();
-}
+type RuntimeConfig = {
+    token: string | null;
+    version: string | null;
+};
 
-function getOptionalEnv(name: string): string | null
+type RuntimeConfigLoadResult = {
+    config: RuntimeConfig;
+    exists: boolean;
+};
+
+function normalizeOptionalString(value: string | null | undefined): string | null
 {
-    const value = process.env[name];
     if (!value) return null;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+}
+
+function getFirstEnvValue(keys: readonly string[]): string | null
+{
+    for (const key of keys)
+    {
+        const candidate = normalizeOptionalString(process.env[key]);
+        if (candidate !== null)
+        {
+            return candidate;
+        }
+    }
+
+    return null;
+}
+
+function getRuntimeConfigPath(): string
+{
+    const appDataPath = normalizeOptionalString(process.env.APPDATA);
+    const basePath = appDataPath ?? path.join(os.homedir(), "AppData", "Roaming");
+    return path.join(basePath, "poopseek", "config.json");
+}
+
+function parseRuntimeConfig(raw: unknown): RuntimeConfig
+{
+    if (typeof raw !== "object" || raw === null)
+    {
+        return { token: null, version: null };
+    }
+
+    const maybeConfig = raw as Record<string, unknown>;
+    const token = typeof maybeConfig.token === "string"
+        ? normalizeOptionalString(maybeConfig.token)
+        : null;
+    const version = typeof maybeConfig.version === "string"
+        ? normalizeOptionalString(maybeConfig.version)
+        : null;
+
+    return { token, version };
+}
+
+async function loadRuntimeConfig(configPath: string): Promise<RuntimeConfigLoadResult>
+{
+    try
+    {
+        const configRaw = await fs.promises.readFile(configPath, "utf8");
+        const parsed = JSON.parse(configRaw) as unknown;
+        return {
+            config: parseRuntimeConfig(parsed),
+            exists: true,
+        };
+    }
+    catch (error)
+    {
+        const nodeError = error as NodeJS.ErrnoException;
+        if (nodeError.code === "ENOENT")
+        {
+            return {
+                config: { token: null, version: null },
+                exists: false,
+            };
+        }
+
+        if (error instanceof SyntaxError)
+        {
+            return {
+                config: { token: null, version: null },
+                exists: true,
+            };
+        }
+
+        throw error;
+    }
+}
+
+async function saveRuntimeConfig(configPath: string, config: RuntimeConfig): Promise<void>
+{
+    const directoryPath = path.dirname(configPath);
+    await fs.promises.mkdir(directoryPath, { recursive: true });
+
+    const payload = JSON.stringify(
+        {
+            version: config.version,
+            token: config.token,
+        },
+        null,
+        4,
+    );
+
+    await fs.promises.writeFile(configPath, `${payload}\n`, "utf8");
 }
 
 async function readPromptFiles(): Promise<{
@@ -65,7 +155,30 @@ async function readPromptFiles(): Promise<{
 
 export async function runCli(): Promise<void>
 {
-    const token = getRequiredEnv("DEEPSEEK_TOKEN");
+    const runtimeConfigPath = getRuntimeConfigPath();
+    const loadedRuntimeConfig = await loadRuntimeConfig(runtimeConfigPath);
+    const envToken = getFirstEnvValue(["DEEPSEEK_TOKEN"]);
+    const envVersion = getFirstEnvValue(["POOPSEEK_VERSION", "APP_VERSION"]);
+    const appVersion = envVersion ?? loadedRuntimeConfig.config.version ?? "dev";
+    const token = envToken ?? loadedRuntimeConfig.config.token;
+
+    const nextRuntimeConfig: RuntimeConfig = { token, version: appVersion };
+    const shouldUpdateRuntimeConfig = !loadedRuntimeConfig.exists
+        || loadedRuntimeConfig.config.token !== nextRuntimeConfig.token
+        || loadedRuntimeConfig.config.version !== nextRuntimeConfig.version;
+
+    if (shouldUpdateRuntimeConfig)
+    {
+        await saveRuntimeConfig(runtimeConfigPath, nextRuntimeConfig);
+    }
+
+    if (token === null)
+    {
+        throw new Error(
+            `Missing DEEPSEEK_TOKEN in env and token in ${runtimeConfigPath}`,
+        );
+    }
+
     const deepseekClient = new DeepseekClient(token);
 
     await deepseekClient.initialize();
@@ -103,10 +216,6 @@ export async function runCli(): Promise<void>
     const hintsRenderer = createHintsRenderer(output);
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
-    const appVersion =
-        getOptionalEnv("POOPSEEK_VERSION") ??
-        getOptionalEnv("APP_VERSION") ??
-        "dev";
 
     commands = createCommandHandlers(rl, {
         getSessionInfo: () => `Session ID: ${session.getId()}`,
