@@ -129,6 +129,32 @@ async function saveRuntimeConfig(configPath: string, config: RuntimeConfig): Pro
     await fs.promises.writeFile(configPath, `${payload}\n`, "utf8");
 }
 
+async function promptForToken(): Promise<string>
+{
+    const promptInterface = readline.createInterface({
+        input,
+        output,
+    });
+
+    try
+    {
+        while (true)
+        {
+            const providedToken = normalizeOptionalString(
+                await promptInterface.question("Введите DEEPSEEK_TOKEN: "),
+            );
+            if (providedToken !== null)
+            {
+                return providedToken;
+            }
+        }
+    }
+    finally
+    {
+        promptInterface.close();
+    }
+}
+
 async function readPromptFiles(): Promise<{
     basePrompt: string;
     toolsPrompt: string;
@@ -160,7 +186,10 @@ export async function runCli(): Promise<void>
     const envToken = getFirstEnvValue(["DEEPSEEK_TOKEN"]);
     const envVersion = getFirstEnvValue(["POOPSEEK_VERSION", "APP_VERSION"]);
     const appVersion = envVersion ?? loadedRuntimeConfig.config.version ?? "dev";
-    const token = envToken ?? loadedRuntimeConfig.config.token;
+    const configToken = loadedRuntimeConfig.config.token;
+    const token = envToken
+        ?? configToken
+        ?? await promptForToken();
 
     const nextRuntimeConfig: RuntimeConfig = { token, version: appVersion };
     const shouldUpdateRuntimeConfig = !loadedRuntimeConfig.exists
@@ -170,13 +199,6 @@ export async function runCli(): Promise<void>
     if (shouldUpdateRuntimeConfig)
     {
         await saveRuntimeConfig(runtimeConfigPath, nextRuntimeConfig);
-    }
-
-    if (token === null)
-    {
-        throw new Error(
-            `Missing DEEPSEEK_TOKEN in env and token in ${runtimeConfigPath}`,
-        );
     }
 
     const deepseekClient = new DeepseekClient(token);
