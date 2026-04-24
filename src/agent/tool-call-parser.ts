@@ -130,11 +130,40 @@ function tryParseCandidates(candidates: string[]): ToolCallEnvelope | null
         }
         catch
         {
-            continue;
+            const repaired = repairJsonCandidate(candidate);
+            if (!repaired) continue;
+
+            try
+            {
+                const parsed = JSON.parse(repaired) as unknown;
+                const envelope = toEnvelope(parsed);
+                if (!envelope) continue;
+                return envelope;
+            }
+            catch
+            {
+                continue;
+            }
         }
     }
 
     return null;
+}
+
+function repairJsonCandidate(input: string): string | null
+{
+    const trimmed = input.trim();
+    if (trimmed.length === 0) return null;
+
+    let repaired = trimmed;
+    for (let pass = 0; pass < 3; pass += 1)
+    {
+        const next = repaired.replace(/,\s*([}\]])/g, "$1");
+        if (next === repaired) break;
+        repaired = next;
+    }
+
+    return repaired;
 }
 
 export function parseToolCallFromText(text: string): ToolCallEnvelope | null
