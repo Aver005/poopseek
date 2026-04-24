@@ -24,7 +24,7 @@ import {
     getTerminalCapabilities,
 } from "@/cli/terminal-capabilities";
 import { createTerminalInput } from "@/cli/terminal-input";
-import { getToolProgressMessage } from "@/cli/tool-progress-messages";
+import { getToolDetail, getToolProgressMessage } from "@/cli/tool-progress-messages";
 import {
     createCommandHandlers,
     handleCommand,
@@ -81,13 +81,52 @@ export async function runCli(): Promise<void>
     const terminalCapabilities = getTerminalCapabilities();
 
     const inputQueue: string[] = [];
+    const pendingSidechatTasks = new Set<Promise<void>>();
     let resolveNextInput: ((value: string) => void) | null = null;
+    let isMainTurnActive = false;
+
+    const syncQueueState = (): void =>
+    {
+        const queueSize = inputQueue.length;
+        terminalInput.setQueueSize(queueSize);
+        generationIndicator.setQueueSize(queueSize);
+    };
+
+    const writeDetachedOutput = (value: string): void =>
+    {
+        const shouldRestoreRender = !isMainTurnActive;
+        if (shouldRestoreRender) terminalInput.setRenderEnabled(false);
+        output.write(value);
+        if (shouldRestoreRender) terminalInput.setRenderEnabled(true);
+    };
+
+    const writeUserMessage = (value: string): void =>
+    {
+        const lines = value.split("\n");
+        output.write("\n");
+        for (let i = 0; i < lines.length; i += 1)
+        {
+            const line = lines[i] ?? "";
+            const prefix = i === 0 ? colors.magenta(">") : colors.dim("|");
+            output.write(`${prefix} ${line}\n`);
+        }
+    };
+
+    const parseBtwQuestion = (value: string): string | null =>
+    {
+        const trimmed = value.trim();
+        const match = trimmed.match(/^\/btw(?:\s+([\s\S]+))?$/i);
+        if (!match) return null;
+        const question = match[1]?.trim() ?? "";
+        return question.length > 0 ? question : "";
+    };
 
     const waitForInput = (): Promise<string> =>
     {
         if (inputQueue.length > 0)
         {
             const value = inputQueue.shift()!;
+            syncQueueState();
             return Promise.resolve(value);
         }
         return new Promise((resolve) =>
@@ -96,8 +135,24 @@ export async function runCli(): Promise<void>
         });
     };
 
-    const runSidechat = async (question: string): Promise<void> =>
+    const executeSidechat = async (
+        question: string,
+        options: {
+            buffered?: boolean;
+            showHeader?: boolean;
+            useIndicator?: boolean;
+        } = {},
+    ): Promise<void> =>
     {
+        const buffered = options.buffered ?? false;
+        const showHeader = options.showHeader ?? true;
+        const useIndicator = options.useIndicator ?? true;
+        const chunks: string[] = [];
+        const write = (value: string): void =>
+        {
+            if (buffered) chunks.push(value);
+            else output.write(value);
+        };
         const sideSession = await deepseekClient.createSession();
         const sideContext = new ContextManager(
             prompts.basePrompt,
@@ -111,47 +166,86 @@ export async function runCli(): Promise<void>
             getModelType: () => modelType,
         });
 
-        output.write(`\n${colors.cyan("◈ btw")} ${colors.dim("—")} ${question}\n`);
+        if (showHeader)
+        {
+            write(`\n${colors.cyan("◈ btw")} ${colors.dim("—")} ${question}\n`);
+        }
 
-        terminalInput.setRenderEnabled(false);
         try
         {
             let wroteAnyChunk = false;
             await sideLoop.runTurn(question, {
-                onModelRequestStart: () => { generationIndicator.start(); },
-                onModelRequestDone: () => { generationIndicator.stop(); },
+                onModelRequestStart: () =>
+                {
+                    if (useIndicator) generationIndicator.start();
+                },
+                onModelRequestDone: () =>
+                {
+                    if (useIndicator) generationIndicator.stop();
+                },
                 onAssistantChunk: (chunk) =>
                 {
-                    generationIndicator.stop();
+                    if (useIndicator) generationIndicator.stop();
                     if (!wroteAnyChunk)
                     {
-                        output.write("\n");
+                        write("\n");
                         wroteAnyChunk = true;
                     }
-                    output.write(renderMarkdown(chunk));
+                    write(renderMarkdown(chunk));
                 },
-                onToolStart: (toolName) =>
+                onToolStart: (toolName, toolArgs) =>
                 {
-                    generationIndicator.stop();
-                    output.write(`\n${colors.yellow(getToolProgressMessage(toolName))}\n`);
+                    if (useIndicator) generationIndicator.stop();
+                    const detail = getToolDetail(toolName, toolArgs);
+                    const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
+                    write(`\n${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
                 },
                 onToolDone: (toolName, toolResult) =>
                 {
                     const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
-                    output.write(`${colors.dim("[btw/tool]")} ${colors.cyan(toolName)} ${marker}\n`);
+                    write(`${colors.dim("[btw/tool]")} ${colors.cyan(toolName)} ${marker}\n`);
                 },
             });
-            output.write("\n\n");
+            write("\n\n");
         }
         catch
         {
-            generationIndicator.stop();
-            output.write(`${colors.red("btw: ошибка запроса")}\n\n`);
+            if (useIndicator) generationIndicator.stop();
+            write(`${colors.red("btw: ошибка запроса")}\n\n`);
+        }
+
+        if (buffered && chunks.length > 0)
+        {
+            writeDetachedOutput(chunks.join(""));
+        }
+    };
+
+    const runSidechat = async (question: string): Promise<void> =>
+    {
+        terminalInput.setRenderEnabled(false);
+        try
+        {
+            await executeSidechat(question);
         }
         finally
         {
             terminalInput.setRenderEnabled(true);
         }
+    };
+
+    const startQueuedSidechat = (question: string): void =>
+    {
+        writeDetachedOutput(`\n${colors.cyan("◈ btw")} ${colors.dim("—")} ${question}\n`);
+        const task = executeSidechat(question, {
+            buffered: true,
+            showHeader: false,
+            useIndicator: false,
+        });
+        pendingSidechatTasks.add(task);
+        void task.finally(() =>
+        {
+            pendingSidechatTasks.delete(task);
+        });
     };
 
     let commands = new Map<string, Command>();
@@ -197,7 +291,14 @@ export async function runCli(): Promise<void>
     terminalInput.setQueueCallbacks({
         onValueChange: (value) =>
         {
-            if (value.length > 0) generationIndicator.pause();
+            if (value.length > 0)
+            {
+                generationIndicator.pause();
+            }
+            else
+            {
+                generationIndicator.resume();
+            }
             generationIndicator.setTypingText(value);
         },
         onStop: () => generationIndicator.resume(),
@@ -213,8 +314,22 @@ export async function runCli(): Promise<void>
         }
         else
         {
+            const btwQuestion = parseBtwQuestion(value);
+            if (btwQuestion !== null)
+            {
+                if (btwQuestion.length === 0)
+                {
+                    writeDetachedOutput("\nИспользование: /btw <вопрос>\n\n");
+                }
+                else
+                {
+                    startQueuedSidechat(btwQuestion);
+                }
+                return;
+            }
+
             inputQueue.push(value);
-            terminalInput.setQueueSize(inputQueue.length);
+            syncQueueState();
         }
     });
 
@@ -237,7 +352,7 @@ export async function runCli(): Promise<void>
         while (true)
         {
             terminalInput.setMode("active");
-            terminalInput.setQueueSize(inputQueue.length);
+            syncQueueState();
 
             const userInput = await waitForInput();
             if (!userInput) continue;
@@ -248,45 +363,55 @@ export async function runCli(): Promise<void>
 
             const preparedInput = await prepareInputWithFileMentions(userInput, process.cwd());
             const attachmentPreviewLines = getFileAttachmentPreviewLines(preparedInput.attachments);
-            if (attachmentPreviewLines.length > 0)
-            {
-                output.write(`\n${attachmentPreviewLines.join("\n")}\n`);
-            }
-
             terminalInput.setMode("queue");
             terminalInput.setRenderEnabled(false);
+            writeUserMessage(userInput);
+            if (attachmentPreviewLines.length > 0)
+            {
+                output.write(`${attachmentPreviewLines.join("\n")}\n`);
+            }
 
             let wroteAnyChunk = false;
-            await agentLoop.runTurn(preparedInput.content, {
-                onModelRequestStart: () =>
-                {
-                    generationIndicator.start();
-                },
-                onModelRequestDone: () =>
-                {
-                    generationIndicator.stop();
-                },
-                onAssistantChunk: (chunk) =>
-                {
-                    generationIndicator.stop();
-                    if (!wroteAnyChunk)
+            isMainTurnActive = true;
+            try
+            {
+                await agentLoop.runTurn(preparedInput.content, {
+                    onModelRequestStart: () =>
                     {
-                        output.write("\n");
-                        wroteAnyChunk = true;
-                    }
-                    output.write(renderMarkdown(chunk));
-                },
-                onToolStart: (toolName) =>
-                {
-                    generationIndicator.stop();
-                    output.write(`\n${colors.yellow(getToolProgressMessage(toolName))}\n`);
-                },
-                onToolDone: (toolName, toolResult) =>
-                {
-                    const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
-                    output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
-                },
-            });
+                        generationIndicator.start();
+                    },
+                    onModelRequestDone: () =>
+                    {
+                        generationIndicator.stop();
+                    },
+                    onAssistantChunk: (chunk) =>
+                    {
+                        generationIndicator.stop();
+                        if (!wroteAnyChunk)
+                        {
+                            output.write("\n");
+                            wroteAnyChunk = true;
+                        }
+                        output.write(renderMarkdown(chunk));
+                    },
+                    onToolStart: (toolName, toolArgs) =>
+                    {
+                        generationIndicator.stop();
+                        const detail = getToolDetail(toolName, toolArgs);
+                        const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
+                        output.write(`\n${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
+                    },
+                    onToolDone: (toolName, toolResult) =>
+                    {
+                        const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
+                        output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
+                    },
+                });
+            }
+            finally
+            {
+                isMainTurnActive = false;
+            }
 
             output.write("\n\n");
 
@@ -313,6 +438,7 @@ export async function runCli(): Promise<void>
     }
     finally
     {
+        await Promise.allSettled(Array.from(pendingSidechatTasks));
         terminalInput.close();
         generationIndicator.stop();
     }

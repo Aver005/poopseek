@@ -20,7 +20,7 @@ export interface AgentLoopOptions
 export interface AgentTurnCallbacks
 {
     onAssistantChunk?: (chunk: string) => void;
-    onToolStart?: (toolName: string) => void;
+    onToolStart?: (toolName: string, toolArgs: Record<string, unknown>) => void;
     onToolDone?: (toolName: string, result: ToolExecutionResult) => void;
     onModelRequestStart?: () => void;
     onModelRequestDone?: () => void;
@@ -127,7 +127,7 @@ export default class AgentLoop
             lastAssistantText = "";
 
             toolCalls += 1;
-            callbacks.onToolStart?.(toolCall.tool);
+            callbacks.onToolStart?.(toolCall.tool, toolCall.args);
 
             let toolResult = await this.toolExecutor.execute(toolCall);
             callbacks.onToolDone?.(toolCall.tool, toolResult);
@@ -140,7 +140,7 @@ export default class AgentLoop
 
             if (action === "try-again")
             {
-                callbacks.onToolStart?.(toolCall.tool);
+                callbacks.onToolStart?.(toolCall.tool, toolCall.args);
                 toolResult = await this.toolExecutor.execute(toolCall);
                 callbacks.onToolDone?.(toolCall.tool, toolResult);
                 action = resolveAction(

@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { adaptTextToTerminal } from "@/cli/terminal-capabilities";
 
 const TOOL_MESSAGES: Record<string, string[]> = {
@@ -121,4 +122,29 @@ export function getToolProgressMessage(toolName: string): string
         return adaptTextToTerminal(getRandomItem(scopedMessages));
 
     return adaptTextToTerminal(getRandomItem(FALLBACK_MESSAGES));
+}
+
+export function getToolDetail(toolName: string, args: Record<string, unknown>): string | null
+{
+    const path = typeof args.path === "string" ? args.path : null;
+    const command = typeof args.command === "string" ? args.command : null;
+
+    switch (toolName)
+    {
+        case "file.read":
+        case "file.write":
+        case "file.edit":
+        case "file.remove":
+        case "git.edit":
+            return path ? basename(path) : null;
+        case "file.list":
+            return path ?? null;
+        case "bash":
+        case "powershell":
+        case "git":
+            if (!command) return null;
+            return command.length > 100 ? `${command.slice(0, 100)}…` : command;
+        default:
+            return null;
+    }
 }

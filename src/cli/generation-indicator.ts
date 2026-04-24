@@ -10,6 +10,7 @@ export interface GenerationIndicator
     pause: () => void;
     resume: () => void;
     setTypingText: (text: string) => void;
+    setQueueSize: (size: number) => void;
 }
 
 export function createGenerationIndicator(
@@ -22,20 +23,24 @@ export function createGenerationIndicator(
     let paused = false;
     let displayed = false;
     let typingText = "";
+    let queueSize = 0;
+
+    const queueSuffix = (): string =>
+        queueSize > 0 ? ` ${colors.dim(`[${queueSize} в очереди]`)}` : "";
 
     const renderActive = (): void =>
     {
         const frame = FRAMES[frameIndex % FRAMES.length];
         frameIndex += 1;
-        writer.write(`\r${colors.dim(`[gen] ${frame} ${activeLabel}`)}\x1b[K`);
+        writer.write(`\r${colors.dim(`[gen] ${frame} ${activeLabel}`)}${queueSuffix()}\x1b[K`);
     };
 
     const renderPaused = (): void =>
     {
-        const suffix = typingText
+        const typingSuffix = typingText
             ? ` ${colors.dim("|")} ${colors.dim("[+]")} ${typingText}`
             : "";
-        writer.write(`\r${colors.dim(`[gen] ○ ${activeLabel}`)}${suffix}\x1b[K`);
+        writer.write(`\r${colors.dim(`[gen] ○ ${activeLabel}`)}${queueSuffix()}${typingSuffix}\x1b[K`);
     };
 
     return {
@@ -97,6 +102,15 @@ export function createGenerationIndicator(
             if (!paused || !displayed) return;
             typingText = text;
             renderPaused();
+        },
+
+        setQueueSize: (size: number): void =>
+        {
+            if (queueSize === size) return;
+            queueSize = size;
+            if (!displayed) return;
+            if (paused) renderPaused();
+            else renderActive();
         },
     };
 }
