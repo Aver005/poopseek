@@ -1,16 +1,16 @@
-import { filesVariable } from "./files";
-import { folderVariable } from "./folder";
+import { filesVariable } from "./defs/files";
+import { folderVariable } from "./defs/folder";
 import {
     isGitAvailableVariable,
     isGitAviabledVariable,
-} from "./is-git-aviabled";
+} from "./defs/is-git-aviabled";
 import type {
     VariableContext,
     VariableModule,
     VariableProcessor,
     VariableResolver,
 } from "./types";
-import { userVariable } from "./user";
+import { userVariable } from "./defs/user";
 
 const VARIABLE_MODULES: VariableModule[] = [
     folderVariable,

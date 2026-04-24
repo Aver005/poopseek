@@ -1,5 +1,5 @@
 import { createExitCommand } from "./exit";
-import type { Command } from "./types";
+import type { Command } from "../types";
 
 export function createQuitCommand(rl: { close: () => void }): Command
 {

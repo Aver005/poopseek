@@ -1,16 +1,17 @@
-import { createClearCommand } from "./clear";
-import { createExitCommand } from "./exit";
-import { createHelpCommand } from "./help";
-import { createHistoryCommand } from "./history";
 import { writeLine } from "./io";
-import { createModelCommand } from "./model";
-import { createQuitCommand } from "./quit";
-import { createSessionCommand } from "./session";
-import { createStatsCommand } from "./stats";
-import { createSwitchCommand } from "./switch";
-import { createThemeCommand } from "./theme";
-import { createToolsCommand } from "./tools";
 import type { Command, CommandsContext } from "./types";
+
+import { createClearCommand } from "./defs/clear";
+import { createExitCommand } from "./defs/exit";
+import { createHelpCommand } from "./defs/help";
+import { createHistoryCommand } from "./defs/history";
+import { createModelCommand } from "./defs/model";
+import { createQuitCommand } from "./defs/quit";
+import { createSessionCommand } from "./defs/session";
+import { createStatsCommand } from "./defs/stats";
+import { createSwitchCommand } from "./defs/switch";
+import { createThemeCommand } from "./defs/theme";
+import { createToolsCommand } from "./defs/tools";
 
 function getCommandKeyByName(commandName: string): string
 {
