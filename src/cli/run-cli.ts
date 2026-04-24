@@ -8,6 +8,7 @@ import AgentLoop from "@/agent/loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { createHintsRenderer } from "@/cli/command-hints";
 import { colors, getColorMode, setTheme } from "@/cli/colors";
+import { createGenerationIndicator } from "@/cli/generation-indicator";
 import { getToolProgressMessage } from "@/cli/tool-progress-messages";
 import {
     createCommandCompleter,
@@ -16,6 +17,7 @@ import {
 } from "@/commands";
 import type { Command } from "@/commands/types";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
+import type { ModelType } from "@/deepseek-client/types";
 import { createVariableProcessor } from "@/variables";
 
 function getRequiredEnv(name: string): string
@@ -64,12 +66,16 @@ export async function runCli(): Promise<void>
         variableProcessor,
     );
     const toolExecutor = new ToolExecutor(process.cwd());
+    let modelType: ModelType = "default";
     const agentLoop = new AgentLoop(
         deepseekClient,
         session,
         contextManager,
         toolExecutor,
-        { maxStepsPerTurn: 12 },
+        {
+            maxStepsPerTurn: 12,
+            getModelType: () => modelType,
+        },
     );
 
     let commands = new Map<string, Command>();
@@ -79,6 +85,7 @@ export async function runCli(): Promise<void>
         completer: createCommandCompleter(() => commands),
     });
     const hintsRenderer = createHintsRenderer(output);
+    const generationIndicator = createGenerationIndicator(output);
 
     commands = createCommandHandlers(rl, {
         getSessionInfo: () => `Session ID: ${session.getId()}`,
@@ -86,6 +93,8 @@ export async function runCli(): Promise<void>
         clearHistory: () => contextManager.clearHistory(),
         getTheme: () => getColorMode().theme,
         setTheme: (theme) => setTheme(theme),
+        getModelType: () => modelType,
+        setModelType: (nextModelType) => modelType = nextModelType,
     });
     emitKeypressEvents(input);
     const onKeypress = (): void =>
@@ -117,8 +126,17 @@ export async function runCli(): Promise<void>
 
             let wroteAnyChunk = false;
             const result = await agentLoop.runTurn(userInput, {
+                onModelRequestStart: () =>
+                {
+                    generationIndicator.start();
+                },
+                onModelRequestDone: () =>
+                {
+                    generationIndicator.stop();
+                },
                 onAssistantChunk: (chunk) =>
                 {
+                    generationIndicator.stop();
                     if (!wroteAnyChunk)
                     {
                         output.write("\n");
@@ -129,6 +147,7 @@ export async function runCli(): Promise<void>
                 },
                 onToolStart: (toolName) =>
                 {
+                    generationIndicator.stop();
                     output.write(`\n${colors.yellow(getToolProgressMessage(toolName))}\n`);
                 },
                 onToolDone: (toolName, toolResult) =>
@@ -148,6 +167,7 @@ export async function runCli(): Promise<void>
     finally
     {
         input.off("keypress", onKeypress);
+        generationIndicator.stop();
         rl.close();
     }
 }

@@ -12,6 +12,8 @@ export interface CommandsContext
     clearHistory?: () => void;
     getTheme?: () => "dark" | "light";
     setTheme?: (theme: "dark" | "light") => void;
+    getModelType?: () => "default" | "expert";
+    setModelType?: (modelType: "default" | "expert") => void;
 }
 
 export interface CommandModule

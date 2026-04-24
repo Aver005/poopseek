@@ -6,6 +6,7 @@ import { writeLine } from "./io";
 import { createQuitCommand } from "./quit";
 import { createSessionCommand } from "./session";
 import { createStatsCommand } from "./stats";
+import { createSwitchCommand } from "./switch";
 import { createThemeCommand } from "./theme";
 import { createToolsCommand } from "./tools";
 import type { Command, CommandsContext } from "./types";
@@ -36,6 +37,7 @@ export function createCommandHandlers(
     registerCommand(createStatsCommand(context));
     registerCommand(createHistoryCommand(context));
     registerCommand(createThemeCommand(context));
+    registerCommand(createSwitchCommand(context));
 
     return commands;
 }

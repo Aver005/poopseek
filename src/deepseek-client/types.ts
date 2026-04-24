@@ -1,12 +1,15 @@
 export interface SendMessageOptions {
     thinking_enabled?: boolean;
     search_enabled?: boolean;
+    model_type?: ModelType;
 }
+
+export type ModelType = "default" | "expert";
 
 export interface ChatPayload {
     prompt: string;
     model: string;
-    model_type: "default" | null;
+    model_type: ModelType | null;
     stream: boolean;
     temperature: number;
     max_tokens: number;

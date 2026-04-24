@@ -1,6 +1,7 @@
 import type ChatSession from "@/deepseek-client/client/ChatSession";
 import type DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import { collectDeepseekOutput } from "@/bridge/deepseek-stream";
+import type { ModelType } from "@/deepseek-client/types";
 import ContextManager from "./context-manager";
 import { parseToolCallFromText } from "./tool-call-parser";
 import ToolExecutor from "./tool-executor";
@@ -13,6 +14,7 @@ import type {
 export interface AgentLoopOptions
 {
     maxStepsPerTurn: number;
+    getModelType?: () => ModelType;
 }
 
 export interface AgentTurnCallbacks
@@ -20,6 +22,8 @@ export interface AgentTurnCallbacks
     onAssistantChunk?: (chunk: string) => void;
     onToolStart?: (toolName: string) => void;
     onToolDone?: (toolName: string, result: ToolExecutionResult) => void;
+    onModelRequestStart?: () => void;
+    onModelRequestDone?: () => void;
 }
 
 const DEFAULT_OPTIONS: AgentLoopOptions = {
@@ -87,8 +91,19 @@ export default class AgentLoop
         for (let step = 0; step < this.options.maxStepsPerTurn; step += 1)
         {
             const prompt = this.contextManager.buildPrompt();
-            const response = await this.deepseekClient.sendMessage(prompt, this.session);
-            const collected = await collectDeepseekOutput(response);
+            callbacks.onModelRequestStart?.();
+            let collected: Awaited<ReturnType<typeof collectDeepseekOutput>>;
+            try
+            {
+                const response = await this.deepseekClient.sendMessage(prompt, this.session, {
+                    model_type: this.options.getModelType?.(),
+                });
+                collected = await collectDeepseekOutput(response);
+            }
+            finally
+            {
+                callbacks.onModelRequestDone?.();
+            }
 
             if (collected.parentMessageId !== null)
             {

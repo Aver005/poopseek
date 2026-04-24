@@ -54,7 +54,7 @@ export default class DeepseekClient
         const payload: ChatPayload = {
             prompt: message,
             model: CHAT_CONFIG.DEFAULT_MODEL,
-            model_type: parentMessageId === null ? "default" : null,
+            model_type: options.model_type ?? (parentMessageId === null ? "default" : null),
             stream: true,
             temperature: CHAT_CONFIG.DEFAULT_TEMPERATURE,
             max_tokens: CHAT_CONFIG.DEFAULT_MAX_TOKENS,
