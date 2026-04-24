@@ -12,9 +12,13 @@
     "check": "tsc -b"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/terminal-kit": "^2.5.7"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "terminal-kit": "^3.1.2"
   }
 }

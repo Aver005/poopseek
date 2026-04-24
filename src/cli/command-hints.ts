@@ -9,7 +9,7 @@ export interface HintsRenderer
     clear: () => void;
 }
 
-function buildHintLines(
+export function getCommandHintLines(
     inputLine: string,
     commands: Map<string, Command>,
 ): string[]
@@ -40,7 +40,6 @@ export function createHintsRenderer(
         writer.write("\x1b[J");
         if (lines.length > 0)
         {
-            writer.write(`${colors.dim("Подсказки:")}\n`);
             writer.write(`${lines.join("\n")}\n`);
         }
         writer.write("\x1b[u");
@@ -49,7 +48,7 @@ export function createHintsRenderer(
     return {
         render: (inputLine: string, commands: Map<string, Command>): void =>
         {
-            const lines = buildHintLines(inputLine, commands);
+            const lines = getCommandHintLines(inputLine, commands);
             const snapshot = lines.join("\n");
             if (snapshot === lastSnapshot) return;
             lastSnapshot = snapshot;

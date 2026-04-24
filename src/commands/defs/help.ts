@@ -1,3 +1,4 @@
+import { colors } from "@/cli/colors";
 import { write, writeLine } from "../io";
 import type { Command } from "../types";
 
@@ -8,11 +9,11 @@ export function createHelpCommand(getCommands: () => Map<string, Command>): Comm
         description: "Показать список доступных команд",
         execute: async () =>
         {
-            writeLine("");
-            writeLine("Доступные команды:");
+            writeLine("\n");
+            writeLine(colors.yellow("Доступные команды:"));
             for (const command of getCommands().values())
             {
-                write(`  ${command.name} - ${command.description}\n`);
+                write(`  ${colors.cyan(command.name)} - ${colors.dim(command.description)}\n`);
             }
             writeLine("");
             return true;
