@@ -3,10 +3,19 @@ import { emitKeypressEvents } from "node:readline";
 import type { Command } from "@/commands/types";
 import { colors } from "@/cli/colors";
 import { getCommandHintLines } from "@/cli/command-hints";
+import {
+    applyFileCompletion,
+    formatInputLineWithMentions,
+    getFileHintLines,
+} from "@/cli/file-mentions";
 
 type TerminalInputController = {
     readUserInput: (commands: Map<string, Command>) => Promise<string>;
     close: () => void;
+};
+
+type TerminalInputOptions = {
+    getWorkspaceRoot?: () => string;
 };
 
 type TerminalKeyData = {
@@ -133,6 +142,7 @@ function createNativeDriver(): TerminalDriver
         if (key?.name === "down") return { name: "DOWN", data: { code: sequence, isCharacter: false } };
         if (key?.name === "home") return { name: "HOME", data: { code: sequence, isCharacter: false } };
         if (key?.name === "end") return { name: "END", data: { code: sequence, isCharacter: false } };
+        if (key?.name === "tab") return { name: "TAB", data: { code: sequence, isCharacter: false } };
 
         return {
             name: char,
@@ -228,7 +238,12 @@ async function createTerminalDriver(): Promise<TerminalDriver>
     }
 }
 
-function buildRenderedBlock(value: string, cursor: number, commands: Map<string, Command>): string
+function buildRenderedBlock(
+    value: string,
+    cursor: number,
+    commands: Map<string, Command>,
+    workspaceRoot: string,
+): string
 {
     const cursorMetrics = getCursorMetrics(value, cursor);
     const inputLines = splitLines(value).map((line) => line);
@@ -243,28 +258,33 @@ function buildRenderedBlock(value: string, cursor: number, commands: Map<string,
     }
 
     return inputLines.map((line, index) =>
-        `${index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX}${line}`
+        `${index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX}${formatInputLineWithMentions(line, workspaceRoot)}`
     ).concat((() =>
     {
-        const hintLines = getCommandHintLines(value, commands);
+        const fileHintLines = getFileHintLines(value, cursor, workspaceRoot);
+        const hintLines = fileHintLines.length > 0
+            ? fileHintLines
+            : getCommandHintLines(value, commands);
         if (hintLines.length === 0)
         {
             return [];
         }
 
         return [
+            colors.dim("Подсказки:"),
             ...hintLines,
         ];
     })()).join("\n");
 }
 
-export function createTerminalInput(): TerminalInputController
+export function createTerminalInput(options: TerminalInputOptions = {}): TerminalInputController
 {
     let driverPromise: Promise<TerminalDriver> | null = null;
     let activeDriver: TerminalDriver | null = null;
     let activeCleanup: (() => void) | null = null;
     let lastRenderLineCount = 0;
     let lastCursorRow = 0;
+    const getWorkspaceRoot = options.getWorkspaceRoot ?? (() => process.cwd());
 
     const getDriver = async (): Promise<TerminalDriver> =>
     {
@@ -323,7 +343,12 @@ export function createTerminalInput(): TerminalInputController
 
             const render = (): void =>
             {
-                const renderedBlock = buildRenderedBlock(state.value, state.cursor, commands);
+                const renderedBlock = buildRenderedBlock(
+                    state.value,
+                    state.cursor,
+                    commands,
+                    getWorkspaceRoot(),
+                );
                 const renderedLines = renderedBlock.split("\n");
                 const renderedLineCount = renderedLines.length;
                 const cursorMetrics = getCursorMetrics(state.value, state.cursor);
@@ -444,6 +469,20 @@ export function createTerminalInput(): TerminalInputController
                         state.cursor = getLineEnd(state.value, state.cursor);
                         render();
                         return;
+                    case "TAB":
+                    {
+                        const completionResult = applyFileCompletion(
+                            state.value,
+                            state.cursor,
+                            getWorkspaceRoot(),
+                        );
+
+                        if (!completionResult.completed) return;
+                        state.value = completionResult.value;
+                        state.cursor = completionResult.cursor;
+                        render();
+                        return;
+                    }
                     case "UP":
                         state.cursor = getPreviousLineCursor(state.value, state.cursor);
                         render();

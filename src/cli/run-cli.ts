@@ -4,6 +4,10 @@ import ContextManager from "@/agent/context-manager";
 import AgentLoop from "@/agent/loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { colors, getColorMode, setTheme } from "@/cli/colors";
+import {
+    getFileAttachmentPreviewLines,
+    prepareInputWithFileMentions,
+} from "@/cli/file-mentions";
 import { createGenerationIndicator } from "@/cli/generation-indicator";
 import { renderMarkdown } from "@/cli/markdown";
 import { readPromptFiles } from "@/cli/prompt-files";
@@ -80,7 +84,9 @@ export async function runCli(): Promise<void>
         },
     );
 
-    const terminalInput = createTerminalInput();
+    const terminalInput = createTerminalInput({
+        getWorkspaceRoot: () => process.cwd(),
+    });
     let commands = new Map<string, Command>();
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
@@ -134,6 +140,7 @@ export async function runCli(): Promise<void>
     output.write(`${colors.yellow("/help")} для списка команд\n`);
     output.write(`${colors.yellow("/tools")} для списка инструментов\n\n`);
     output.write(`${colors.dim("Многострочный ввод: Shift+Enter или \\n в тексте")}\n`);
+    output.write(`${colors.dim("Файлы: @path и Tab для автокомплита")}\n`);
     output.write(`${colors.dim(`Модель: ${colors.magenta(modelType)}`)}\n`);
     output.write(`Цвета ${colorMode.enabled ? colors.green("включены") : colors.red("отключены")}\n`);
     output.write(`Профиль терминала: ${colors.cyan(`${terminalCapabilities.shell}/${terminalCapabilities.terminal}`)}\n`);
@@ -152,8 +159,15 @@ export async function runCli(): Promise<void>
 
             if (userInput.startsWith("/")) continue;
 
+            const preparedInput = await prepareInputWithFileMentions(userInput, process.cwd());
+            const attachmentPreviewLines = getFileAttachmentPreviewLines(preparedInput.attachments);
+            if (attachmentPreviewLines.length > 0)
+            {
+                output.write(`\n${attachmentPreviewLines.join("\n")}\n`);
+            }
+
             let wroteAnyChunk = false;
-            const result = await agentLoop.runTurn(userInput, {
+            const result = await agentLoop.runTurn(preparedInput.content, {
                 onModelRequestStart: () =>
                 {
                     generationIndicator.start();
