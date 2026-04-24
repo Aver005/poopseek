@@ -13,12 +13,18 @@ import {
 
 export type TerminalInputMode = "active" | "queue";
 
+type QueueCallbacks = {
+    onStart?: () => void;
+    onStop?: () => void;
+};
+
 type TerminalInputController = {
     start: (commands: Map<string, Command>) => void;
     onSubmit: (handler: (value: string) => void) => () => void;
     setMode: (mode: TerminalInputMode) => void;
     setQueueSize: (size: number) => void;
     setRenderEnabled: (enabled: boolean) => void;
+    setQueueCallbacks: (callbacks: QueueCallbacks) => void;
     close: () => void;
 };
 
@@ -331,7 +337,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     const submit = (value: string): void =>
     {
         clearPreviousRender();
-        output.write("\n");
+        if (renderEnabled) output.write("\n");
         lastRenderLineCount = 0;
         lastCursorRow = 0;
         state.value = "";
@@ -343,6 +349,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         }
 
         render();
+        if (!renderEnabled) queueCallbacks.onStop?.();
     };
 
     const onKey = (name: string, _matches: string[], data: TerminalKeyData): void =>
@@ -363,6 +370,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
         if (data.isCharacter)
         {
+            const wasEmpty = !renderEnabled && state.value.length === 0;
             const previousCharacter = state.cursor > 0 ? state.value.at(state.cursor - 1) : undefined;
             if (name === "n" && previousCharacter === "\\")
             {
@@ -373,6 +381,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
             state.value = [state.value.slice(0, state.cursor), name, state.value.slice(state.cursor)].join("");
             state.cursor += name.length;
             render();
+            if (wasEmpty) queueCallbacks.onStart?.();
             return;
         }
 
@@ -524,5 +533,12 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         }
     };
 
-    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, close };
+    let queueCallbacks: QueueCallbacks = {};
+
+    const setQueueCallbacks = (callbacks: QueueCallbacks): void =>
+    {
+        queueCallbacks = callbacks;
+    };
+
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, close };
 }

@@ -194,6 +194,11 @@ export async function runCli(): Promise<void>
         },
     });
 
+    terminalInput.setQueueCallbacks({
+        onStart: () => generationIndicator.pause(),
+        onStop: () => generationIndicator.resume(),
+    });
+
     terminalInput.onSubmit((value) =>
     {
         if (!value) return;
