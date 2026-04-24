@@ -49,6 +49,14 @@ bun start
 bun run --watch src/index.ts
 ```
 
+### Сборка exe
+
+```bash
+bun run build:exe --version 1.2.3
+```
+
+Если `--version` не передан, `exe` использует `POOPSEEK_VERSION` или `APP_VERSION`, а затем `dev`.
+
 ## 🎮 Использование
 
 ### Интерактивный режим

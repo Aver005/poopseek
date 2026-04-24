@@ -7,7 +7,7 @@
     "start": "bun run src/index.ts",
     "copy:assets": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path 'build' | Out-Null; Copy-Item -Path 'assets' -Destination 'build' -Recurse -Force; New-Item -ItemType Directory -Force -Path 'build/docs' | Out-Null; Copy-Item -Path 'docs/tools' -Destination 'build/docs' -Recurse -Force\"",
     "build": "bun build src/index.ts --target bun --outdir build && bun run copy:assets",
-    "build:exe": "bun build src/index.ts --compile --outfile build/poopseek.exe && bun run copy:assets",
+    "build:exe": "bun run scripts/build-exe.ts",
     "compile": "bun run build:exe",
     "check": "tsc -b"
   },

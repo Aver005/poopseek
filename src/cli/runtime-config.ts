@@ -6,7 +6,6 @@ import { stdin as input, stdout as output } from "node:process";
 
 export type RuntimeConfig = {
     token: string | null;
-    version: string | null;
 };
 
 type RuntimeConfigLoadResult = {
@@ -26,10 +25,7 @@ export function getFirstEnvValue(keys: readonly string[]): string | null
     for (const key of keys)
     {
         const candidate = normalizeOptionalString(process.env[key]);
-        if (candidate !== null)
-        {
-            return candidate;
-        }
+        if (candidate !== null) return candidate;
     }
 
     return null;
@@ -45,19 +41,14 @@ export function getRuntimeConfigPath(): string
 function parseRuntimeConfig(raw: unknown): RuntimeConfig
 {
     if (typeof raw !== "object" || raw === null)
-    {
-        return { token: null, version: null };
-    }
+        return { token: null };
 
     const maybeConfig = raw as Record<string, unknown>;
     const token = typeof maybeConfig.token === "string"
         ? normalizeOptionalString(maybeConfig.token)
         : null;
-    const version = typeof maybeConfig.version === "string"
-        ? normalizeOptionalString(maybeConfig.version)
-        : null;
 
-    return { token, version };
+    return { token };
 }
 
 export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConfigLoadResult>
@@ -77,7 +68,7 @@ export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConf
         if (nodeError.code === "ENOENT")
         {
             return {
-                config: { token: null, version: null },
+                config: { token: null },
                 exists: false,
             };
         }
@@ -85,7 +76,7 @@ export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConf
         if (error instanceof SyntaxError)
         {
             return {
-                config: { token: null, version: null },
+                config: { token: null },
                 exists: true,
             };
         }
@@ -101,7 +92,6 @@ export async function saveRuntimeConfig(configPath: string, config: RuntimeConfi
 
     const payload = JSON.stringify(
         {
-            version: config.version,
             token: config.token,
         },
         null,
@@ -125,10 +115,9 @@ export async function promptForToken(): Promise<string>
             const providedToken = normalizeOptionalString(
                 await promptInterface.question("Введите DEEPSEEK_TOKEN: "),
             );
+            
             if (providedToken !== null)
-            {
                 return providedToken;
-            }
         }
     }
     finally

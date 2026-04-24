@@ -34,22 +34,26 @@ import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type { ModelType } from "@/deepseek-client/types";
 import { createVariableProcessor } from "@/variables";
 
+declare const __APP_VERSION__: string | undefined;
+
 export async function runCli(): Promise<void>
 {
     const runtimeConfigPath = getRuntimeConfigPath();
     const loadedRuntimeConfig = await loadRuntimeConfig(runtimeConfigPath);
     const envToken = getFirstEnvValue(["DEEPSEEK_TOKEN"]);
     const envVersion = getFirstEnvValue(["POOPSEEK_VERSION", "APP_VERSION"]);
-    const appVersion = envVersion ?? loadedRuntimeConfig.config.version ?? "dev";
+    const embeddedVersion = typeof __APP_VERSION__ === "string"
+        ? __APP_VERSION__.trim()
+        : "";
+    const appVersion = embeddedVersion || envVersion || "dev";
     const configToken = loadedRuntimeConfig.config.token;
     const token = envToken
         ?? configToken
         ?? await promptForToken();
 
-    const nextRuntimeConfig: RuntimeConfig = { token, version: appVersion };
+    const nextRuntimeConfig: RuntimeConfig = { token };
     const shouldUpdateRuntimeConfig = !loadedRuntimeConfig.exists
-        || loadedRuntimeConfig.config.token !== nextRuntimeConfig.token
-        || loadedRuntimeConfig.config.version !== nextRuntimeConfig.version;
+        || loadedRuntimeConfig.config.token !== nextRuntimeConfig.token;
 
     if (shouldUpdateRuntimeConfig)
     {
