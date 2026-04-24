@@ -1,5 +1,5 @@
-import { write } from "./io";
-import type { Command } from "./types";
+import { write } from "../io";
+import type { Command } from "../types";
 
 export function createClearCommand(): Command
 {

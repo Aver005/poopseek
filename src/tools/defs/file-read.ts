@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import { toStringValue } from "./args";
-import type { ToolHandler } from "./types";
+import { toStringValue } from "../args";
+import type { ToolHandler } from "../types";
 
 export const name = "file.read";
 

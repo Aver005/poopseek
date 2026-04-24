@@ -1,5 +1,5 @@
-import { writeLine } from "./io";
-import type { Command, CommandsContext } from "./types";
+import { writeLine } from "../io";
+import type { Command, CommandsContext } from "../types";
 
 type ModelType = "default" | "expert";
 

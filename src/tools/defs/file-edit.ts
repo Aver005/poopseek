@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import { toBooleanValue, toStringValue } from "./args";
-import type { ToolHandler } from "./types";
+import { toBooleanValue, toStringValue } from "../args";
+import type { ToolHandler } from "../types";
 
 export const name = "file.edit";
 

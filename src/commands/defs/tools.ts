@@ -1,6 +1,6 @@
 import { getToolNames } from "@/tools";
-import { writeLine } from "./io";
-import type { Command } from "./types";
+import { writeLine } from "../io";
+import type { Command } from "../types";
 
 export function createToolsCommand(): Command
 {

@@ -1,5 +1,5 @@
-import { write, writeLine } from "./io";
-import type { Command } from "./types";
+import { write, writeLine } from "../io";
+import type { Command } from "../types";
 
 export function createHelpCommand(getCommands: () => Map<string, Command>): Command
 {

@@ -1,4 +1,4 @@
-import type { ToolHandler } from "./types";
+import type { ToolHandler } from "../types";
 
 export const name = "bash";
 

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { toBooleanValue, toStringValue } from "./args";
-import type { ToolHandler } from "./types";
+import { toBooleanValue, toStringValue } from "../args";
+import type { ToolHandler } from "../types";
 
 export const name = "file.list";
 

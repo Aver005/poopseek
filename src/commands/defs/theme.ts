@@ -1,5 +1,5 @@
-import { writeLine } from "./io";
-import type { Command, CommandsContext } from "./types";
+import { writeLine } from "../io";
+import type { Command, CommandsContext } from "../types";
 
 function isThemeValue(value: string): value is "dark" | "light"
 {

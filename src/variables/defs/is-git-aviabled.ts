@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { VariableModule } from "./types";
+import type { VariableModule } from "../types";
 
 function resolveGitStatus(workspaceRoot: string): string
 {

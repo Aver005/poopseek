@@ -30,6 +30,14 @@ function getRequiredEnv(name: string): string
     return value.trim();
 }
 
+function getOptionalEnv(name: string): string | null
+{
+    const value = process.env[name];
+    if (!value) return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
 async function readPromptFiles(): Promise<{ basePrompt: string; toolsPrompt: string }>
 {
     const cwd = process.cwd();
@@ -86,6 +94,11 @@ export async function runCli(): Promise<void>
     });
     const hintsRenderer = createHintsRenderer(output);
     const generationIndicator = createGenerationIndicator(output);
+    const colorMode = getColorMode();
+    const appVersion =
+        getOptionalEnv("POOPSEEK_VERSION") ??
+        getOptionalEnv("APP_VERSION") ??
+        "dev";
 
     commands = createCommandHandlers(rl, {
         getSessionInfo: () => `Session ID: ${session.getId()}`,
@@ -97,17 +110,15 @@ export async function runCli(): Promise<void>
         setModelType: (nextModelType) => modelType = nextModelType,
     });
     emitKeypressEvents(input);
-    const onKeypress = (): void =>
-    {
-        hintsRenderer.render(rl.line, commands);
-    };
+    const onKeypress = (): void => hintsRenderer.render(rl.line, commands);
     input.on("keypress", onKeypress);
 
-    output.write(`${colors.green("PoopSeek CLI запущен.")} Введите /help для списка команд.\n`);
-    const colorMode = getColorMode();
-    output.write(
-        `${colors.dim(`Цвета: ${colorMode.enabled ? "on" : "off"}, тема: ${colorMode.theme}`)}\n`,
-    );
+    output.write(`\n${colors.green("PoopSeek CLI")} | v${appVersion}\n\n`);
+    output.write(`${colors.yellow("/help")} для списка команд\n`);
+    output.write(`${colors.yellow("/tools")} для списка инструментов\n\n`);
+    output.write(`${colors.dim(`Модель: ${colors.magenta(modelType)}`)}\n`);
+    output.write(`Цвета ${colorMode.enabled ? colors.green("включены") : colors.red("отключены")}\n`);
+    output.write(`Тема: ${colors.cyan(colorMode.theme)}\n\n`);
 
     try
     {

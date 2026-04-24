@@ -1,5 +1,5 @@
-import { writeLine } from "./io";
-import type { Command } from "./types";
+import { writeLine } from "../io";
+import type { Command } from "../types";
 
 export function createExitCommand(rl: { close: () => void }): Command
 {

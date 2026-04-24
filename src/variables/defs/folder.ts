@@ -1,4 +1,4 @@
-import type { VariableModule } from "./types";
+import type { VariableModule } from "../types";
 
 export const folderVariable: VariableModule = {
     key: "folder",
