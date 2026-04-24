@@ -1,5 +1,5 @@
-import { stdout as output } from "node:process";
-import terminalKit from "terminal-kit";
+import { stdin as input, stdout as output } from "node:process";
+import { emitKeypressEvents } from "node:readline";
 import type { Command } from "@/commands/types";
 import { colors } from "@/cli/colors";
 import { getCommandHintLines } from "@/cli/command-hints";
@@ -12,6 +12,17 @@ type TerminalInputController = {
 type TerminalKeyData = {
     code?: string;
     isCharacter?: boolean;
+};
+
+type TerminalKeyHandler = (name: string, matches: string[], data: TerminalKeyData) => void;
+
+type TerminalDriver = {
+    grabInput: () => void;
+    releaseInput: () => void;
+    hideCursor: () => void;
+    showCursor: () => void;
+    onKey: (listener: TerminalKeyHandler) => void;
+    offKey: (listener: TerminalKeyHandler) => void;
 };
 
 const PROMPT_PREFIX = `${colors.magenta(">")} `;
@@ -81,6 +92,142 @@ function isShiftEnter(sequence: string | undefined): boolean
     return sequence !== undefined && SHIFT_ENTER_SEQUENCES.has(sequence);
 }
 
+function createNativeDriver(): TerminalDriver
+{
+    emitKeypressEvents(input);
+
+    const listeners = new Map<TerminalKeyHandler, (
+        char: string,
+        key: { name?: string; ctrl?: boolean; sequence?: string } | undefined,
+    ) => void>();
+
+    const normalizeKeyName = (
+        char: string,
+        key: { name?: string; ctrl?: boolean; sequence?: string } | undefined,
+    ): { name: string; data: TerminalKeyData } =>
+    {
+        const sequence = key?.sequence;
+        if (key?.ctrl && key.name === "c")
+        {
+            return { name: "CTRL_C", data: { code: sequence, isCharacter: false } };
+        }
+
+        if (key?.name === "return" || key?.name === "enter")
+        {
+            return { name: "ENTER", data: { code: sequence, isCharacter: false } };
+        }
+
+        if (key?.name === "backspace")
+        {
+            return { name: "BACKSPACE", data: { code: sequence, isCharacter: false } };
+        }
+
+        if (key?.name === "delete")
+        {
+            return { name: "DELETE", data: { code: sequence, isCharacter: false } };
+        }
+
+        if (key?.name === "left") return { name: "LEFT", data: { code: sequence, isCharacter: false } };
+        if (key?.name === "right") return { name: "RIGHT", data: { code: sequence, isCharacter: false } };
+        if (key?.name === "up") return { name: "UP", data: { code: sequence, isCharacter: false } };
+        if (key?.name === "down") return { name: "DOWN", data: { code: sequence, isCharacter: false } };
+        if (key?.name === "home") return { name: "HOME", data: { code: sequence, isCharacter: false } };
+        if (key?.name === "end") return { name: "END", data: { code: sequence, isCharacter: false } };
+
+        return {
+            name: char,
+            data: {
+                code: sequence,
+                isCharacter: char.length > 0,
+            },
+        };
+    };
+
+    return {
+        grabInput: (): void =>
+        {
+            if (!input.isTTY) return;
+            input.setRawMode?.(true);
+            input.resume();
+        },
+        releaseInput: (): void =>
+        {
+            if (!input.isTTY) return;
+            input.setRawMode?.(false);
+        },
+        hideCursor: (): void =>
+        {
+            output.write("\x1b[?25l");
+        },
+        showCursor: (): void =>
+        {
+            output.write("\x1b[?25h");
+        },
+        onKey: (listener): void =>
+        {
+            const wrappedListener = (
+                char: string,
+                key: { name?: string; ctrl?: boolean; sequence?: string } | undefined,
+            ): void =>
+            {
+                const normalized = normalizeKeyName(char, key);
+                listener(normalized.name, [], normalized.data);
+            };
+
+            listeners.set(listener, wrappedListener);
+            input.on("keypress", wrappedListener);
+        },
+        offKey: (listener): void =>
+        {
+            const wrappedListener = listeners.get(listener);
+            if (!wrappedListener) return;
+            input.off("keypress", wrappedListener);
+            listeners.delete(listener);
+        },
+    };
+}
+
+async function createTerminalDriver(): Promise<TerminalDriver>
+{
+    try
+    {
+        const terminalKitModule = await import("terminal-kit");
+        const terminalKit = terminalKitModule.default;
+        const term = terminalKit.terminal;
+
+        return {
+            grabInput: (): void =>
+            {
+                term.grabInput(true);
+            },
+            releaseInput: (): void =>
+            {
+                term.grabInput(false);
+            },
+            hideCursor: (): void =>
+            {
+                term.hideCursor();
+            },
+            showCursor: (): void =>
+            {
+                term.hideCursor(false);
+            },
+            onKey: (listener): void =>
+            {
+                term.on("key", listener);
+            },
+            offKey: (listener): void =>
+            {
+                term.off("key", listener);
+            },
+        };
+    }
+    catch
+    {
+        return createNativeDriver();
+    }
+}
+
 function buildRenderedBlock(value: string, cursor: number, commands: Map<string, Command>): string
 {
     const cursorMetrics = getCursorMetrics(value, cursor);
@@ -113,22 +260,31 @@ function buildRenderedBlock(value: string, cursor: number, commands: Map<string,
 
 export function createTerminalInput(): TerminalInputController
 {
-    const term = terminalKit.terminal;
+    let driverPromise: Promise<TerminalDriver> | null = null;
+    let activeDriver: TerminalDriver | null = null;
     let activeCleanup: (() => void) | null = null;
     let lastRenderLineCount = 0;
     let lastCursorRow = 0;
+
+    const getDriver = async (): Promise<TerminalDriver> =>
+    {
+        driverPromise ??= createTerminalDriver();
+        activeDriver = await driverPromise;
+        return activeDriver;
+    };
 
     const close = (): void =>
     {
         activeCleanup?.();
         activeCleanup = null;
-        term.hideCursor(false);
-        term.grabInput(false);
+        activeDriver?.showCursor();
+        activeDriver?.releaseInput();
     };
 
     const readUserInput = async (commands: Map<string, Command>): Promise<string> =>
     {
         close();
+        const driver = await getDriver();
 
         return await new Promise<string>((resolve) =>
         {
@@ -304,17 +460,17 @@ export function createTerminalInput(): TerminalInputController
             const cleanup = (): void =>
             {
                 if (activeCleanup !== cleanup) return;
-                term.off("key", onKey);
-                term.hideCursor(false);
-                term.grabInput(false);
+                driver.offKey(onKey);
+                driver.showCursor();
+                driver.releaseInput();
                 activeCleanup = null;
             };
 
             activeCleanup = cleanup;
-            term.grabInput(true);
-            term.hideCursor();
+            driver.grabInput();
+            driver.hideCursor();
             render();
-            term.on("key", onKey);
+            driver.onKey(onKey);
         });
     };
 
