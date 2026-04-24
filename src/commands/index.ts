@@ -3,6 +3,7 @@ import { createExitCommand } from "./exit";
 import { createHelpCommand } from "./help";
 import { createHistoryCommand } from "./history";
 import { writeLine } from "./io";
+import { createModelCommand } from "./model";
 import { createQuitCommand } from "./quit";
 import { createSessionCommand } from "./session";
 import { createStatsCommand } from "./stats";
@@ -38,6 +39,7 @@ export function createCommandHandlers(
     registerCommand(createHistoryCommand(context));
     registerCommand(createThemeCommand(context));
     registerCommand(createSwitchCommand(context));
+    registerCommand(createModelCommand(context));
 
     return commands;
 }

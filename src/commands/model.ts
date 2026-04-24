@@ -8,22 +8,17 @@ function isModelType(value: string): value is ModelType
     return value === "default" || value === "expert";
 }
 
-function getOppositeModelType(value: ModelType): ModelType
-{
-    return value === "default" ? "expert" : "default";
-}
-
-export function createSwitchCommand(context: CommandsContext): Command
+export function createModelCommand(context: CommandsContext): Command
 {
     return {
-        name: "/switch",
-        description: "Переключить модель (/switch или /switch default|expert)",
+        name: "/model",
+        description: "Показать или сменить модель (/model [default|expert])",
         execute: async (args) =>
         {
             if (!context.getModelType || !context.setModelType)
             {
                 writeLine("");
-                writeLine("Переключение модели недоступно");
+                writeLine("Управление моделью недоступно");
                 writeLine("");
                 return true;
             }
@@ -31,10 +26,9 @@ export function createSwitchCommand(context: CommandsContext): Command
             const rawValue = args[0]?.toLowerCase();
             if (!rawValue)
             {
-                const nextModelType = getOppositeModelType(context.getModelType());
-                context.setModelType(nextModelType);
                 writeLine("");
-                writeLine(`Модель переключена: ${nextModelType}`);
+                writeLine(`Текущая модель: ${context.getModelType()}`);
+                writeLine("Использование: /model default|expert");
                 writeLine("");
                 return true;
             }
