@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import { emitKeypressEvents } from "node:readline";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import ContextManager from "@/agent/context-manager";
 import AgentLoop from "@/agent/loop";
 import ToolExecutor from "@/agent/tool-executor";
+import { createHintsRenderer } from "@/cli/command-hints";
+import { colorMode, colors } from "@/cli/colors";
 import { getToolProgressMessage } from "@/cli/tool-progress-messages";
 import {
     createCommandCompleter,
@@ -70,20 +73,31 @@ export async function runCli(): Promise<void>
         output,
         completer: createCommandCompleter(() => commands),
     });
+    const hintsRenderer = createHintsRenderer(output);
 
     commands = createCommandHandlers(rl, {
         getSessionInfo: () => `Session ID: ${session.getId()}`,
         getContextStats: () => `Messages in context: ${contextManager.getMessageCount()}`,
         clearHistory: () => contextManager.clearHistory(),
     });
+    emitKeypressEvents(input);
+    const onKeypress = (): void =>
+    {
+        hintsRenderer.render(rl.line, commands);
+    };
+    input.on("keypress", onKeypress);
 
-    output.write("PoopSeek CLI запущен. Введите /help для списка команд.\n");
+    output.write(`${colors.green("PoopSeek CLI запущен.")} Введите /help для списка команд.\n`);
+    output.write(
+        `${colors.dim(`Цвета: ${colorMode.enabled ? "on" : "off"}, тема: ${colorMode.theme}`)}\n`,
+    );
 
     try
     {
         while (true)
         {
-            const userInput = (await rl.question("> ")).trim();
+            const userInput = (await rl.question(`${colors.magenta(">")} `)).trim();
+            hintsRenderer.clear();
             if (userInput.length === 0) continue;
             
             // Handle commands
@@ -107,11 +121,12 @@ export async function runCli(): Promise<void>
                 },
                 onToolStart: (toolName) =>
                 {
-                    output.write(`\n${getToolProgressMessage(toolName)}\n`);
+                    output.write(`\n${colors.yellow(getToolProgressMessage(toolName))}\n`);
                 },
                 onToolDone: (toolName, toolResult) =>
                 {
-                    output.write(`[tool] ${toolName} ok=${String(toolResult.ok)}\n`);
+                    const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
+                    output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
                 },
             });
 
@@ -124,6 +139,7 @@ export async function runCli(): Promise<void>
     }
     finally
     {
+        input.off("keypress", onKeypress);
         rl.close();
     }
 }
