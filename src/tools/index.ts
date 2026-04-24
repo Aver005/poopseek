@@ -6,6 +6,8 @@ import { handler as fileListHandler, name as fileListName } from "./defs/file-li
 import { handler as fileReadHandler, name as fileReadName } from "./defs/file-read";
 import { handler as fileRemoveHandler, name as fileRemoveName } from "./defs/file-remove";
 import { handler as fileWriteHandler, name as fileWriteName } from "./defs/file-write";
+import { handler as gitHandler, name as gitName } from "./defs/git";
+import { handler as gitEditHandler, name as gitEditName } from "./defs/git-edit";
 import {
     handler as powershellHandler,
     name as powershellName,
@@ -21,6 +23,8 @@ export const toolsRegistry: Record<string, ToolHandler> = {
     [fileWriteName]: fileWriteHandler,
     [fileEditName]: fileEditHandler,
     [fileRemoveName]: fileRemoveHandler,
+    [gitName]: gitHandler,
+    [gitEditName]: gitEditHandler,
 };
 
 export function getToolNames(): string[]
