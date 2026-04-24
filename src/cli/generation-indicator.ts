@@ -9,6 +9,7 @@ export interface GenerationIndicator
     stop: () => void;
     pause: () => void;
     resume: () => void;
+    setTypingText: (text: string) => void;
 }
 
 export function createGenerationIndicator(
@@ -20,12 +21,21 @@ export function createGenerationIndicator(
     let activeLabel = "Генерация ответа...";
     let paused = false;
     let displayed = false;
+    let typingText = "";
 
-    const render = (): void =>
+    const renderActive = (): void =>
     {
         const frame = FRAMES[frameIndex % FRAMES.length];
         frameIndex += 1;
-        writer.write(`\r${colors.dim(`[gen] ${frame} ${activeLabel}`)}`);
+        writer.write(`\r${colors.dim(`[gen] ${frame} ${activeLabel}`)}\x1b[K`);
+    };
+
+    const renderPaused = (): void =>
+    {
+        const suffix = typingText
+            ? ` ${colors.dim("|")} ${colors.dim("[+]")} ${typingText}`
+            : "";
+        writer.write(`\r${colors.dim(`[gen] ○ ${activeLabel}`)}${suffix}\x1b[K`);
     };
 
     return {
@@ -36,7 +46,7 @@ export function createGenerationIndicator(
             if (paused)
             {
                 if (!displayed) writer.write("\n");
-                render();
+                renderPaused();
                 displayed = true;
                 return;
             }
@@ -45,13 +55,14 @@ export function createGenerationIndicator(
 
             writer.write("\n");
             displayed = true;
-            render();
-            timer = setInterval(render, TICK_MS);
+            renderActive();
+            timer = setInterval(renderActive, TICK_MS);
         },
 
         stop: (): void =>
         {
             displayed = false;
+            typingText = "";
             if (timer !== null)
             {
                 clearInterval(timer);
@@ -69,15 +80,24 @@ export function createGenerationIndicator(
                 clearInterval(timer);
                 timer = null;
             }
+            if (displayed) renderPaused();
         },
 
         resume: (): void =>
         {
             if (!paused) return;
             paused = false;
+            typingText = "";
             if (!displayed) return;
-            render();
-            timer = setInterval(render, TICK_MS);
+            renderActive();
+            timer = setInterval(renderActive, TICK_MS);
+        },
+
+        setTypingText: (text: string): void =>
+        {
+            if (!paused || !displayed) return;
+            typingText = text;
+            renderPaused();
         },
     };
 }

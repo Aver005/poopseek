@@ -14,7 +14,7 @@ import {
 export type TerminalInputMode = "active" | "queue";
 
 type QueueCallbacks = {
-    onStart?: () => void;
+    onValueChange?: (value: string) => void;
     onStop?: () => void;
 };
 
@@ -343,6 +343,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         state.value = "";
         state.cursor = 0;
 
+        if (!renderEnabled) queueCallbacks.onValueChange?.("");
+
         for (const handler of submitHandlers)
         {
             handler(value.trim());
@@ -365,23 +367,24 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
             state.value = `${state.value.slice(0, state.cursor)}\n${state.value.slice(state.cursor)}`;
             state.cursor += 1;
             render();
+            if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
             return;
         }
 
         if (data.isCharacter)
         {
-            const wasEmpty = !renderEnabled && state.value.length === 0;
             const previousCharacter = state.cursor > 0 ? state.value.at(state.cursor - 1) : undefined;
             if (name === "n" && previousCharacter === "\\")
             {
                 state.value = [state.value.slice(0, state.cursor - 1), "\n", state.value.slice(state.cursor)].join("");
                 render();
+                if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
                 return;
             }
             state.value = [state.value.slice(0, state.cursor), name, state.value.slice(state.cursor)].join("");
             state.cursor += name.length;
             render();
-            if (wasEmpty) queueCallbacks.onStart?.();
+            if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
             return;
         }
 
@@ -396,11 +399,13 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 state.value = [state.value.slice(0, state.cursor - 1), state.value.slice(state.cursor)].join("");
                 state.cursor -= 1;
                 render();
+                if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
                 return;
             case "DELETE":
                 if (state.cursor >= state.value.length) return;
                 state.value = [state.value.slice(0, state.cursor), state.value.slice(state.cursor + 1)].join("");
                 render();
+                if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
                 return;
             case "LEFT":
                 if (state.cursor === 0) return;
