@@ -10,6 +10,11 @@ export interface CommandsContext
     getSessionInfo?: () => string;
     getContextStats?: () => string;
     clearHistory?: () => void;
+    compactContext?: () => Promise<{
+        before: number;
+        after: number;
+        summaryChars: number;
+    } | null>;
     getTheme?: () => "dark" | "light";
     setTheme?: (theme: "dark" | "light") => void;
     getModelType?: () => "default" | "expert";

@@ -3,6 +3,7 @@ import path from "node:path";
 import { emitKeypressEvents } from "node:readline";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { collectDeepseekOutput } from "@/bridge/deepseek-stream";
 import ContextManager from "@/agent/context-manager";
 import AgentLoop from "@/agent/loop";
 import ToolExecutor from "@/agent/tool-executor";
@@ -38,20 +39,27 @@ function getOptionalEnv(name: string): string | null
     return trimmed.length > 0 ? trimmed : null;
 }
 
-async function readPromptFiles(): Promise<{ basePrompt: string; toolsPrompt: string }>
+async function readPromptFiles(): Promise<{
+    basePrompt: string;
+    toolsPrompt: string;
+    compactPrompt: string;
+}>
 {
     const cwd = process.cwd();
     const basePromptPath = path.resolve(cwd, "assets/prompts/base.prompt.md");
+    const compactPromptPath = path.resolve(cwd, "assets/prompts/compact.prompt.md");
     const toolsPromptPath = path.resolve(cwd, "docs/tools/tool.base.md");
 
-    const [basePrompt, toolsPrompt] = await Promise.all([
+    const [basePrompt, toolsPrompt, compactPrompt] = await Promise.all([
         fs.promises.readFile(basePromptPath, "utf8"),
         fs.promises.readFile(toolsPromptPath, "utf8"),
+        fs.promises.readFile(compactPromptPath, "utf8"),
     ]);
 
     return {
         basePrompt,
         toolsPrompt,
+        compactPrompt,
     };
 }
 
@@ -108,12 +116,46 @@ export async function runCli(): Promise<void>
         setTheme: (theme) => setTheme(theme),
         getModelType: () => modelType,
         setModelType: (nextModelType) => modelType = nextModelType,
+        compactContext: async () =>
+        {
+            const before = contextManager.getMessageCount();
+            if (before === 0)
+            {
+                return null;
+            }
+
+            const dialogue = contextManager.getDialogueSnapshot();
+            const compactPrompt = [
+                prompts.compactPrompt.trim(),
+                "",
+                "## Диалог",
+                dialogue,
+            ].join("\n");
+
+            const compactSession = await deepseekClient.createSession();
+            const response = await deepseekClient.sendMessage(compactPrompt, compactSession, {
+                model_type: modelType,
+            });
+            const compacted = await collectDeepseekOutput(response);
+            const summary = compacted.text.trim();
+            if (summary.length === 0)
+            {
+                throw new Error("Модель вернула пустую сводку");
+            }
+
+            contextManager.replaceWithCompactSummary(summary);
+            return {
+                before,
+                after: contextManager.getMessageCount(),
+                summaryChars: summary.length,
+            };
+        },
     });
     emitKeypressEvents(input);
     const onKeypress = (): void => hintsRenderer.render(rl.line, commands);
     input.on("keypress", onKeypress);
 
-    output.write(`\n${colors.green("PoopSeek CLI")} | v${appVersion}\n\n`);
+    output.write(`\n${colors.green("PoopSeek CLI 💩")} | v${appVersion}\n\n`);
     output.write(`${colors.yellow("/help")} для списка команд\n`);
     output.write(`${colors.yellow("/tools")} для списка инструментов\n\n`);
     output.write(`${colors.dim(`Модель: ${colors.magenta(modelType)}`)}\n`);

@@ -76,6 +76,28 @@ export default class ContextManager
         return this.messages.length;
     }
 
+    getDialogueSnapshot(): string
+    {
+        return this.formatMessages();
+    }
+
+    replaceWithCompactSummary(summary: string): void
+    {
+        const normalizedSummary = summary.trim();
+        if (normalizedSummary.length === 0)
+        {
+            this.messages = [];
+            return;
+        }
+
+        this.messages = [
+            {
+                role: "assistant",
+                content: `# COMPACT CONTEXT\n\n${normalizedSummary}`,
+            },
+        ];
+    }
+
     clearHistory(): void
     {
         this.messages = [];

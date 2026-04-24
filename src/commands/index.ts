@@ -2,6 +2,8 @@ import { writeLine } from "./io";
 import type { Command, CommandsContext } from "./types";
 
 import { createClearCommand } from "./defs/clear";
+import { createCmptCommand } from "./defs/cmpt";
+import { createCompactCommand } from "./defs/compact";
 import { createExitCommand } from "./defs/exit";
 import { createHelpCommand } from "./defs/help";
 import { createHistoryCommand } from "./defs/history";
@@ -33,6 +35,8 @@ export function createCommandHandlers(
     registerCommand(createHelpCommand(() => commands));
     registerCommand(createExitCommand(rl));
     registerCommand(createQuitCommand(rl));
+    registerCommand(createCompactCommand(context));
+    registerCommand(createCmptCommand(context));
     registerCommand(createClearCommand());
     registerCommand(createToolsCommand());
     registerCommand(createSessionCommand(context));
