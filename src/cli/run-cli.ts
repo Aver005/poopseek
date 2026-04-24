@@ -15,6 +15,10 @@ import {
     saveRuntimeConfig,
     type RuntimeConfig,
 } from "@/cli/runtime-config";
+import {
+    adaptTextToTerminal,
+    getTerminalCapabilities,
+} from "@/cli/terminal-capabilities";
 import { createTerminalInput } from "@/cli/terminal-input";
 import { getToolProgressMessage } from "@/cli/tool-progress-messages";
 import {
@@ -80,6 +84,7 @@ export async function runCli(): Promise<void>
     let commands = new Map<string, Command>();
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
+    const terminalCapabilities = getTerminalCapabilities();
 
     commands = createCommandHandlers(terminalInput, {
         getSessionInfo: () => `Session ID: ${session.getId()}`,
@@ -125,12 +130,14 @@ export async function runCli(): Promise<void>
         },
     });
 
-    output.write(`\n${colors.green("PoopSeek CLI 💩")} | v${appVersion}\n\n`);
+    output.write(`\n${colors.green(adaptTextToTerminal("PoopSeek CLI 💩"))} | v${appVersion}\n\n`);
     output.write(`${colors.yellow("/help")} для списка команд\n`);
     output.write(`${colors.yellow("/tools")} для списка инструментов\n\n`);
     output.write(`${colors.dim("Многострочный ввод: Shift+Enter или \\n в тексте")}\n`);
     output.write(`${colors.dim(`Модель: ${colors.magenta(modelType)}`)}\n`);
     output.write(`Цвета ${colorMode.enabled ? colors.green("включены") : colors.red("отключены")}\n`);
+    output.write(`Профиль терминала: ${colors.cyan(`${terminalCapabilities.shell}/${terminalCapabilities.terminal}`)}\n`);
+    output.write(`Рендер: ${colors.cyan(colorMode.support)} | emoji ${terminalCapabilities.emoji ? colors.green("on") : colors.red("off")}\n`);
     output.write(`Тема: ${colors.cyan(colorMode.theme)}\n\n`);
 
     try

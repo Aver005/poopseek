@@ -1,3 +1,5 @@
+import { adaptTextToTerminal } from "@/cli/terminal-capabilities";
+
 const TOOL_MESSAGES: Record<string, string[]> = {
     "file.read": [
         "Подсматриваю в файлы и делаю вид, что это аудит кода 🔍",
@@ -96,9 +98,7 @@ export function getToolProgressMessage(toolName: string): string
 {
     const scopedMessages = TOOL_MESSAGES[toolName];
     if (scopedMessages && scopedMessages.length > 0)
-    {
-        return getRandomItem(scopedMessages);
-    }
+        return adaptTextToTerminal(getRandomItem(scopedMessages));
 
-    return getRandomItem(FALLBACK_MESSAGES);
+    return adaptTextToTerminal(getRandomItem(FALLBACK_MESSAGES));
 }
