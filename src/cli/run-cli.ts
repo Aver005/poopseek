@@ -101,25 +101,47 @@ export async function runCli(): Promise<void>
         const sideSession = await deepseekClient.createSession();
         const sideContext = new ContextManager(
             prompts.basePrompt,
-            "",
+            prompts.toolsPrompt,
             { maxMessages: 10 },
+            variableProcessor,
         );
-        sideContext.addUser(question);
+        const sideTool = new ToolExecutor(process.cwd());
+        const sideLoop = new AgentLoop(deepseekClient, sideSession, sideContext, sideTool, {
+            maxStepsPerTurn: 6,
+            getModelType: () => modelType,
+        });
 
         output.write(`\n${colors.cyan("◈ btw")} ${colors.dim("—")} ${question}\n`);
 
         terminalInput.setRenderEnabled(false);
-        generationIndicator.start();
         try
         {
-            const response = await deepseekClient.sendMessage(
-                sideContext.buildPrompt(),
-                sideSession,
-                { model_type: modelType },
-            );
-            const collected = await collectDeepseekOutput(response);
-            generationIndicator.stop();
-            output.write(`\n${renderMarkdown(collected.text.trim())}\n\n`);
+            let wroteAnyChunk = false;
+            await sideLoop.runTurn(question, {
+                onModelRequestStart: () => { generationIndicator.start(); },
+                onModelRequestDone: () => { generationIndicator.stop(); },
+                onAssistantChunk: (chunk) =>
+                {
+                    generationIndicator.stop();
+                    if (!wroteAnyChunk)
+                    {
+                        output.write("\n");
+                        wroteAnyChunk = true;
+                    }
+                    output.write(renderMarkdown(chunk));
+                },
+                onToolStart: (toolName) =>
+                {
+                    generationIndicator.stop();
+                    output.write(`\n${colors.yellow(getToolProgressMessage(toolName))}\n`);
+                },
+                onToolDone: (toolName, toolResult) =>
+                {
+                    const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
+                    output.write(`${colors.dim("[btw/tool]")} ${colors.cyan(toolName)} ${marker}\n`);
+                },
+            });
+            output.write("\n\n");
         }
         catch
         {
