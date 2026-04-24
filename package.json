@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts",
+    "build": "bun build src/index.ts --target bun --outdir build",
     "check": "tsc -b"
   },
   "devDependencies": {
