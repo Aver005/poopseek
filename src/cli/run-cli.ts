@@ -290,9 +290,22 @@ export async function runCli(): Promise<void>
 
             output.write("\n\n");
 
+            generationIndicator.resume();
+            terminalInput.setMode("active");
+
             if (inputQueue.length > 0)
             {
-                output.write(colors.dim(`[очередь: ${inputQueue.length}]\n\n`));
+                output.write(colors.dim(`Очередь (${inputQueue.length}):\n`));
+                for (let i = 0; i < inputQueue.length; i++)
+                {
+                    const item = inputQueue[i] ?? "";
+                    const firstLine = item.split("\n")[0] ?? item;
+                    const preview = firstLine.length > 100
+                        ? `${firstLine.slice(0, 100)}…`
+                        : firstLine;
+                    output.write(colors.dim(`  ${i + 1}. ${preview}\n`));
+                }
+                output.write("\n");
             }
 
             terminalInput.setRenderEnabled(true);

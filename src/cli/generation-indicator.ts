@@ -62,7 +62,6 @@ export function createGenerationIndicator(
         stop: (): void =>
         {
             displayed = false;
-            typingText = "";
             if (timer !== null)
             {
                 clearInterval(timer);
