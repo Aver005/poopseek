@@ -11,6 +11,7 @@ import { createHistoryCommand } from "./defs/history";
 import { createModelCommand } from "./defs/model";
 import { createQuitCommand } from "./defs/quit";
 import { createSessionCommand } from "./defs/session";
+import { createSessionsCommand } from "./defs/sessions";
 import { createStatsCommand } from "./defs/stats";
 import { createSwitchCommand } from "./defs/switch";
 import { createThemeCommand } from "./defs/theme";
@@ -42,6 +43,7 @@ export function createCommandHandlers(
     registerCommand(createClearCommand());
     registerCommand(createToolsCommand());
     registerCommand(createSessionCommand(context));
+    registerCommand(createSessionsCommand(context));
     registerCommand(createStatsCommand(context));
     registerCommand(createHistoryCommand(context));
     registerCommand(createThemeCommand(context));

@@ -12,6 +12,13 @@ import { createGenerationIndicator } from "@/cli/generation-indicator";
 import { renderMarkdown } from "@/cli/markdown";
 import { readPromptFiles } from "@/cli/prompt-files";
 import {
+    createStoredSessionId,
+    getSessionsDirectory,
+    listStoredSessions,
+    loadStoredSession,
+    saveStoredSession,
+} from "@/cli/session-store";
+import {
     getFirstEnvValue,
     getRuntimeConfigPath,
     loadRuntimeConfig,
@@ -72,6 +79,28 @@ export async function runCli(): Promise<void>
         { maxMessages: 40 },
         variableProcessor,
     );
+    const sessionsDir = getSessionsDirectory();
+    let currentLocalSession = {
+        id: createStoredSessionId(),
+        createdAt: new Date().toISOString(),
+    };
+    const saveCurrentLocalSession = async (): Promise<void> =>
+    {
+        await saveStoredSession(sessionsDir, {
+            id: currentLocalSession.id,
+            createdAt: currentLocalSession.createdAt,
+            workspaceRoot: process.cwd(),
+            modelType,
+            context: contextManager.exportState(),
+        });
+    };
+    const startNewLocalSession = (): void =>
+    {
+        currentLocalSession = {
+            id: createStoredSessionId(),
+            createdAt: new Date().toISOString(),
+        };
+    };
     const resetMainSession = async (): Promise<void> =>
     {
         session = await deepseekClient.createSession();
@@ -88,6 +117,18 @@ export async function runCli(): Promise<void>
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
     const terminalCapabilities = getTerminalCapabilities();
+    const formatSessionDate = (value: string): string =>
+    {
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return value;
+        return parsed.toLocaleString("ru-RU", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    };
 
     const inputQueue: string[] = [];
     const pendingSidechatTasks = new Set<Promise<void>>();
@@ -259,7 +300,10 @@ export async function runCli(): Promise<void>
 
     let commands = new Map<string, Command>();
     commands = createCommandHandlers(terminalInput, {
-        getSessionInfo: () => `Session ID: ${session.getId()}`,
+        getSessionInfo: () => [
+            `Remote session ID: ${session.getId()}`,
+            `Local session ID: ${currentLocalSession.id}`,
+        ].join(" | "),
         getContextStats: () => [
             `Messages in local context: ${contextManager.getMessageCount()}`,
             `Approx tokens since refresh: ${contextManager.getApproxTokensSinceRefresh()}/${contextManager.getRefreshEveryApproxTokens()}`,
@@ -268,7 +312,49 @@ export async function runCli(): Promise<void>
         clearHistory: async () =>
         {
             contextManager.clearHistory();
+            startNewLocalSession();
             await resetMainSession();
+            await saveCurrentLocalSession();
+        },
+        openSessions: async () =>
+        {
+            const sessions = await listStoredSessions(sessionsDir);
+            if (sessions.length === 0)
+            {
+                return { loaded: false };
+            }
+
+            const selectedId = await terminalInput.choose(
+                "Сохраненные сессии",
+                sessions.map((item) => ({
+                    value: item.id,
+                    label: `${formatSessionDate(item.updatedAt)} | ${item.title}`,
+                    hint: `${item.messageCount} сообщений | ${item.modelType} | ${item.workspaceRoot}`,
+                })),
+            );
+
+            if (!selectedId)
+            {
+                return { loaded: false, cancelled: true };
+            }
+
+            const snapshot = await loadStoredSession(sessionsDir, selectedId);
+            if (!snapshot)
+            {
+                return { loaded: false };
+            }
+
+            currentLocalSession = {
+                id: snapshot.id,
+                createdAt: snapshot.createdAt,
+            };
+            modelType = snapshot.modelType;
+            contextManager.restoreState(snapshot.context);
+            await resetMainSession();
+            await saveCurrentLocalSession();
+
+            const title = sessions.find((item) => item.id === snapshot.id)?.title ?? "без названия";
+            return { loaded: true, title };
         },
         getTheme: () => getColorMode().theme,
         setTheme: (theme) => setTheme(theme),
@@ -298,6 +384,7 @@ export async function runCli(): Promise<void>
 
             contextManager.replaceWithCompactSummary(summary);
             await resetMainSession();
+            await saveCurrentLocalSession();
             return {
                 before,
                 after: contextManager.getMessageCount(),
@@ -425,6 +512,7 @@ export async function runCli(): Promise<void>
                         output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
                     },
                 });
+                await saveCurrentLocalSession();
             }
             finally
             {

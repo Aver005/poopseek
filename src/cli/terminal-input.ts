@@ -25,6 +25,7 @@ type TerminalInputController = {
     setQueueSize: (size: number) => void;
     setRenderEnabled: (enabled: boolean) => void;
     setQueueCallbacks: (callbacks: QueueCallbacks) => void;
+    choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
     close: () => void;
 };
 
@@ -38,6 +39,12 @@ type TerminalKeyData = {
 };
 
 type TerminalKeyHandler = (name: string, matches: string[], data: TerminalKeyData) => void;
+
+export type TerminalChoiceItem = {
+    value: string;
+    label: string;
+    hint?: string;
+};
 
 type TerminalDriver = {
     grabInput: () => void;
@@ -132,6 +139,8 @@ function createNativeDriver(): TerminalDriver
             return { name: "BACKSPACE", data: { code: sequence, isCharacter: false } };
         if (key?.name === "delete")
             return { name: "DELETE", data: { code: sequence, isCharacter: false } };
+        if (key?.name === "escape")
+            return { name: "ESCAPE", data: { code: sequence, isCharacter: false } };
         if (key?.name === "left") return { name: "LEFT", data: { code: sequence, isCharacter: false } };
         if (key?.name === "right") return { name: "RIGHT", data: { code: sequence, isCharacter: false } };
         if (key?.name === "up") return { name: "UP", data: { code: sequence, isCharacter: false } };
@@ -242,6 +251,47 @@ function buildRenderedBlock(
     })()).join("\n");
 }
 
+function buildChoiceBlock(
+    title: string,
+    items: TerminalChoiceItem[],
+    selectedIndex: number,
+): string
+{
+    const visibleLimit = 12;
+    const startIndex = items.length <= visibleLimit
+        ? 0
+        : Math.min(
+            Math.max(0, selectedIndex - Math.floor(visibleLimit / 2)),
+            items.length - visibleLimit,
+        );
+    const visibleItems = items.slice(startIndex, startIndex + visibleLimit);
+    const lines = [
+        colors.cyan(title),
+        colors.dim("Enter - загрузить, Esc - отмена"),
+    ];
+
+    for (let index = 0; index < visibleItems.length; index += 1)
+    {
+        const item = visibleItems[index]!;
+        const absoluteIndex = startIndex + index;
+        const selected = absoluteIndex === selectedIndex;
+        const marker = selected ? colors.green("›") : colors.dim(" ");
+        const label = selected ? colors.green(item.label) : item.label;
+        lines.push(`${marker} ${label}`);
+        if (item.hint)
+        {
+            lines.push(`  ${colors.dim(item.hint)}`);
+        }
+    }
+
+    if (startIndex > 0 || startIndex + visibleItems.length < items.length)
+    {
+        lines.push(colors.dim(`Показано ${startIndex + 1}-${startIndex + visibleItems.length} из ${items.length}`));
+    }
+
+    return lines.join("\n");
+}
+
 export function createTerminalInput(options: TerminalInputOptions = {}): TerminalInputController
 {
     let driverPromise: Promise<TerminalDriver> | null = null;
@@ -253,6 +303,12 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     let mode: TerminalInputMode = "active";
     let queueSize = 0;
     let activeCommands: Map<string, Command> = new Map();
+    let choiceState: {
+        title: string;
+        items: TerminalChoiceItem[];
+        selectedIndex: number;
+        resolve: (value: string | null) => void;
+    } | null = null;
 
     const submitHandlers = new Set<(value: string) => void>();
 
@@ -305,24 +361,29 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     const render = (): void =>
     {
         if (!renderEnabled) return;
-        const activeFileCompletionState = getActiveFileCompletionState();
-        const renderedBlock = buildRenderedBlock(
-            state.value,
-            state.cursor,
-            mode,
-            queueSize,
-            activeCommands,
-            getWorkspaceRoot(),
-            activeFileCompletionState,
-            fileSelectionIndex,
-        );
+        const renderedBlock = choiceState
+            ? buildChoiceBlock(choiceState.title, choiceState.items, choiceState.selectedIndex)
+            : buildRenderedBlock(
+                state.value,
+                state.cursor,
+                mode,
+                queueSize,
+                activeCommands,
+                getWorkspaceRoot(),
+                getActiveFileCompletionState(),
+                fileSelectionIndex,
+            );
         const renderedLines = renderedBlock.split("\n");
         const renderedLineCount = renderedLines.length;
         const cursorMetrics = getCursorMetrics(state.value, state.cursor);
-        const horizontalOffset = cursorMetrics.row === 0
-            ? PROMPT_WIDTH + cursorMetrics.column
-            : CONTINUATION_WIDTH + cursorMetrics.column;
-        const linesUpFromBottom = renderedLineCount - 1 - cursorMetrics.row;
+        const horizontalOffset = choiceState
+            ? 0
+            : (cursorMetrics.row === 0
+                ? PROMPT_WIDTH + cursorMetrics.column
+                : CONTINUATION_WIDTH + cursorMetrics.column);
+        const linesUpFromBottom = choiceState
+            ? 0
+            : renderedLineCount - 1 - cursorMetrics.row;
 
         clearPreviousRender();
         output.write(renderedBlock);
@@ -356,6 +417,43 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
     const onKey = (name: string, _matches: string[], data: TerminalKeyData): void =>
     {
+        if (choiceState)
+        {
+            switch (name)
+            {
+                case "UP":
+                    choiceState.selectedIndex = choiceState.selectedIndex === 0
+                        ? choiceState.items.length - 1
+                        : choiceState.selectedIndex - 1;
+                    render();
+                    return;
+                case "DOWN":
+                    choiceState.selectedIndex = (choiceState.selectedIndex + 1) % choiceState.items.length;
+                    render();
+                    return;
+                case "ENTER":
+                case "KP_ENTER":
+                {
+                    const selectedItem = choiceState.items[choiceState.selectedIndex] ?? null;
+                    const resolve = choiceState.resolve;
+                    choiceState = null;
+                    resolve(selectedItem?.value ?? null);
+                    render();
+                    return;
+                }
+                case "ESCAPE":
+                {
+                    const resolve = choiceState.resolve;
+                    choiceState = null;
+                    resolve(null);
+                    render();
+                    return;
+                }
+                default:
+                    return;
+            }
+        }
+
         if (name === "CTRL_C")
         {
             submit("/exit");
@@ -545,5 +643,30 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         queueCallbacks = callbacks;
     };
 
-    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, close };
+    const choose = (title: string, items: TerminalChoiceItem[]): Promise<string | null> =>
+    {
+        if (items.length === 0) return Promise.resolve(null);
+        if (choiceState)
+        {
+            choiceState.resolve(null);
+        }
+
+        choiceState = {
+            title,
+            items,
+            selectedIndex: 0,
+            resolve: () => undefined,
+        };
+
+        const promise = new Promise<string | null>((resolve) =>
+        {
+            if (!choiceState) return resolve(null);
+            choiceState.resolve = resolve;
+        });
+
+        render();
+        return promise;
+    };
+
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, choose, close };
 }

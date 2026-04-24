@@ -36,6 +36,11 @@ export interface PreparedTurnMessage
     includedRefresh: boolean;
 }
 
+export interface ContextManagerState
+{
+    messages: AgentMessage[];
+}
+
 export default class ContextManager
 {
     private readonly basePrompt: string;
@@ -113,6 +118,22 @@ export default class ContextManager
     getDialogueSnapshot(): string
     {
         return this.formatMessages();
+    }
+
+    exportState(): ContextManagerState
+    {
+        return {
+            messages: this.messages.map((message) => ({ ...message })),
+        };
+    }
+
+    restoreState(state: ContextManagerState): void
+    {
+        this.messages = trimMessages(
+            (state.messages ?? []).map((message) => ({ ...message })),
+            this.options.maxMessages,
+        );
+        this.markSessionReset();
     }
 
     replaceWithCompactSummary(summary: string): void

@@ -10,6 +10,11 @@ export interface CommandsContext
     getSessionInfo?: () => string;
     getContextStats?: () => string;
     clearHistory?: () => Promise<void> | void;
+    openSessions?: () => Promise<{
+        loaded: boolean;
+        cancelled?: boolean;
+        title?: string;
+    }>;
     compactContext?: () => Promise<{
         before: number;
         after: number;
