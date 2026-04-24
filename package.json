@@ -6,6 +6,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --target bun --outdir build",
+    "build:exe": "bun build src/index.ts --compile --outfile build/poopseek.exe",
+    "compile": "bun build src/index.ts --compile --outfile build/poopseek.exe",
     "check": "tsc -b"
   },
   "devDependencies": {
