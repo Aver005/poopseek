@@ -5,6 +5,8 @@ import { colors } from "@/cli/colors";
 import { getCommandHintLines } from "@/cli/command-hints";
 import {
     applyFileCompletion,
+    type FileCompletionState,
+    getFileCompletionState,
     formatInputLineWithMentions,
     getFileHintLines,
 } from "@/cli/file-mentions";
@@ -243,6 +245,8 @@ function buildRenderedBlock(
     cursor: number,
     commands: Map<string, Command>,
     workspaceRoot: string,
+    fileCompletionState: FileCompletionState,
+    fileSelectionIndex: number,
 ): string
 {
     const cursorMetrics = getCursorMetrics(value, cursor);
@@ -261,7 +265,7 @@ function buildRenderedBlock(
         `${index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX}${formatInputLineWithMentions(line, workspaceRoot)}`
     ).concat((() =>
     {
-        const fileHintLines = getFileHintLines(value, cursor, workspaceRoot);
+        const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
         const hintLines = fileHintLines.length > 0
             ? fileHintLines
             : getCommandHintLines(value, commands);
@@ -284,6 +288,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     let activeCleanup: (() => void) | null = null;
     let lastRenderLineCount = 0;
     let lastCursorRow = 0;
+    let fileSelectionKey: string | null = null;
+    let fileSelectionIndex = 0;
     const getWorkspaceRoot = options.getWorkspaceRoot ?? (() => process.cwd());
 
     const getDriver = async (): Promise<TerminalDriver> =>
@@ -315,6 +321,35 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
             let settled = false;
 
+            const getActiveFileCompletionState = () =>
+            {
+                const completionState = getFileCompletionState(
+                    state.value,
+                    state.cursor,
+                    getWorkspaceRoot(),
+                );
+
+                if (completionState.key === null || completionState.options.length === 0)
+                {
+                    fileSelectionKey = null;
+                    fileSelectionIndex = 0;
+                    return completionState;
+                }
+
+                if (fileSelectionKey !== completionState.key)
+                {
+                    fileSelectionKey = completionState.key;
+                    fileSelectionIndex = 0;
+                }
+
+                if (fileSelectionIndex >= completionState.options.length)
+                {
+                    fileSelectionIndex = 0;
+                }
+
+                return completionState;
+            };
+
             const clearPreviousRender = (): void =>
             {
                 if (lastRenderLineCount === 0) return;
@@ -343,11 +378,14 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
             const render = (): void =>
             {
+                const activeFileCompletionState = getActiveFileCompletionState();
                 const renderedBlock = buildRenderedBlock(
                     state.value,
                     state.cursor,
                     commands,
                     getWorkspaceRoot(),
+                    activeFileCompletionState,
+                    fileSelectionIndex,
                 );
                 const renderedLines = renderedBlock.split("\n");
                 const renderedLineCount = renderedLines.length;
@@ -471,10 +509,20 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                         return;
                     case "TAB":
                     {
+                        const completionState = getActiveFileCompletionState();
+                        if (completionState.options.length === 0) return;
+
+                        const selectedOption = completionState.options[fileSelectionIndex];
+                        if (completionState.options.length > 1 && selectedOption?.insertPath === completionState.query)
+                        {
+                            fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
+                        }
+
                         const completionResult = applyFileCompletion(
                             state.value,
                             state.cursor,
                             getWorkspaceRoot(),
+                            fileSelectionIndex,
                         );
 
                         if (!completionResult.completed) return;
@@ -484,13 +532,35 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                         return;
                     }
                     case "UP":
+                    {
+                        const completionState = getActiveFileCompletionState();
+                        if (completionState.options.length > 0)
+                        {
+                            fileSelectionIndex = fileSelectionIndex === 0
+                                ? completionState.options.length - 1
+                                : fileSelectionIndex - 1;
+                            render();
+                            return;
+                        }
+
                         state.cursor = getPreviousLineCursor(state.value, state.cursor);
                         render();
                         return;
+                    }
                     case "DOWN":
+                    {
+                        const completionState = getActiveFileCompletionState();
+                        if (completionState.options.length > 0)
+                        {
+                            fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
+                            render();
+                            return;
+                        }
+
                         state.cursor = getNextLineCursor(state.value, state.cursor);
                         render();
                         return;
+                    }
                     default:
                         return;
                 }

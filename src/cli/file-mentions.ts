@@ -18,6 +18,17 @@ type FileSuggestion = {
     isDirectory: boolean;
 };
 
+export type FileCompletionOption = FileSuggestion & {
+    detail: string;
+    tone: "yellow" | "green" | "blue" | "cyan";
+};
+
+export type FileCompletionState = {
+    key: string | null;
+    query: string;
+    options: FileCompletionOption[];
+};
+
 export type PreparedFileMentions = {
     content: string;
     attachments: {
@@ -278,16 +289,18 @@ function getLineCount(content: string): number
     return content.split(/\r?\n/).length;
 }
 
-function describeExactSelection(query: string, workspaceRoot: string): string[]
+function describeExactSelection(query: string, workspaceRoot: string): FileCompletionOption | null
 {
     const selection = resolveExactPath(query, workspaceRoot);
-    if (selection === null) return [];
+    if (selection === null) return null;
 
     if (selection.isDirectory)
     {
-        return [
-            `${colors.blue(selection.displayPath)} ${colors.dim("-")} ${colors.dim("папка")}`,
-        ];
+        return {
+            ...selection,
+            detail: "папка",
+            tone: "blue",
+        };
     }
 
     try
@@ -296,72 +309,106 @@ function describeExactSelection(query: string, workspaceRoot: string): string[]
         const lineCount = getLineCount(content);
         const attachmentMode = lineCount <= INLINE_FILE_LINE_LIMIT ? "будет приложен" : "только путь";
 
-        return [
-            `${colors.green(selection.displayPath)} ${colors.dim("-")} ${colors.dim(`${lineCount} строк, ${attachmentMode}`)}`,
-        ];
+        return {
+            ...selection,
+            detail: `${lineCount} строк, ${attachmentMode}`,
+            tone: "green",
+        };
     }
     catch
     {
-        return [
-            `${colors.green(selection.displayPath)} ${colors.dim("-")} ${colors.dim("файл")}`,
-        ];
+        return {
+            ...selection,
+            detail: "файл",
+            tone: "green",
+        };
     }
 }
 
-export function getFileHintLines(value: string, cursor: number, workspaceRoot: string): string[]
+export function getFileCompletionState(
+    value: string,
+    cursor: number,
+    workspaceRoot: string,
+): FileCompletionState
 {
     const mentionToken = findMentionTokenAtCursor(value, cursor);
-    if (mentionToken === null) return [];
+    if (mentionToken === null)
+    {
+        return {
+            key: null,
+            query: "",
+            options: [],
+        };
+    }
 
-    const exactSelectionLines = describeExactSelection(mentionToken.query, workspaceRoot);
-    const exactSelection = resolveExactPath(mentionToken.query, workspaceRoot);
-    const suggestionLines = getFileSuggestions(mentionToken.query, workspaceRoot)
+    const exactSelectionOption = describeExactSelection(mentionToken.query, workspaceRoot);
+    const exactSelectionPath = resolveExactPath(mentionToken.query, workspaceRoot);
+    const suggestions = getFileSuggestions(mentionToken.query, workspaceRoot)
         .filter((suggestion) =>
         {
-            if (exactSelection === null) return true;
-            return suggestion.absolutePath !== exactSelection.absolutePath;
+            if (exactSelectionPath === null) return true;
+            return suggestion.absolutePath !== exactSelectionPath.absolutePath;
         })
         .slice(0, MAX_FILE_HINTS)
         .map((suggestion) =>
         {
-            const typeLabel = suggestion.isDirectory ? "папка" : "файл";
-            const tone = suggestion.isDirectory ? colors.blue : colors.cyan;
-            return `${tone(suggestion.displayPath)} ${colors.dim("-")} ${colors.dim(typeLabel)}`;
+            return {
+                ...suggestion,
+                detail: suggestion.isDirectory ? "папка" : "файл",
+                tone: suggestion.isDirectory ? "blue" : "cyan",
+            } satisfies FileCompletionOption;
         });
 
-    return [...exactSelectionLines, ...suggestionLines];
+    return {
+        key: `${mentionToken.start}:${mentionToken.end}:${mentionToken.query}`,
+        query: mentionToken.query,
+        options: [
+            ...(exactSelectionOption === null ? [] : [exactSelectionOption]),
+            ...suggestions,
+        ],
+    };
+}
+
+export function getFileHintLines(
+    completionState: FileCompletionState,
+    selectedIndex: number,
+): string[]
+{
+    if (completionState.options.length === 0) return [];
+
+    return completionState.options.map((option, index) =>
+    {
+        const marker = index === selectedIndex
+            ? colors.magenta(">")
+            : " ";
+        const tone = colors[option.tone];
+
+        return `${marker} ${tone(option.displayPath)} ${colors.dim("-")} ${colors.dim(option.detail)}`;
+    });
 }
 
 export function applyFileCompletion(
     value: string,
     cursor: number,
     workspaceRoot: string,
+    selectedIndex = 0,
 ): {
     value: string;
     cursor: number;
     completed: boolean;
 }
 {
+    const completionState = getFileCompletionState(value, cursor, workspaceRoot);
+    if (completionState.options.length === 0)
+    {
+        return { value, cursor, completed: false };
+    }
+
     const mentionToken = findMentionTokenAtCursor(value, cursor);
-    if (mentionToken === null)
-    {
-        return { value, cursor, completed: false };
-    }
+    if (mentionToken === null) return { value, cursor, completed: false };
 
-    const suggestions = getFileSuggestions(mentionToken.query, workspaceRoot);
-    if (suggestions.length === 0)
-    {
-        return { value, cursor, completed: false };
-    }
-
-    const nextPath = suggestions.length === 1
-        ? suggestions[0]?.insertPath ?? mentionToken.query
-        : getCommonPrefix(suggestions.map((suggestion) => suggestion.insertPath));
-
-    if (nextPath.length <= mentionToken.query.length)
-    {
-        return { value, cursor, completed: false };
-    }
+    const normalizedIndex = Math.max(0, Math.min(selectedIndex, completionState.options.length - 1));
+    const nextPath = completionState.options[normalizedIndex]?.insertPath ?? mentionToken.query;
 
     const nextValue = [
         value.slice(0, mentionToken.start + 1),
