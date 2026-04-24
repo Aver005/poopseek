@@ -1,1 +1,3 @@
-console.log("Hello via Bun!");
+import { runCli } from "@/cli/run-cli";
+
+await runCli();
