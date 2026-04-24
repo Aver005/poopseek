@@ -57,14 +57,11 @@ export async function runCli(): Promise<void>
     }
 
     const deepseekClient = new DeepseekClient(token);
-
     await deepseekClient.initialize();
     const session = await deepseekClient.createSession();
 
     const prompts = await readPromptFiles();
-    const variableProcessor = createVariableProcessor({
-        workspaceRoot: process.cwd(),
-    });
+    const variableProcessor = createVariableProcessor({ workspaceRoot: process.cwd() });
     const contextManager = new ContextManager(
         prompts.basePrompt,
         prompts.toolsPrompt,
@@ -73,25 +70,69 @@ export async function runCli(): Promise<void>
     );
     const toolExecutor = new ToolExecutor(process.cwd());
     let modelType: ModelType = "default";
-    const agentLoop = new AgentLoop(
-        deepseekClient,
-        session,
-        contextManager,
-        toolExecutor,
-        {
-            maxStepsPerTurn: 12,
-            getModelType: () => modelType,
-        },
-    );
-
-    const terminalInput = createTerminalInput({
-        getWorkspaceRoot: () => process.cwd(),
+    const agentLoop = new AgentLoop(deepseekClient, session, contextManager, toolExecutor, {
+        maxStepsPerTurn: 12,
+        getModelType: () => modelType,
     });
-    let commands = new Map<string, Command>();
+
+    const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
     const terminalCapabilities = getTerminalCapabilities();
 
+    const inputQueue: string[] = [];
+    let resolveNextInput: ((value: string) => void) | null = null;
+
+    const waitForInput = (): Promise<string> =>
+    {
+        if (inputQueue.length > 0)
+        {
+            const value = inputQueue.shift()!;
+            return Promise.resolve(value);
+        }
+        return new Promise((resolve) =>
+        {
+            resolveNextInput = resolve;
+        });
+    };
+
+    const runSidechat = async (question: string): Promise<void> =>
+    {
+        const sideSession = await deepseekClient.createSession();
+        const sideContext = new ContextManager(
+            prompts.basePrompt,
+            "",
+            { maxMessages: 10 },
+        );
+        sideContext.addUser(question);
+
+        output.write(`\n${colors.cyan("◈ btw")} ${colors.dim("—")} ${question}\n`);
+
+        terminalInput.setRenderEnabled(false);
+        generationIndicator.start();
+        try
+        {
+            const response = await deepseekClient.sendMessage(
+                sideContext.buildPrompt(),
+                sideSession,
+                { model_type: modelType },
+            );
+            const collected = await collectDeepseekOutput(response);
+            generationIndicator.stop();
+            output.write(`\n${renderMarkdown(collected.text.trim())}\n\n`);
+        }
+        catch
+        {
+            generationIndicator.stop();
+            output.write(`${colors.red("btw: ошибка запроса")}\n\n`);
+        }
+        finally
+        {
+            terminalInput.setRenderEnabled(true);
+        }
+    };
+
+    let commands = new Map<string, Command>();
     commands = createCommandHandlers(terminalInput, {
         getSessionInfo: () => `Session ID: ${session.getId()}`,
         getContextStats: () => `Messages in context: ${contextManager.getMessageCount()}`,
@@ -100,13 +141,11 @@ export async function runCli(): Promise<void>
         setTheme: (theme) => setTheme(theme),
         getModelType: () => modelType,
         setModelType: (nextModelType) => modelType = nextModelType,
+        runSidechat,
         compactContext: async () =>
         {
             const before = contextManager.getMessageCount();
-            if (before === 0)
-            {
-                return null;
-            }
+            if (before === 0) return null;
 
             const dialogue = contextManager.getDialogueSnapshot();
             const compactPrompt = [
@@ -122,10 +161,7 @@ export async function runCli(): Promise<void>
             });
             const compacted = await collectDeepseekOutput(response);
             const summary = compacted.text.trim();
-            if (summary.length === 0)
-            {
-                throw new Error("Модель вернула пустую сводку");
-            }
+            if (summary.length === 0) throw new Error("Модель вернула пустую сводку");
 
             contextManager.replaceWithCompactSummary(summary);
             return {
@@ -134,6 +170,21 @@ export async function runCli(): Promise<void>
                 summaryChars: summary.length,
             };
         },
+    });
+
+    terminalInput.onSubmit((value) =>
+    {
+        if (!value) return;
+        if (resolveNextInput)
+        {
+            resolveNextInput(value);
+            resolveNextInput = null;
+        }
+        else
+        {
+            inputQueue.push(value);
+            terminalInput.setQueueSize(inputQueue.length);
+        }
     });
 
     output.write(`\n${colors.green(adaptTextToTerminal("PoopSeek CLI 💩"))} | v${appVersion}\n\n`);
@@ -145,18 +196,23 @@ export async function runCli(): Promise<void>
     output.write(`Рендер: ${colors.cyan(colorMode.support)} | emoji ${terminalCapabilities.emoji ? colors.green("on") : colors.red("off")}\n`);
     output.write(`Тема: ${colors.cyan(colorMode.theme)}\n\n`);
     output.write(`${colors.dim("Многострочный ввод: ") + colors.blue("Shift+Enter") + colors.dim(" или ") + colors.blue("\\n") + colors.dim(" в тексте")}\n`);
-    output.write(`${colors.dim("Файлы: ") + colors.blue("@path") + colors.dim(" и ") + colors.blue("Tab") + colors.dim(" для автокомплита")}\n\n`);
+    output.write(`${colors.dim("Файлы: ") + colors.blue("@path") + colors.dim(" и ") + colors.blue("Tab") + colors.dim(" для автокомплита")}\n`);
+    output.write(`${colors.dim("Очередь: ввод во время генерации добавляется в очередь")}\n\n`);
+
+    terminalInput.start(commands);
 
     try
     {
         while (true)
         {
-            const userInput = await terminalInput.readUserInput(commands);
-            if (userInput.length === 0) continue;
+            terminalInput.setMode("active");
+            terminalInput.setQueueSize(inputQueue.length);
+
+            const userInput = await waitForInput();
+            if (!userInput) continue;
 
             const shouldContinue = await handleCommand(userInput, commands);
             if (!shouldContinue) break;
-
             if (userInput.startsWith("/")) continue;
 
             const preparedInput = await prepareInputWithFileMentions(userInput, process.cwd());
@@ -166,8 +222,11 @@ export async function runCli(): Promise<void>
                 output.write(`\n${attachmentPreviewLines.join("\n")}\n`);
             }
 
+            terminalInput.setMode("queue");
+            terminalInput.setRenderEnabled(false);
+
             let wroteAnyChunk = false;
-            const result = await agentLoop.runTurn(preparedInput.content, {
+            await agentLoop.runTurn(preparedInput.content, {
                 onModelRequestStart: () =>
                 {
                     generationIndicator.start();
@@ -184,7 +243,6 @@ export async function runCli(): Promise<void>
                         output.write("\n");
                         wroteAnyChunk = true;
                     }
-
                     output.write(renderMarkdown(chunk));
                 },
                 onToolStart: (toolName) =>
@@ -199,11 +257,14 @@ export async function runCli(): Promise<void>
                 },
             });
 
-            if (!wroteAnyChunk && result.assistantText.length > 0)
-            {
-                output.write(`\n${renderMarkdown(result.assistantText)}`);
-            }
             output.write("\n\n");
+
+            if (inputQueue.length > 0)
+            {
+                output.write(colors.dim(`[очередь: ${inputQueue.length}]\n\n`));
+            }
+
+            terminalInput.setRenderEnabled(true);
         }
     }
     finally

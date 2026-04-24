@@ -1,6 +1,7 @@
 import { writeLine } from "./io";
 import type { Command, CommandsContext } from "./types";
 
+import { createBtwCommand } from "./defs/btw";
 import { createClearCommand } from "./defs/clear";
 import { createCmptCommand } from "./defs/cmpt";
 import { createCompactCommand } from "./defs/compact";
@@ -33,6 +34,7 @@ export function createCommandHandlers(
     };
 
     registerCommand(createHelpCommand(() => commands));
+    registerCommand(createBtwCommand(context));
     registerCommand(createExitCommand(rl));
     registerCommand(createQuitCommand(rl));
     registerCommand(createCompactCommand(context));
@@ -75,12 +77,13 @@ export async function handleCommand(
     commands: Map<string, Command>,
 ): Promise<boolean>
 {
-    const trimmed = input.trim().toLowerCase();
-    if (!trimmed.startsWith("/")) return true;
-    const parts = trimmed.split(/\s+/);
-    const cmdName = parts[0];
+    const trimmed = input.trim();
+    if (!trimmed.toLowerCase().startsWith("/")) return true;
+    const spaceIndex = trimmed.search(/\s/);
+    const cmdName = (spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex)).toLowerCase();
     if (!cmdName) return true;
-    const args = parts.slice(1);
+    const argsStr = spaceIndex === -1 ? "" : trimmed.slice(spaceIndex + 1).trim();
+    const args = argsStr.length > 0 ? argsStr.split(/\s+/) : [];
     const command = commands.get(getCommandKeyByName(cmdName));
 
     if (!command)

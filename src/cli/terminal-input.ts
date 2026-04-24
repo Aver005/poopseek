@@ -11,8 +11,14 @@ import {
     getFileHintLines,
 } from "@/cli/file-mentions";
 
+export type TerminalInputMode = "active" | "queue";
+
 type TerminalInputController = {
-    readUserInput: (commands: Map<string, Command>) => Promise<string>;
+    start: (commands: Map<string, Command>) => void;
+    onSubmit: (handler: (value: string) => void) => () => void;
+    setMode: (mode: TerminalInputMode) => void;
+    setQueueSize: (size: number) => void;
+    setRenderEnabled: (enabled: boolean) => void;
     close: () => void;
 };
 
@@ -37,6 +43,7 @@ type TerminalDriver = {
 };
 
 const PROMPT_PREFIX = `${colors.magenta(">")} `;
+const QUEUE_PREFIX = `${colors.dim("[+]")} `;
 const CONTINUATION_PREFIX = `${colors.dim("…")} `;
 const PROMPT_WIDTH = 2;
 const CONTINUATION_WIDTH = 2;
@@ -53,10 +60,7 @@ function getCursorMetrics(value: string, cursor: number): { row: number; column:
     const parts = beforeCursor.split("\n");
     const row = parts.length - 1;
     const lastLine = parts.at(-1) ?? "";
-    return {
-        row,
-        column: lastLine.length,
-    };
+    return { row, column: lastLine.length };
 }
 
 function getLineStart(value: string, cursor: number): number
@@ -75,12 +79,10 @@ function getPreviousLineCursor(value: string, cursor: number): number
 {
     const currentLineStart = getLineStart(value, cursor);
     if (currentLineStart === 0) return cursor;
-
     const targetColumn = cursor - currentLineStart;
     const previousLineEnd = currentLineStart - 1;
     const previousLineStart = getLineStart(value, previousLineEnd);
     const previousLineLength = previousLineEnd - previousLineStart;
-
     return previousLineStart + Math.min(targetColumn, previousLineLength);
 }
 
@@ -89,12 +91,10 @@ function getNextLineCursor(value: string, cursor: number): number
     const currentLineStart = getLineStart(value, cursor);
     const currentLineEnd = getLineEnd(value, cursor);
     if (currentLineEnd >= value.length) return cursor;
-
     const targetColumn = cursor - currentLineStart;
     const nextLineStart = currentLineEnd + 1;
     const nextLineEnd = getLineEnd(value, nextLineStart);
     const nextLineLength = nextLineEnd - nextLineStart;
-
     return nextLineStart + Math.min(targetColumn, nextLineLength);
 }
 
@@ -119,25 +119,13 @@ function createNativeDriver(): TerminalDriver
     {
         const sequence = key?.sequence;
         if (key?.ctrl && key.name === "c")
-        {
             return { name: "CTRL_C", data: { code: sequence, isCharacter: false } };
-        }
-
         if (key?.name === "return" || key?.name === "enter")
-        {
             return { name: "ENTER", data: { code: sequence, isCharacter: false } };
-        }
-
         if (key?.name === "backspace")
-        {
             return { name: "BACKSPACE", data: { code: sequence, isCharacter: false } };
-        }
-
         if (key?.name === "delete")
-        {
             return { name: "DELETE", data: { code: sequence, isCharacter: false } };
-        }
-
         if (key?.name === "left") return { name: "LEFT", data: { code: sequence, isCharacter: false } };
         if (key?.name === "right") return { name: "RIGHT", data: { code: sequence, isCharacter: false } };
         if (key?.name === "up") return { name: "UP", data: { code: sequence, isCharacter: false } };
@@ -145,14 +133,7 @@ function createNativeDriver(): TerminalDriver
         if (key?.name === "home") return { name: "HOME", data: { code: sequence, isCharacter: false } };
         if (key?.name === "end") return { name: "END", data: { code: sequence, isCharacter: false } };
         if (key?.name === "tab") return { name: "TAB", data: { code: sequence, isCharacter: false } };
-
-        return {
-            name: char,
-            data: {
-                code: sequence,
-                isCharacter: char.length > 0,
-            },
-        };
+        return { name: char, data: { code: sequence, isCharacter: char.length > 0 } };
     };
 
     return {
@@ -167,14 +148,8 @@ function createNativeDriver(): TerminalDriver
             if (!input.isTTY) return;
             input.setRawMode?.(false);
         },
-        hideCursor: (): void =>
-        {
-            output.write("\x1b[?25l");
-        },
-        showCursor: (): void =>
-        {
-            output.write("\x1b[?25h");
-        },
+        hideCursor: (): void => { output.write("\x1b[?25l"); },
+        showCursor: (): void => { output.write("\x1b[?25h"); },
         onKey: (listener): void =>
         {
             const wrappedListener = (
@@ -185,7 +160,6 @@ function createNativeDriver(): TerminalDriver
                 const normalized = normalizeKeyName(char, key);
                 listener(normalized.name, [], normalized.data);
             };
-
             listeners.set(listener, wrappedListener);
             input.on("keypress", wrappedListener);
         },
@@ -206,32 +180,13 @@ async function createTerminalDriver(): Promise<TerminalDriver>
         const terminalKitModule = await import("terminal-kit");
         const terminalKit = terminalKitModule.default;
         const term = terminalKit.terminal;
-
         return {
-            grabInput: (): void =>
-            {
-                term.grabInput(true);
-            },
-            releaseInput: (): void =>
-            {
-                term.grabInput(false);
-            },
-            hideCursor: (): void =>
-            {
-                term.hideCursor();
-            },
-            showCursor: (): void =>
-            {
-                term.hideCursor(false);
-            },
-            onKey: (listener): void =>
-            {
-                term.on("key", listener);
-            },
-            offKey: (listener): void =>
-            {
-                term.off("key", listener);
-            },
+            grabInput: (): void => { term.grabInput(true); },
+            releaseInput: (): void => { term.grabInput(false); },
+            hideCursor: (): void => { term.hideCursor(); },
+            showCursor: (): void => { term.hideCursor(false); },
+            onKey: (listener): void => { term.on("key", listener); },
+            offKey: (listener): void => { term.off("key", listener); },
         };
     }
     catch
@@ -243,6 +198,8 @@ async function createTerminalDriver(): Promise<TerminalDriver>
 function buildRenderedBlock(
     value: string,
     cursor: number,
+    mode: TerminalInputMode,
+    queueSize: number,
     commands: Map<string, Command>,
     workspaceRoot: string,
     fileCompletionState: FileCompletionState,
@@ -261,23 +218,21 @@ function buildRenderedBlock(
         inputLines[cursorMetrics.row] = `${prefix}_${suffix}`;
     }
 
+    const firstLinePrefix = mode === "queue"
+        ? (queueSize > 0 ? `${colors.dim(`[+${queueSize}]`)} ` : QUEUE_PREFIX)
+        : PROMPT_PREFIX;
+
     return inputLines.map((line, index) =>
-        `${index === 0 ? PROMPT_PREFIX : CONTINUATION_PREFIX}${formatInputLineWithMentions(line, workspaceRoot)}`
+        `${index === 0 ? firstLinePrefix : CONTINUATION_PREFIX}${formatInputLineWithMentions(line, workspaceRoot)}`
     ).concat((() =>
     {
+        if (mode === "queue") return [];
         const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
         const hintLines = fileHintLines.length > 0
             ? fileHintLines
             : getCommandHintLines(value, commands);
-        if (hintLines.length === 0)
-        {
-            return [];
-        }
-
-        return [
-            colors.dim("Подсказки:"),
-            ...hintLines,
-        ];
+        if (hintLines.length === 0) return [];
+        return [colors.dim("Подсказки:"), ...hintLines];
     })()).join("\n");
 }
 
@@ -285,11 +240,21 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 {
     let driverPromise: Promise<TerminalDriver> | null = null;
     let activeDriver: TerminalDriver | null = null;
-    let activeCleanup: (() => void) | null = null;
     let lastRenderLineCount = 0;
     let lastCursorRow = 0;
     let fileSelectionKey: string | null = null;
     let fileSelectionIndex = 0;
+    let mode: TerminalInputMode = "active";
+    let queueSize = 0;
+    let activeCommands: Map<string, Command> = new Map();
+
+    const submitHandlers = new Set<(value: string) => void>();
+
+    const state = {
+        value: "",
+        cursor: 0,
+    };
+
     const getWorkspaceRoot = options.getWorkspaceRoot ?? (() => process.cwd());
 
     const getDriver = async (): Promise<TerminalDriver> =>
@@ -299,292 +264,265 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         return activeDriver;
     };
 
+    const getActiveFileCompletionState = (): FileCompletionState =>
+    {
+        const completionState = getFileCompletionState(state.value, state.cursor, getWorkspaceRoot());
+        if (completionState.key === null || completionState.options.length === 0)
+        {
+            fileSelectionKey = null;
+            fileSelectionIndex = 0;
+            return completionState;
+        }
+        if (fileSelectionKey !== completionState.key)
+        {
+            fileSelectionKey = completionState.key;
+            fileSelectionIndex = 0;
+        }
+        if (fileSelectionIndex >= completionState.options.length) fileSelectionIndex = 0;
+        return completionState;
+    };
+
+    const clearPreviousRender = (): void =>
+    {
+        if (lastRenderLineCount === 0) return;
+        output.write("\r");
+        if (lastCursorRow > 0) output.write(`\x1b[${lastCursorRow}A`);
+        for (let index = 0; index < lastRenderLineCount; index += 1)
+        {
+            output.write("\x1b[2K");
+            if (index < lastRenderLineCount - 1) output.write("\x1b[1B\r");
+        }
+        if (lastRenderLineCount > 1) output.write(`\x1b[${lastRenderLineCount - 1}A`);
+        output.write("\r");
+    };
+
+    const render = (): void =>
+    {
+        if (!renderEnabled) return;
+        const activeFileCompletionState = getActiveFileCompletionState();
+        const renderedBlock = buildRenderedBlock(
+            state.value,
+            state.cursor,
+            mode,
+            queueSize,
+            activeCommands,
+            getWorkspaceRoot(),
+            activeFileCompletionState,
+            fileSelectionIndex,
+        );
+        const renderedLines = renderedBlock.split("\n");
+        const renderedLineCount = renderedLines.length;
+        const cursorMetrics = getCursorMetrics(state.value, state.cursor);
+        const horizontalOffset = cursorMetrics.row === 0
+            ? PROMPT_WIDTH + cursorMetrics.column
+            : CONTINUATION_WIDTH + cursorMetrics.column;
+        const linesUpFromBottom = renderedLineCount - 1 - cursorMetrics.row;
+
+        clearPreviousRender();
+        output.write(renderedBlock);
+        if (linesUpFromBottom > 0) output.write(`\x1b[${linesUpFromBottom}A`);
+        output.write("\r");
+        if (horizontalOffset > 0) output.write(`\x1b[${horizontalOffset}C`);
+
+        lastRenderLineCount = renderedLineCount;
+        lastCursorRow = cursorMetrics.row;
+    };
+
+    const submit = (value: string): void =>
+    {
+        clearPreviousRender();
+        output.write("\n");
+        lastRenderLineCount = 0;
+        lastCursorRow = 0;
+        state.value = "";
+        state.cursor = 0;
+
+        for (const handler of submitHandlers)
+        {
+            handler(value.trim());
+        }
+
+        render();
+    };
+
+    const onKey = (name: string, _matches: string[], data: TerminalKeyData): void =>
+    {
+        if (name === "CTRL_C")
+        {
+            submit("/exit");
+            return;
+        }
+
+        if (isShiftEnter(data.code))
+        {
+            state.value = `${state.value.slice(0, state.cursor)}\n${state.value.slice(state.cursor)}`;
+            state.cursor += 1;
+            render();
+            return;
+        }
+
+        if (data.isCharacter)
+        {
+            const previousCharacter = state.cursor > 0 ? state.value.at(state.cursor - 1) : undefined;
+            if (name === "n" && previousCharacter === "\\")
+            {
+                state.value = [state.value.slice(0, state.cursor - 1), "\n", state.value.slice(state.cursor)].join("");
+                render();
+                return;
+            }
+            state.value = [state.value.slice(0, state.cursor), name, state.value.slice(state.cursor)].join("");
+            state.cursor += name.length;
+            render();
+            return;
+        }
+
+        switch (name)
+        {
+            case "ENTER":
+            case "KP_ENTER":
+                submit(state.value);
+                return;
+            case "BACKSPACE":
+                if (state.cursor === 0) return;
+                state.value = [state.value.slice(0, state.cursor - 1), state.value.slice(state.cursor)].join("");
+                state.cursor -= 1;
+                render();
+                return;
+            case "DELETE":
+                if (state.cursor >= state.value.length) return;
+                state.value = [state.value.slice(0, state.cursor), state.value.slice(state.cursor + 1)].join("");
+                render();
+                return;
+            case "LEFT":
+                if (state.cursor === 0) return;
+                state.cursor -= 1;
+                render();
+                return;
+            case "RIGHT":
+                if (state.cursor >= state.value.length) return;
+                state.cursor += 1;
+                render();
+                return;
+            case "HOME":
+                state.cursor = getLineStart(state.value, state.cursor);
+                render();
+                return;
+            case "END":
+                state.cursor = getLineEnd(state.value, state.cursor);
+                render();
+                return;
+            case "TAB":
+            {
+                if (mode === "queue") return;
+                const completionState = getActiveFileCompletionState();
+                if (completionState.options.length === 0) return;
+                const selectedOption = completionState.options[fileSelectionIndex];
+                if (completionState.options.length > 1 && selectedOption?.insertPath === completionState.query)
+                {
+                    fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
+                }
+                const completionResult = applyFileCompletion(state.value, state.cursor, getWorkspaceRoot(), fileSelectionIndex);
+                if (!completionResult.completed) return;
+                state.value = completionResult.value;
+                state.cursor = completionResult.cursor;
+                render();
+                return;
+            }
+            case "UP":
+            {
+                if (mode !== "queue")
+                {
+                    const completionState = getActiveFileCompletionState();
+                    if (completionState.options.length > 0)
+                    {
+                        fileSelectionIndex = fileSelectionIndex === 0
+                            ? completionState.options.length - 1
+                            : fileSelectionIndex - 1;
+                        render();
+                        return;
+                    }
+                }
+                state.cursor = getPreviousLineCursor(state.value, state.cursor);
+                render();
+                return;
+            }
+            case "DOWN":
+            {
+                if (mode !== "queue")
+                {
+                    const completionState = getActiveFileCompletionState();
+                    if (completionState.options.length > 0)
+                    {
+                        fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
+                        render();
+                        return;
+                    }
+                }
+                state.cursor = getNextLineCursor(state.value, state.cursor);
+                render();
+                return;
+            }
+            default:
+                return;
+        }
+    };
+
     const close = (): void =>
     {
-        activeCleanup?.();
-        activeCleanup = null;
+        activeDriver?.offKey(onKey);
         activeDriver?.showCursor();
         activeDriver?.releaseInput();
     };
 
-    const readUserInput = async (commands: Map<string, Command>): Promise<string> =>
+    const start = (commands: Map<string, Command>): void =>
     {
-        close();
-        const driver = await getDriver();
-
-        return await new Promise<string>((resolve) =>
+        activeCommands = commands;
+        getDriver().then((driver) =>
         {
-            const state = {
-                value: "",
-                cursor: 0,
-            };
-
-            let settled = false;
-
-            const getActiveFileCompletionState = () =>
-            {
-                const completionState = getFileCompletionState(
-                    state.value,
-                    state.cursor,
-                    getWorkspaceRoot(),
-                );
-
-                if (completionState.key === null || completionState.options.length === 0)
-                {
-                    fileSelectionKey = null;
-                    fileSelectionIndex = 0;
-                    return completionState;
-                }
-
-                if (fileSelectionKey !== completionState.key)
-                {
-                    fileSelectionKey = completionState.key;
-                    fileSelectionIndex = 0;
-                }
-
-                if (fileSelectionIndex >= completionState.options.length)
-                {
-                    fileSelectionIndex = 0;
-                }
-
-                return completionState;
-            };
-
-            const clearPreviousRender = (): void =>
-            {
-                if (lastRenderLineCount === 0) return;
-
-                output.write("\r");
-                if (lastCursorRow > 0)
-                {
-                    output.write(`\x1b[${lastCursorRow}A`);
-                }
-
-                for (let index = 0; index < lastRenderLineCount; index += 1)
-                {
-                    output.write("\x1b[2K");
-                    if (index < lastRenderLineCount - 1)
-                    {
-                        output.write("\x1b[1B\r");
-                    }
-                }
-
-                if (lastRenderLineCount > 1)
-                {
-                    output.write(`\x1b[${lastRenderLineCount - 1}A`);
-                }
-                output.write("\r");
-            };
-
-            const render = (): void =>
-            {
-                const activeFileCompletionState = getActiveFileCompletionState();
-                const renderedBlock = buildRenderedBlock(
-                    state.value,
-                    state.cursor,
-                    commands,
-                    getWorkspaceRoot(),
-                    activeFileCompletionState,
-                    fileSelectionIndex,
-                );
-                const renderedLines = renderedBlock.split("\n");
-                const renderedLineCount = renderedLines.length;
-                const cursorMetrics = getCursorMetrics(state.value, state.cursor);
-                const horizontalOffset = cursorMetrics.row === 0
-                    ? PROMPT_WIDTH + cursorMetrics.column
-                    : CONTINUATION_WIDTH + cursorMetrics.column;
-                const linesUpFromBottom = renderedLineCount - 1 - cursorMetrics.row;
-
-                clearPreviousRender();
-                output.write(renderedBlock);
-                if (linesUpFromBottom > 0)
-                {
-                    output.write(`\x1b[${linesUpFromBottom}A`);
-                }
-                output.write("\r");
-                if (horizontalOffset > 0)
-                {
-                    output.write(`\x1b[${horizontalOffset}C`);
-                }
-
-                lastRenderLineCount = renderedLineCount;
-                lastCursorRow = cursorMetrics.row;
-            };
-
-            const finish = (value: string): void =>
-            {
-                if (settled) return;
-                settled = true;
-                cleanup();
-                render();
-                output.write("\n");
-                lastRenderLineCount = 0;
-                lastCursorRow = 0;
-                resolve(value.trim());
-            };
-
-            const onKey = (name: string, _matches: string[], data: TerminalKeyData): void =>
-            {
-                if (name === "CTRL_C")
-                {
-                    finish("/exit");
-                    return;
-                }
-
-                if (isShiftEnter(data.code))
-                {
-                    state.value = `${state.value.slice(0, state.cursor)}\n${state.value.slice(state.cursor)}`;
-                    state.cursor += 1;
-                    render();
-                    return;
-                }
-
-                if (data.isCharacter)
-                {
-                    const previousCharacter = state.cursor > 0
-                        ? state.value.at(state.cursor - 1)
-                        : undefined;
-
-                    if (name === "n" && previousCharacter === "\\")
-                    {
-                        state.value = [
-                            state.value.slice(0, state.cursor - 1),
-                            "\n",
-                            state.value.slice(state.cursor),
-                        ].join("");
-                        render();
-                        return;
-                    }
-
-                    state.value = [
-                        state.value.slice(0, state.cursor),
-                        name,
-                        state.value.slice(state.cursor),
-                    ].join("");
-                    state.cursor += name.length;
-                    render();
-                    return;
-                }
-
-                switch (name)
-                {
-                    case "ENTER":
-                    case "KP_ENTER":
-                        finish(state.value);
-                        return;
-                    case "BACKSPACE":
-                        if (state.cursor === 0) return;
-                        state.value = [
-                            state.value.slice(0, state.cursor - 1),
-                            state.value.slice(state.cursor),
-                        ].join("");
-                        state.cursor -= 1;
-                        render();
-                        return;
-                    case "DELETE":
-                        if (state.cursor >= state.value.length) return;
-                        state.value = [
-                            state.value.slice(0, state.cursor),
-                            state.value.slice(state.cursor + 1),
-                        ].join("");
-                        render();
-                        return;
-                    case "LEFT":
-                        if (state.cursor === 0) return;
-                        state.cursor -= 1;
-                        render();
-                        return;
-                    case "RIGHT":
-                        if (state.cursor >= state.value.length) return;
-                        state.cursor += 1;
-                        render();
-                        return;
-                    case "HOME":
-                        state.cursor = getLineStart(state.value, state.cursor);
-                        render();
-                        return;
-                    case "END":
-                        state.cursor = getLineEnd(state.value, state.cursor);
-                        render();
-                        return;
-                    case "TAB":
-                    {
-                        const completionState = getActiveFileCompletionState();
-                        if (completionState.options.length === 0) return;
-
-                        const selectedOption = completionState.options[fileSelectionIndex];
-                        if (completionState.options.length > 1 && selectedOption?.insertPath === completionState.query)
-                        {
-                            fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
-                        }
-
-                        const completionResult = applyFileCompletion(
-                            state.value,
-                            state.cursor,
-                            getWorkspaceRoot(),
-                            fileSelectionIndex,
-                        );
-
-                        if (!completionResult.completed) return;
-                        state.value = completionResult.value;
-                        state.cursor = completionResult.cursor;
-                        render();
-                        return;
-                    }
-                    case "UP":
-                    {
-                        const completionState = getActiveFileCompletionState();
-                        if (completionState.options.length > 0)
-                        {
-                            fileSelectionIndex = fileSelectionIndex === 0
-                                ? completionState.options.length - 1
-                                : fileSelectionIndex - 1;
-                            render();
-                            return;
-                        }
-
-                        state.cursor = getPreviousLineCursor(state.value, state.cursor);
-                        render();
-                        return;
-                    }
-                    case "DOWN":
-                    {
-                        const completionState = getActiveFileCompletionState();
-                        if (completionState.options.length > 0)
-                        {
-                            fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
-                            render();
-                            return;
-                        }
-
-                        state.cursor = getNextLineCursor(state.value, state.cursor);
-                        render();
-                        return;
-                    }
-                    default:
-                        return;
-                }
-            };
-
-            const cleanup = (): void =>
-            {
-                if (activeCleanup !== cleanup) return;
-                driver.offKey(onKey);
-                driver.showCursor();
-                driver.releaseInput();
-                activeCleanup = null;
-            };
-
-            activeCleanup = cleanup;
             driver.grabInput();
             driver.hideCursor();
-            render();
             driver.onKey(onKey);
+            render();
         });
     };
 
-    return {
-        readUserInput,
-        close,
+    const onSubmit = (handler: (value: string) => void): (() => void) =>
+    {
+        submitHandlers.add(handler);
+        return () => submitHandlers.delete(handler);
     };
+
+    const setMode = (nextMode: TerminalInputMode): void =>
+    {
+        if (mode === nextMode) return;
+        mode = nextMode;
+        render();
+    };
+
+    const setQueueSize = (size: number): void =>
+    {
+        if (queueSize === size) return;
+        queueSize = size;
+        if (renderEnabled) render();
+    };
+
+    let renderEnabled = true;
+
+    const setRenderEnabled = (enabled: boolean): void =>
+    {
+        if (renderEnabled === enabled) return;
+        renderEnabled = enabled;
+        if (!enabled)
+        {
+            clearPreviousRender();
+            lastRenderLineCount = 0;
+            lastCursorRow = 0;
+        }
+        else
+        {
+            render();
+        }
+    };
+
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, close };
 }
