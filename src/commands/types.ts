@@ -60,6 +60,7 @@ export interface CommandsContext
     setSearchEnabled?: (enabled: boolean) => void;
     getThinkingEnabled?: () => boolean;
     setThinkingEnabled?: (enabled: boolean) => void;
+    runReview?: (scope: import("@/cli/review").ReviewScope) => Promise<void>;
 }
 
 export interface CommandModule

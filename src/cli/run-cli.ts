@@ -47,6 +47,7 @@ import { ensureValidToken } from "@/cli/auth-flow";
 import { createAuthActions } from "@/cli/auth-flow";
 import { createInputQueue } from "@/cli/input-queue";
 import { createSidechatRunner } from "@/cli/sidechat";
+import { createReviewRunner } from "@/cli/review";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -311,6 +312,18 @@ export async function runCli(): Promise<void>
         generationIndicator,
         getAskUser: () => askUserImpl,
         writeDetachedOutput,
+        setRenderEnabled: (enabled) => terminalInput.setRenderEnabled(enabled),
+    });
+
+    const { runReview } = createReviewRunner({
+        getClient: () => deepseekClient,
+        getModelType: () => modelType,
+        getWorkspaceRoot: () => process.cwd(),
+        reviewPrompt: prompts.reviewPrompt,
+        toolsPrompt: prompts.toolsPrompt,
+        variableProcessor,
+        generationIndicator,
+        getAskUser: () => askUserImpl,
         setRenderEnabled: (enabled) => terminalInput.setRenderEnabled(enabled),
     });
 
@@ -585,6 +598,7 @@ export async function runCli(): Promise<void>
         },
         mcpReadResource: (serverName, uri) => mcpManager.readMCPResource(serverName, uri),
         mcpGetPrompt: (serverName, promptName) => mcpManager.getMCPPrompt(serverName, promptName),
+        runReview,
     });
 
     // --- Terminal input callbacks ---

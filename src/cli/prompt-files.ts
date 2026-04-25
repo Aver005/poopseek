@@ -5,6 +5,7 @@ export type PromptFiles = {
     basePrompt: string;
     toolsPrompt: string;
     compactPrompt: string;
+    reviewPrompt: string;
 };
 
 function normalizeRelativeAssetPath(inputPath: string): string
@@ -50,17 +51,20 @@ export async function readPromptFiles(): Promise<PromptFiles>
 {
     const basePromptPath = resolveExistingAssetPath("assets/prompts/base.prompt.md");
     const compactPromptPath = resolveExistingAssetPath("assets/prompts/compact.prompt.md");
+    const reviewPromptPath = resolveExistingAssetPath("assets/prompts/review.prompt.md");
     const toolsPromptPath = resolveExistingAssetPath("docs/tools/tool.base.md");
 
-    const [basePrompt, toolsPrompt, compactPrompt] = await Promise.all([
+    const [basePrompt, toolsPrompt, compactPrompt, reviewPrompt] = await Promise.all([
         fs.promises.readFile(basePromptPath, "utf8"),
         fs.promises.readFile(toolsPromptPath, "utf8"),
         fs.promises.readFile(compactPromptPath, "utf8"),
+        fs.promises.readFile(reviewPromptPath, "utf8"),
     ]);
 
     return {
         basePrompt,
         toolsPrompt,
         compactPrompt,
+        reviewPrompt,
     };
 }
