@@ -13,6 +13,7 @@ import { renderMarkdown } from "@/cli/markdown";
 import { readPromptFiles } from "@/cli/prompt-files";
 import {
     createStoredSessionId,
+    deriveSessionTitle,
     getSessionsDirectory,
     listStoredSessions,
     loadStoredSession,
@@ -303,17 +304,43 @@ export async function runCli(): Promise<void>
         getModelType: () => modelType,
         setModelType: (nextModelType) => modelType = nextModelType,
         runSidechat,
-        loadDeepseekSession: async (sessionId) =>
+        confirm: (message) => terminalInput.confirm(message),
+        resolveSessionForLoad: async (id) =>
         {
+            // 1. Check local sessions first
+            const localSnapshot = await loadStoredSession(sessionsDir, id);
+            if (localSnapshot)
+            {
+                const title = deriveSessionTitle(localSnapshot.context);
+                const messageCount = localSnapshot.context.messages.length;
+                return {
+                    type: "local" as const,
+                    title,
+                    messageCount,
+                    load: async () =>
+                    {
+                        currentLocalSession = {
+                            id: localSnapshot.id,
+                            createdAt: localSnapshot.createdAt,
+                        };
+                        modelType = localSnapshot.modelType;
+                        contextManager.restoreState(localSnapshot.context);
+                        await resetMainSession();
+                        await saveCurrentLocalSession();
+                        return {};
+                    },
+                };
+            }
+
+            // 2. Try as a DeepSeek (global) session
             try
             {
-                const historyData = await deepseekClient.fetchHistory(sessionId);
+                const historyData = await deepseekClient.fetchHistory(id);
                 const { chat_session, chat_messages } = historyData;
 
                 const messageMap = new Map(
                     chat_messages.map((msg) => [msg.message_id, msg]),
                 );
-
                 const chain: typeof chat_messages = [];
                 let currentId: number | null = chat_session.current_message_id;
                 while (currentId !== null)
@@ -328,46 +355,41 @@ export async function runCli(): Promise<void>
                 for (const msg of chain)
                 {
                     if (msg.status !== "FINISHED") continue;
-
                     const role = msg.role === "USER" ? "user" : msg.role === "ASSISTANT" ? "assistant" : null;
                     if (!role) continue;
-
                     const contentType = role === "user" ? "REQUEST" : "RESPONSE";
                     const content = msg.fragments
                         .filter((f) => f.type === contentType)
                         .map((f) => f.content)
                         .join("\n")
                         .trim();
-
-                    if (content.length > 0)
-                    {
-                        localMessages.push({ role, content });
-                    }
-                }
-
-                if (localMessages.length === 0)
-                {
-                    return { loaded: false, error: "история пуста или не содержит завершённых сообщений" };
+                    if (content.length > 0) localMessages.push({ role, content });
                 }
 
                 const lastMsg = chain[chain.length - 1];
                 const parentMessageId = lastMsg?.message_id ?? null;
 
-                contextManager.restoreState({ messages: localMessages });
-                session = deepseekClient.loadExistingSession(sessionId, parentMessageId);
-                startNewLocalSession();
-                await saveCurrentLocalSession();
-
                 return {
-                    loaded: true,
-                    title: chat_session.title || undefined,
+                    type: "global" as const,
+                    title: chat_session.title || id,
                     messageCount: localMessages.length,
+                    load: async () =>
+                    {
+                        if (localMessages.length === 0)
+                        {
+                            return { error: "история пуста или не содержит завершённых сообщений" };
+                        }
+                        contextManager.restoreState({ messages: localMessages });
+                        session = deepseekClient.loadExistingSession(id, parentMessageId);
+                        startNewLocalSession();
+                        await saveCurrentLocalSession();
+                        return {};
+                    },
                 };
             }
-            catch (error)
+            catch
             {
-                const message = error instanceof Error ? error.message : String(error);
-                return { loaded: false, error: message };
+                return null;
             }
         },
         compactContext: async () =>

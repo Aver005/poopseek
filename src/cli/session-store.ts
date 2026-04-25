@@ -48,7 +48,7 @@ function normalizeModelType(value: unknown): ModelType
     return value === "expert" ? "expert" : "default";
 }
 
-function deriveSessionTitle(context: ContextManagerState): string
+export function deriveSessionTitle(context: ContextManagerState): string
 {
     const reversedMessages = [...context.messages].reverse();
     for (const message of reversedMessages)

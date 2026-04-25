@@ -25,12 +25,13 @@ export interface CommandsContext
     getModelType?: () => "default" | "expert";
     setModelType?: (modelType: "default" | "expert") => void;
     runSidechat?: (question: string) => Promise<void>;
-    loadDeepseekSession?: (sessionId: string) => Promise<{
-        loaded: boolean;
-        title?: string;
+    confirm?: (message: string) => Promise<boolean>;
+    resolveSessionForLoad?: (id: string) => Promise<{
+        type: "local" | "global";
+        title: string;
         messageCount?: number;
-        error?: string;
-    }>;
+        load: () => Promise<{ error?: string }>;
+    } | null>;
     logout?: () => Promise<void>;
     relogin?: () => Promise<void>;
 }

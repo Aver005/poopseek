@@ -26,6 +26,7 @@ type TerminalInputController = {
     setRenderEnabled: (enabled: boolean) => void;
     setQueueCallbacks: (callbacks: QueueCallbacks) => void;
     choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
+    confirm: (message: string) => Promise<boolean>;
     close: () => void;
 };
 
@@ -292,6 +293,14 @@ function buildChoiceBlock(
     return lines.join("\n");
 }
 
+function buildConfirmBlock(message: string): string
+{
+    return [
+        message,
+        colors.dim("Enter — продолжить  Esc — отмена"),
+    ].join("\n");
+}
+
 export function createTerminalInput(options: TerminalInputOptions = {}): TerminalInputController
 {
     let driverPromise: Promise<TerminalDriver> | null = null;
@@ -308,6 +317,10 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         items: TerminalChoiceItem[];
         selectedIndex: number;
         resolve: (value: string | null) => void;
+    } | null = null;
+    let confirmState: {
+        message: string;
+        resolve: (confirmed: boolean) => void;
     } | null = null;
 
     const submitHandlers = new Set<(value: string) => void>();
@@ -361,7 +374,9 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     const render = (): void =>
     {
         if (!renderEnabled) return;
-        const renderedBlock = choiceState
+        const renderedBlock = confirmState
+            ? buildConfirmBlock(confirmState.message)
+            : choiceState
             ? buildChoiceBlock(choiceState.title, choiceState.items, choiceState.selectedIndex)
             : buildRenderedBlock(
                 state.value,
@@ -417,6 +432,25 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
     const onKey = (name: string, _matches: string[], data: TerminalKeyData): void =>
     {
+        if (confirmState)
+        {
+            if (name === "ENTER" || name === "KP_ENTER")
+            {
+                const resolve = confirmState.resolve;
+                confirmState = null;
+                resolve(true);
+                render();
+            }
+            else if (name === "ESCAPE")
+            {
+                const resolve = confirmState.resolve;
+                confirmState = null;
+                resolve(false);
+                render();
+            }
+            return;
+        }
+
         if (choiceState)
         {
             switch (name)
@@ -668,5 +702,27 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         return promise;
     };
 
-    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, choose, close };
+    const confirm = (message: string): Promise<boolean> =>
+    {
+        if (confirmState)
+        {
+            confirmState.resolve(false);
+        }
+
+        confirmState = {
+            message,
+            resolve: () => undefined,
+        };
+
+        const promise = new Promise<boolean>((resolve) =>
+        {
+            if (!confirmState) return resolve(false);
+            confirmState.resolve = resolve;
+        });
+
+        render();
+        return promise;
+    };
+
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, choose, confirm, close };
 }
