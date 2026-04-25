@@ -2,6 +2,7 @@ import { writeLine } from "./io";
 import type { Command, CommandsContext } from "./types";
 
 import { createBtwCommand } from "./defs/btw";
+import { createLoadCommand } from "./defs/load";
 import { createClearCommand } from "./defs/clear";
 import { createCmptCommand } from "./defs/cmpt";
 import { createCompactCommand } from "./defs/compact";
@@ -49,6 +50,7 @@ export function createCommandHandlers(
     registerCommand(createThemeCommand(context));
     registerCommand(createSwitchCommand(context));
     registerCommand(createModelCommand(context));
+    registerCommand(createLoadCommand(context));
 
     return commands;
 }

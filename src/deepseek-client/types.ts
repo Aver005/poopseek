@@ -30,3 +30,28 @@ export interface PowChallenge {
     signature: string;
     target_path: string;
 }
+
+export interface DeepseekHistoryFragment {
+    id: number;
+    type: string;
+    content: string;
+}
+
+export interface DeepseekHistoryMessage {
+    message_id: number;
+    parent_id: number | null;
+    role: string;
+    status: string;
+    fragments: DeepseekHistoryFragment[];
+}
+
+export interface DeepseekHistoryChatSession {
+    id: string;
+    title: string;
+    current_message_id: number;
+}
+
+export interface DeepseekHistoryData {
+    chat_session: DeepseekHistoryChatSession;
+    chat_messages: DeepseekHistoryMessage[];
+}

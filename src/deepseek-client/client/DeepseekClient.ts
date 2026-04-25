@@ -1,6 +1,7 @@
 import { API_ENDPOINTS, CHAT_CONFIG } from "../config/constants";
 import { HeadersBuilder } from "../config/headers";
-import type { ChatPayload, SendMessageOptions } from "../types";
+import type { ChatPayload, DeepseekHistoryData, SendMessageOptions } from "../types";
+import { getRecord, isRecord } from "../utils/record";
 import ChatSession from "./ChatSession";
 import PowService from "../services/PowService";
 
@@ -80,5 +81,44 @@ export default class DeepseekClient
         }
 
         return response;
+    }
+
+    async fetchHistory(sessionId: string): Promise<DeepseekHistoryData>
+    {
+        const url = `${API_ENDPOINTS.HISTORY_MESSAGES}?chat_session_id=${encodeURIComponent(sessionId)}`;
+        const headers = HeadersBuilder.getAuthHeaders(this.token);
+        const response = await fetch(url, { method: "GET", headers });
+
+        if (!response.ok)
+        {
+            const errorData = await response.text();
+            throw new Error(`History fetch failed: ${response.status} ${errorData}`);
+        }
+
+        const json = (await response.json()) as unknown;
+        const data = getRecord(json, "data");
+        const bizData = getRecord(data, "biz_data");
+
+        if (!isRecord(bizData))
+        {
+            throw new Error("Invalid history response: missing biz_data");
+        }
+
+        const chatSession = bizData.chat_session;
+        const chatMessages = bizData.chat_messages;
+
+        if (!isRecord(chatSession) || !Array.isArray(chatMessages))
+        {
+            throw new Error("Invalid history response: missing chat_session or chat_messages");
+        }
+
+        return bizData as unknown as DeepseekHistoryData;
+    }
+
+    loadExistingSession(sessionId: string, parentMessageId: number | null = null): ChatSession
+    {
+        const session = ChatSession.fromExisting(sessionId, parentMessageId);
+        this.currentSession = session;
+        return session;
     }
 }

@@ -361,6 +361,77 @@ export async function runCli(): Promise<void>
         getModelType: () => modelType,
         setModelType: (nextModelType) => modelType = nextModelType,
         runSidechat,
+        loadDeepseekSession: async (sessionId) =>
+        {
+            try
+            {
+                const historyData = await deepseekClient.fetchHistory(sessionId);
+                const { chat_session, chat_messages } = historyData;
+
+                // Build message map and follow parent_id chain from current tip
+                const messageMap = new Map(
+                    chat_messages.map((msg) => [msg.message_id, msg]),
+                );
+
+                const chain: typeof chat_messages = [];
+                let currentId: number | null = chat_session.current_message_id;
+                while (currentId !== null)
+                {
+                    const msg = messageMap.get(currentId);
+                    if (!msg) break;
+                    chain.unshift(msg);
+                    currentId = msg.parent_id;
+                }
+
+                // Convert to local context messages
+                const localMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+                for (const msg of chain)
+                {
+                    if (msg.status !== "FINISHED") continue;
+
+                    const role = msg.role === "USER" ? "user" : msg.role === "ASSISTANT" ? "assistant" : null;
+                    if (!role) continue;
+
+                    const contentType = role === "user" ? "REQUEST" : "RESPONSE";
+                    const content = msg.fragments
+                        .filter((f) => f.type === contentType)
+                        .map((f) => f.content)
+                        .join("\n")
+                        .trim();
+
+                    if (content.length > 0)
+                    {
+                        localMessages.push({ role, content });
+                    }
+                }
+
+                if (localMessages.length === 0)
+                {
+                    return { loaded: false, error: "история пуста или не содержит завершённых сообщений" };
+                }
+
+                // Find the last message_id in the chain for parent_message_id
+                const lastMsg = chain[chain.length - 1];
+                const parentMessageId = lastMsg?.message_id ?? null;
+
+                // Restore context and remote session
+                contextManager.restoreState({ messages: localMessages });
+                session = deepseekClient.loadExistingSession(sessionId, parentMessageId);
+                startNewLocalSession();
+                await saveCurrentLocalSession();
+
+                return {
+                    loaded: true,
+                    title: chat_session.title || undefined,
+                    messageCount: localMessages.length,
+                };
+            }
+            catch (error)
+            {
+                const message = error instanceof Error ? error.message : String(error);
+                return { loaded: false, error: message };
+            }
+        },
         compactContext: async () =>
         {
             const before = contextManager.getMessageCount();

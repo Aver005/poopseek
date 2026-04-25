@@ -50,6 +50,15 @@ export default class ChatSession
         return new ChatSession(sessionId);
     }
 
+    static fromExisting(sessionId: string, parentMessageId: number | null = null): ChatSession
+    {
+        const session = new ChatSession(sessionId);
+        session.parentMessageId = Number.isFinite(parentMessageId as number)
+            ? (parentMessageId as number)
+            : null;
+        return session;
+    }
+
     getId(): string
     {
         return this.sessionId;
