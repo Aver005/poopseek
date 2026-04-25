@@ -414,7 +414,11 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         if (horizontalOffset > 0) output.write(`\x1b[${horizontalOffset}C`);
 
         lastRenderLineCount = renderedLineCount;
-        lastCursorRow = cursorMetrics.row;
+        // choiceState forces linesUpFromBottom=0, so after writing the block the
+        // cursor sits at the bottom line. Record how far up clearPreviousRender must
+        // travel to reach the first line of the block. For all other states the
+        // cursor has already been repositioned to cursorMetrics.row from the top.
+        lastCursorRow = choiceState ? renderedLineCount - 1 : cursorMetrics.row;
     };
 
     const submit = (value: string): void =>

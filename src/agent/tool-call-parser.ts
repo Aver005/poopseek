@@ -29,7 +29,7 @@ function toEnvelope(value: unknown): ToolCallEnvelope | null
     if (typeof value.tool !== "string" || value.tool.length === 0) return null;
 
     const args = isRecord(value.args) ? value.args : {};
-    const onError = normalizeAction(value.onError, "ask-user");
+    const onError = normalizeAction(value.onError, "continue");
     const onSuccess = normalizeAction(value.onSuccess, "continue");
 
     return {

@@ -4,6 +4,7 @@ import {
     isGitAvailableVariable,
     isGitAviabledVariable,
 } from "./defs/is-git-aviabled";
+import { osVariable } from "./defs/os";
 import type {
     VariableContext,
     VariableModule,
@@ -18,6 +19,7 @@ const VARIABLE_MODULES: VariableModule[] = [
     isGitAviabledVariable,
     isGitAvailableVariable,
     filesVariable,
+    osVariable,
 ];
 
 function buildResolverMap(modules: VariableModule[]): Record<string, VariableResolver>
