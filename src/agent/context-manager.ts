@@ -187,6 +187,75 @@ export default class ContextManager
         return this.prepareTurnMessage("tool", content, name);
     }
 
+    prepareToolBatchTurn(results: Array<{ name: string; content: string }>): PreparedTurnMessage
+    {
+        if (results.length === 0)
+        {
+            return this.prepareToolTurn("unknown", "");
+        }
+
+        // Single result: use standard path to avoid code duplication
+        if (results.length === 1)
+        {
+            return this.prepareToolTurn(results[0]!.name, results[0]!.content);
+        }
+
+        const includedBootstrap = this.bootstrapPending;
+        const totalRaw = results.map((r) => r.content).join("\n");
+        const includedRefresh = !includedBootstrap
+            && (
+                this.approxTokensSinceRefresh + estimateApproxTokens(totalRaw)
+                >= this.options.refreshEveryApproxTokens
+            );
+        const localMemory = includedBootstrap && this.messages.length > 0
+            ? this.formatMessages()
+            : "";
+
+        const blocks: string[] = [];
+
+        if (includedBootstrap)
+        {
+            blocks.push(this.buildSystemSnapshot());
+            if (localMemory.length > 0)
+            {
+                blocks.push("", "### LOCAL MEMORY", localMemory);
+            }
+        }
+        else if (includedRefresh)
+        {
+            blocks.push(this.buildRefreshSnapshot());
+        }
+
+        if (blocks.length > 0) blocks.push("");
+
+        const resultBlocks = results.map(
+            (r) => `### TOOL RESULT: ${r.name}\n${r.content.trim()}`,
+        );
+        blocks.push(resultBlocks.join("\n\n"));
+
+        // Add each result to the message history
+        for (const r of results)
+        {
+            this.addTool(r.name, r.content.trim());
+        }
+
+        const prompt = blocks.join("\n");
+        const approxTokens = estimateApproxTokens(prompt);
+
+        if (includedBootstrap || includedRefresh)
+        {
+            this.approxTokensSinceRefresh = approxTokens;
+        }
+        else
+        {
+            this.approxTokensSinceRefresh += approxTokens;
+        }
+
+        this.bootstrapPending = false;
+
+        return { prompt, approxTokens, includedBootstrap, includedRefresh };
+    }
+
     private formatMessages(): string
     {
         if (this.messages.length === 0) return "История пуста.";

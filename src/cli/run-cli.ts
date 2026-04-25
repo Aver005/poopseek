@@ -146,7 +146,6 @@ export async function runCli(): Promise<void>
     );
     let modelType: ModelType = "default";
     const agentLoop = new AgentLoop(() => deepseekClient, () => session, contextManager, toolExecutor, {
-        maxStepsPerTurn: 12,
         getModelType: () => modelType,
     });
 

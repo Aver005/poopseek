@@ -40,21 +40,6 @@ function toEnvelope(value: unknown): ToolCallEnvelope | null
     };
 }
 
-function extractFencedJsonBlocks(text: string): string[]
-{
-    const result: string[] = [];
-    const regex = /```json\s*([\s\S]*?)\s*```/gi;
-
-    for (const match of text.matchAll(regex))
-    {
-        const content = match[1]?.trim();
-        if (!content) continue;
-        result.push(content);
-    }
-
-    return result;
-}
-
 function extractJsonLikeBlocks(text: string): string[]
 {
     const result: string[] = [];
@@ -117,37 +102,26 @@ function extractJsonLikeBlocks(text: string): string[]
     return result;
 }
 
-function tryParseCandidates(candidates: string[]): ToolCallEnvelope | null
+function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
 {
-    for (const candidate of candidates)
+    try
     {
-        try
-        {
-            const parsed = JSON.parse(candidate) as unknown;
-            const envelope = toEnvelope(parsed);
-            if (!envelope) continue;
-            return envelope;
-        }
-        catch
-        {
-            const repaired = repairJsonCandidate(candidate);
-            if (!repaired) continue;
-
-            try
-            {
-                const parsed = JSON.parse(repaired) as unknown;
-                const envelope = toEnvelope(parsed);
-                if (!envelope) continue;
-                return envelope;
-            }
-            catch
-            {
-                continue;
-            }
-        }
+        const envelope = toEnvelope(JSON.parse(candidate) as unknown);
+        if (envelope) return envelope;
     }
+    catch { /* fall through */ }
 
-    return null;
+    const repaired = repairJsonCandidate(candidate);
+    if (!repaired) return null;
+
+    try
+    {
+        return toEnvelope(JSON.parse(repaired) as unknown);
+    }
+    catch
+    {
+        return null;
+    }
 }
 
 function repairJsonCandidate(input: string): string | null
@@ -166,14 +140,66 @@ function repairJsonCandidate(input: string): string | null
     return repaired;
 }
 
-export function parseToolCallFromText(text: string): ToolCallEnvelope | null
+// ── Public types ─────────────────────────────────────────────────────────────
+
+export interface ToolCallSegment
 {
-    if (text.trim().length === 0) return null;
+    preText: string;
+    envelope: ToolCallEnvelope;
+}
 
-    const fencedCandidates = extractFencedJsonBlocks(text);
-    const fencedResult = tryParseCandidates(fencedCandidates);
-    if (fencedResult) return fencedResult;
+export interface ParsedAgentMessage
+{
+    toolCalls: ToolCallSegment[];
+    postText: string;
+}
 
-    const jsonLikeCandidates = extractJsonLikeBlocks(text);
-    return tryParseCandidates(jsonLikeCandidates);
+// ── Main export ───────────────────────────────────────────────────────────────
+
+export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
+{
+    if (text.trim().length === 0)
+    {
+        return { toolCalls: [], postText: "" };
+    }
+
+    const toolCalls: ToolCallSegment[] = [];
+    let lastEnd = 0;
+
+    const fencedRegex = /```json\s*([\s\S]*?)\s*```/gi;
+
+    for (const match of text.matchAll(fencedRegex))
+    {
+        if (toolCalls.length >= maxTools) break;
+
+        const content = match[1]?.trim();
+        if (!content) continue;
+
+        const envelope = tryParseEnvelope(content);
+        if (!envelope) continue;
+
+        const start = match.index ?? 0;
+        const preText = text.slice(lastEnd, start).trim();
+
+        toolCalls.push({ preText, envelope });
+        lastEnd = start + match[0].length;
+    }
+
+    const postText = text.slice(lastEnd).trim();
+
+    // Fallback: no fenced tool blocks found → try bare JSON (single tool, no preText)
+    if (toolCalls.length === 0)
+    {
+        const bareResult = extractJsonLikeBlocks(text).reduce<ToolCallEnvelope | null>(
+            (found, candidate) => found ?? tryParseEnvelope(candidate),
+            null,
+        );
+
+        if (bareResult)
+        {
+            return { toolCalls: [{ preText: "", envelope: bareResult }], postText: "" };
+        }
+    }
+
+    return { toolCalls, postText };
 }
