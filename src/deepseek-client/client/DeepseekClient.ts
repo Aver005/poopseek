@@ -121,4 +121,32 @@ export default class DeepseekClient
         this.currentSession = session;
         return session;
     }
+
+    static async validateToken(token: string): Promise<{ valid: boolean; email?: string; error?: string }>
+    {
+        const headers = HeadersBuilder.getAuthHeaders(token);
+        try
+        {
+            const response = await fetch(API_ENDPOINTS.USERS_CURRENT, { method: "GET", headers });
+            if (!response.ok)
+            {
+                return { valid: false, error: `HTTP ${response.status}` };
+            }
+            const json = (await response.json()) as unknown;
+            if (!isRecord(json) || json.code !== 0)
+            {
+                const msg = isRecord(json) && typeof json.msg === "string" ? json.msg : "неизвестная ошибка";
+                return { valid: false, error: msg || "неизвестная ошибка" };
+            }
+            const data = getRecord(json, "data");
+            const bizData = getRecord(data, "biz_data");
+            const email = isRecord(bizData) && typeof bizData.email === "string" ? bizData.email : undefined;
+            return { valid: true, email };
+        }
+        catch (error)
+        {
+            const message = error instanceof Error ? error.message : String(error);
+            return { valid: false, error: message };
+        }
+    }
 }

@@ -24,7 +24,6 @@ import {
     loadRuntimeConfig,
     promptForToken,
     saveRuntimeConfig,
-    type RuntimeConfig,
 } from "@/cli/runtime-config";
 import {
     adaptTextToTerminal,
@@ -54,21 +53,34 @@ export async function runCli(): Promise<void>
         ? __APP_VERSION__.trim()
         : "";
     const appVersion = embeddedVersion || envVersion || "dev";
-    const configToken = loadedRuntimeConfig.config.token;
-    const token = envToken
-        ?? configToken
-        ?? await promptForToken();
+    let token: string = envToken ?? loadedRuntimeConfig.config.token ?? await promptForToken();
 
-    const nextRuntimeConfig: RuntimeConfig = { token };
-    const shouldUpdateRuntimeConfig = !loadedRuntimeConfig.exists
-        || loadedRuntimeConfig.config.token !== nextRuntimeConfig.token;
-
-    if (shouldUpdateRuntimeConfig)
+    while (true)
     {
-        await saveRuntimeConfig(runtimeConfigPath, nextRuntimeConfig);
+        output.write("Проверяю токен...\r");
+        const validation = await DeepseekClient.validateToken(token);
+        output.write("                 \r");
+
+        if (validation.valid)
+        {
+            if (loadedRuntimeConfig.config.token !== token && !envToken)
+            {
+                await saveRuntimeConfig(runtimeConfigPath, { token });
+            }
+            break;
+        }
+
+        if (envToken)
+        {
+            output.write(`Ошибка: DEEPSEEK_TOKEN из окружения недействителен (${validation.error ?? "неизвестная ошибка"})\n`);
+            process.exit(1);
+        }
+
+        output.write(`Токен недействителен: ${validation.error ?? "неизвестная ошибка"}\n`);
+        token = await promptForToken();
     }
 
-    const deepseekClient = new DeepseekClient(token);
+    let deepseekClient = new DeepseekClient(token);
     await deepseekClient.initialize();
     let session = await deepseekClient.createSession();
 
@@ -110,7 +122,7 @@ export async function runCli(): Promise<void>
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
     const toolExecutor = new ToolExecutor(process.cwd(), (req) => askUserImpl(req));
     let modelType: ModelType = "default";
-    const agentLoop = new AgentLoop(deepseekClient, () => session, contextManager, toolExecutor, {
+    const agentLoop = new AgentLoop(() => deepseekClient, () => session, contextManager, toolExecutor, {
         maxStepsPerTurn: 12,
         getModelType: () => modelType,
     });
@@ -233,6 +245,43 @@ export async function runCli(): Promise<void>
         }
     };
 
+    const relogin = async (): Promise<void> =>
+    {
+        writeDetachedOutput(`\n${colors.cyan("?")} Введите новый DEEPSEEK_TOKEN:\n`);
+
+        while (true)
+        {
+            const rawToken = await waitForInput();
+            const trimmed = rawToken.trim();
+            if (!trimmed) continue;
+
+            writeDetachedOutput(`${colors.dim("Проверяю токен...")}\n`);
+            const validation = await DeepseekClient.validateToken(trimmed);
+
+            if (validation.valid)
+            {
+                await saveRuntimeConfig(runtimeConfigPath, { token: trimmed });
+                deepseekClient = new DeepseekClient(trimmed);
+                await deepseekClient.initialize();
+                session = await deepseekClient.createSession();
+                contextManager.markSessionReset();
+                startNewLocalSession();
+                const who = validation.email ? `: ${validation.email}` : "";
+                writeDetachedOutput(`${colors.green("✓")} Авторизован${who}\n\n`);
+                return;
+            }
+
+            writeDetachedOutput(`${colors.red("✗")} Токен недействителен: ${validation.error ?? "неизвестная ошибка"}. Попробуйте ещё раз:\n`);
+        }
+    };
+
+    const logout = async (): Promise<void> =>
+    {
+        await saveRuntimeConfig(runtimeConfigPath, { token: null });
+        writeDetachedOutput(`\n${colors.yellow("Токен сброшен.")} Перезапустите приложение.\n\n`);
+        process.exit(0);
+    };
+
     const executeSidechat = async (
         question: string,
         options: {
@@ -259,7 +308,7 @@ export async function runCli(): Promise<void>
             variableProcessor,
         );
         const sideTool = new ToolExecutor(process.cwd(), (req) => askUserImpl(req));
-        const sideLoop = new AgentLoop(deepseekClient, () => sideSession, sideContext, sideTool, {
+        const sideLoop = new AgentLoop(() => deepseekClient, () => sideSession, sideContext, sideTool, {
             maxStepsPerTurn: 6,
             getModelType: () => modelType,
         });
@@ -510,6 +559,8 @@ export async function runCli(): Promise<void>
                 summaryChars: summary.length,
             };
         },
+        logout,
+        relogin,
     });
 
     terminalInput.setQueueCallbacks({

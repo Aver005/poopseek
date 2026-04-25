@@ -3,6 +3,7 @@ import type { Command, CommandsContext } from "./types";
 
 import { createBtwCommand } from "./defs/btw";
 import { createLoadCommand } from "./defs/load";
+import { createLogoutCommand, createReloginCommand } from "./defs/logout";
 import { createClearCommand } from "./defs/clear";
 import { createCmptCommand } from "./defs/cmpt";
 import { createCompactCommand } from "./defs/compact";
@@ -51,6 +52,8 @@ export function createCommandHandlers(
     registerCommand(createSwitchCommand(context));
     registerCommand(createModelCommand(context));
     registerCommand(createLoadCommand(context));
+    registerCommand(createLogoutCommand(context));
+    registerCommand(createReloginCommand(context));
 
     return commands;
 }

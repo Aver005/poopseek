@@ -31,6 +31,8 @@ export interface CommandsContext
         messageCount?: number;
         error?: string;
     }>;
+    logout?: () => Promise<void>;
+    relogin?: () => Promise<void>;
 }
 
 export interface CommandModule

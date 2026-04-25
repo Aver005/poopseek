@@ -54,21 +54,21 @@ function resolveAction(
 
 export default class AgentLoop
 {
-    private readonly deepseekClient: DeepseekClient;
+    private readonly getDeepseekClient: () => DeepseekClient;
     private readonly getSession: () => ChatSession;
     private readonly contextManager: ContextManager;
     private readonly toolExecutor: ToolExecutor;
     private readonly options: AgentLoopOptions;
 
     constructor(
-        deepseekClient: DeepseekClient,
+        getDeepseekClient: () => DeepseekClient,
         getSession: () => ChatSession,
         contextManager: ContextManager,
         toolExecutor: ToolExecutor,
         options: Partial<AgentLoopOptions> = {},
     )
     {
-        this.deepseekClient = deepseekClient;
+        this.getDeepseekClient = getDeepseekClient;
         this.getSession = getSession;
         this.contextManager = contextManager;
         this.toolExecutor = toolExecutor;
@@ -94,7 +94,7 @@ export default class AgentLoop
             let collected: Awaited<ReturnType<typeof collectDeepseekOutput>>;
             try
             {
-                const response = await this.deepseekClient.sendMessage(nextPrompt, session, {
+                const response = await this.getDeepseekClient().sendMessage(nextPrompt, session, {
                     model_type: this.options.getModelType?.(),
                 });
                 collected = await collectDeepseekOutput(response);

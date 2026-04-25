@@ -5,6 +5,7 @@ export const API_ENDPOINTS = {
     COMPLETION: `https://${DEEPSEEK_HOST}/api/v0/chat/completion`,
     CREATE_SESSION: `https://${DEEPSEEK_HOST}/api/v0/chat_session/create`,
     HISTORY_MESSAGES: `https://${DEEPSEEK_HOST}/api/v0/chat/history_messages`,
+    USERS_CURRENT: `https://${DEEPSEEK_HOST}/api/v0/users/current`,
     TARGET_PATH: "/api/v0/chat/completion",
 } as const;
 
