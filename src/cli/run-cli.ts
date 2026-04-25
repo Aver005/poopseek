@@ -23,7 +23,6 @@ import {
     getRuntimeConfigPath,
     loadRuntimeConfig,
     promptForToken,
-    saveRuntimeConfig,
 } from "@/cli/runtime-config";
 import {
     adaptTextToTerminal,
@@ -40,6 +39,10 @@ import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type { ModelType } from "@/deepseek-client/types";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
+import { ensureValidToken } from "@/cli/auth-flow";
+import { createAuthActions } from "@/cli/auth-flow";
+import { createInputQueue } from "@/cli/input-queue";
+import { createSidechatRunner } from "@/cli/sidechat";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -53,32 +56,13 @@ export async function runCli(): Promise<void>
         ? __APP_VERSION__.trim()
         : "";
     const appVersion = embeddedVersion || envVersion || "dev";
-    let token: string = envToken ?? loadedRuntimeConfig.config.token ?? await promptForToken();
-
-    while (true)
-    {
-        output.write("Проверяю токен...\r");
-        const validation = await DeepseekClient.validateToken(token);
-        output.write("                 \r");
-
-        if (validation.valid)
-        {
-            if (loadedRuntimeConfig.config.token !== token && !envToken)
-            {
-                await saveRuntimeConfig(runtimeConfigPath, { token });
-            }
-            break;
-        }
-
-        if (envToken)
-        {
-            output.write(`Ошибка: DEEPSEEK_TOKEN из окружения недействителен (${validation.error ?? "неизвестная ошибка"})\n`);
-            process.exit(1);
-        }
-
-        output.write(`Токен недействителен: ${validation.error ?? "неизвестная ошибка"}\n`);
-        token = await promptForToken();
-    }
+    const initialToken = envToken ?? loadedRuntimeConfig.config.token ?? await promptForToken();
+    const token = await ensureValidToken({
+        initialToken,
+        envToken,
+        savedToken: loadedRuntimeConfig.config.token,
+        runtimeConfigPath,
+    });
 
     let deepseekClient = new DeepseekClient(token);
     await deepseekClient.initialize();
@@ -131,30 +115,18 @@ export async function runCli(): Promise<void>
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
     const terminalCapabilities = getTerminalCapabilities();
-    const formatSessionDate = (value: string): string =>
-    {
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) return value;
-        return parsed.toLocaleString("ru-RU", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-        });
-    };
 
-    const inputQueue: string[] = [];
-    const pendingSidechatTasks = new Set<Promise<void>>();
-    let resolveNextInput: ((value: string) => void) | null = null;
+    // --- Input queue ---
+
+    const inputQueue = createInputQueue((size) =>
+    {
+        terminalInput.setQueueSize(size);
+        generationIndicator.setQueueSize(size);
+    });
+
+    // --- Output helpers ---
+
     let isMainTurnActive = false;
-
-    const syncQueueState = (): void =>
-    {
-        const queueSize = inputQueue.length;
-        terminalInput.setQueueSize(queueSize);
-        generationIndicator.setQueueSize(queueSize);
-    };
 
     const writeDetachedOutput = (value: string): void =>
     {
@@ -176,28 +148,20 @@ export async function runCli(): Promise<void>
         }
     };
 
-    const parseBtwQuestion = (value: string): string | null =>
+    const formatSessionDate = (value: string): string =>
     {
-        const trimmed = value.trim();
-        const match = trimmed.match(/^\/btw(?:\s+([\s\S]+))?$/i);
-        if (!match) return null;
-        const question = match[1]?.trim() ?? "";
-        return question.length > 0 ? question : "";
-    };
-
-    const waitForInput = (): Promise<string> =>
-    {
-        if (inputQueue.length > 0)
-        {
-            const value = inputQueue.shift()!;
-            syncQueueState();
-            return Promise.resolve(value);
-        }
-        return new Promise((resolve) =>
-        {
-            resolveNextInput = resolve;
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return value;
+        return parsed.toLocaleString("ru-RU", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
         });
     };
+
+    // --- Interactive user prompts ---
 
     askUserImpl = async (request) =>
     {
@@ -210,7 +174,7 @@ export async function runCli(): Promise<void>
             if (request.type === "text")
             {
                 output.write(`\n${colors.cyan("?")} ${request.prompt}\n`);
-                return await waitForInput();
+                return await inputQueue.waitForNext();
             }
 
             if (request.type === "confirm")
@@ -231,7 +195,7 @@ export async function runCli(): Promise<void>
                 if (selected === "__custom__")
                 {
                     output.write(`\n${colors.cyan("?")} Введите свой вариант:\n`);
-                    return await waitForInput();
+                    return await inputQueue.waitForNext();
                 }
                 return selected;
             }
@@ -245,155 +209,36 @@ export async function runCli(): Promise<void>
         }
     };
 
-    const relogin = async (): Promise<void> =>
-    {
-        writeDetachedOutput(`\n${colors.cyan("?")} Введите новый DEEPSEEK_TOKEN:\n`);
+    // --- Auth actions ---
 
-        while (true)
+    const { relogin, logout } = createAuthActions({
+        runtimeConfigPath,
+        contextManager,
+        waitForInput: () => inputQueue.waitForNext(),
+        writeOutput: writeDetachedOutput,
+        startNewLocalSession,
+        onReloggedIn: (newClient, newSession) =>
         {
-            const rawToken = await waitForInput();
-            const trimmed = rawToken.trim();
-            if (!trimmed) continue;
+            deepseekClient = newClient;
+            session = newSession;
+        },
+    });
 
-            writeDetachedOutput(`${colors.dim("Проверяю токен...")}\n`);
-            const validation = await DeepseekClient.validateToken(trimmed);
+    // --- Sidechat ---
 
-            if (validation.valid)
-            {
-                await saveRuntimeConfig(runtimeConfigPath, { token: trimmed });
-                deepseekClient = new DeepseekClient(trimmed);
-                await deepseekClient.initialize();
-                session = await deepseekClient.createSession();
-                contextManager.markSessionReset();
-                startNewLocalSession();
-                const who = validation.email ? `: ${validation.email}` : "";
-                writeDetachedOutput(`${colors.green("✓")} Авторизован${who}\n\n`);
-                return;
-            }
+    const { runSidechat, startQueuedSidechat, pendingTasks: pendingSidechatTasks } = createSidechatRunner({
+        getClient: () => deepseekClient,
+        getModelType: () => modelType,
+        getWorkspaceRoot: () => process.cwd(),
+        prompts,
+        variableProcessor,
+        generationIndicator,
+        getAskUser: () => askUserImpl,
+        writeDetachedOutput,
+        setRenderEnabled: (enabled) => terminalInput.setRenderEnabled(enabled),
+    });
 
-            writeDetachedOutput(`${colors.red("✗")} Токен недействителен: ${validation.error ?? "неизвестная ошибка"}. Попробуйте ещё раз:\n`);
-        }
-    };
-
-    const logout = async (): Promise<void> =>
-    {
-        await saveRuntimeConfig(runtimeConfigPath, { token: null });
-        writeDetachedOutput(`\n${colors.yellow("Токен сброшен.")} Перезапустите приложение.\n\n`);
-        process.exit(0);
-    };
-
-    const executeSidechat = async (
-        question: string,
-        options: {
-            buffered?: boolean;
-            showHeader?: boolean;
-            useIndicator?: boolean;
-        } = {},
-    ): Promise<void> =>
-    {
-        const buffered = options.buffered ?? false;
-        const showHeader = options.showHeader ?? true;
-        const useIndicator = options.useIndicator ?? true;
-        const chunks: string[] = [];
-        const write = (value: string): void =>
-        {
-            if (buffered) chunks.push(value);
-            else output.write(value);
-        };
-        const sideSession = await deepseekClient.createSession();
-        const sideContext = new ContextManager(
-            prompts.basePrompt,
-            prompts.toolsPrompt,
-            { maxMessages: 10 },
-            variableProcessor,
-        );
-        const sideTool = new ToolExecutor(process.cwd(), (req) => askUserImpl(req));
-        const sideLoop = new AgentLoop(() => deepseekClient, () => sideSession, sideContext, sideTool, {
-            maxStepsPerTurn: 6,
-            getModelType: () => modelType,
-        });
-
-        if (showHeader)
-        {
-            write(`\n${colors.cyan("◈ btw")} ${colors.dim("—")} ${question}\n`);
-        }
-
-        try
-        {
-            let wroteAnyChunk = false;
-            await sideLoop.runTurn(question, {
-                onModelRequestStart: () =>
-                {
-                    if (useIndicator) generationIndicator.start();
-                },
-                onModelRequestDone: () =>
-                {
-                    if (useIndicator) generationIndicator.stop();
-                },
-                onAssistantChunk: (chunk) =>
-                {
-                    if (useIndicator) generationIndicator.stop();
-                    if (!wroteAnyChunk)
-                    {
-                        write("\n");
-                        wroteAnyChunk = true;
-                    }
-                    write(renderMarkdown(chunk));
-                },
-                onToolStart: (toolName, toolArgs) =>
-                {
-                    if (useIndicator) generationIndicator.stop();
-                    const detail = getToolDetail(toolName, toolArgs);
-                    const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
-                    write(`\n${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
-                },
-                onToolDone: (toolName, toolResult) =>
-                {
-                    const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
-                    write(`${colors.dim("[btw/tool]")} ${colors.cyan(toolName)} ${marker}\n`);
-                },
-            });
-            write("\n\n");
-        }
-        catch
-        {
-            if (useIndicator) generationIndicator.stop();
-            write(`${colors.red("btw: ошибка запроса")}\n\n`);
-        }
-
-        if (buffered && chunks.length > 0)
-        {
-            writeDetachedOutput(chunks.join(""));
-        }
-    };
-
-    const runSidechat = async (question: string): Promise<void> =>
-    {
-        terminalInput.setRenderEnabled(false);
-        try
-        {
-            await executeSidechat(question);
-        }
-        finally
-        {
-            terminalInput.setRenderEnabled(true);
-        }
-    };
-
-    const startQueuedSidechat = (question: string): void =>
-    {
-        writeDetachedOutput(`\n${colors.cyan("◈ btw")} ${colors.dim("—")} ${question}\n`);
-        const task = executeSidechat(question, {
-            buffered: true,
-            showHeader: false,
-            useIndicator: false,
-        });
-        pendingSidechatTasks.add(task);
-        void task.finally(() =>
-        {
-            pendingSidechatTasks.delete(task);
-        });
-    };
+    // --- Command handlers ---
 
     let commands = new Map<string, Command>();
     commands = createCommandHandlers(terminalInput, {
@@ -465,7 +310,6 @@ export async function runCli(): Promise<void>
                 const historyData = await deepseekClient.fetchHistory(sessionId);
                 const { chat_session, chat_messages } = historyData;
 
-                // Build message map and follow parent_id chain from current tip
                 const messageMap = new Map(
                     chat_messages.map((msg) => [msg.message_id, msg]),
                 );
@@ -480,7 +324,6 @@ export async function runCli(): Promise<void>
                     currentId = msg.parent_id;
                 }
 
-                // Convert to local context messages
                 const localMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
                 for (const msg of chain)
                 {
@@ -507,11 +350,9 @@ export async function runCli(): Promise<void>
                     return { loaded: false, error: "история пуста или не содержит завершённых сообщений" };
                 }
 
-                // Find the last message_id in the chain for parent_message_id
                 const lastMsg = chain[chain.length - 1];
                 const parentMessageId = lastMsg?.message_id ?? null;
 
-                // Restore context and remote session
                 contextManager.restoreState({ messages: localMessages });
                 session = deepseekClient.loadExistingSession(sessionId, parentMessageId);
                 startNewLocalSession();
@@ -563,6 +404,8 @@ export async function runCli(): Promise<void>
         relogin,
     });
 
+    // --- Terminal input callbacks ---
+
     terminalInput.setQueueCallbacks({
         onValueChange: (value) =>
         {
@@ -579,13 +422,21 @@ export async function runCli(): Promise<void>
         onStop: () => generationIndicator.resume(),
     });
 
+    const parseBtwQuestion = (value: string): string | null =>
+    {
+        const trimmed = value.trim();
+        const match = trimmed.match(/^\/btw(?:\s+([\s\S]+))?$/i);
+        if (!match) return null;
+        const question = match[1]?.trim() ?? "";
+        return question.length > 0 ? question : "";
+    };
+
     terminalInput.onSubmit((value) =>
     {
         if (!value) return;
-        if (resolveNextInput)
+        if (inputQueue.hasPendingWaiter())
         {
-            resolveNextInput(value);
-            resolveNextInput = null;
+            inputQueue.resolveWaiter(value);
         }
         else
         {
@@ -603,10 +454,11 @@ export async function runCli(): Promise<void>
                 return;
             }
 
-            inputQueue.push(value);
-            syncQueueState();
+            inputQueue.enqueue(value);
         }
     });
+
+    // --- Welcome message ---
 
     output.write(`\n${colors.green(adaptTextToTerminal("PoopSeek CLI 💩"))} | v${appVersion}\n\n`);
     output.write(`${colors.yellow("/help")} для списка команд\n`);
@@ -622,14 +474,15 @@ export async function runCli(): Promise<void>
 
     terminalInput.start(commands);
 
+    // --- Main loop ---
+
     try
     {
         while (true)
         {
             terminalInput.setMode("active");
-            syncQueueState();
 
-            const userInput = await waitForInput();
+            const userInput = await inputQueue.waitForNext();
             if (!userInput) continue;
 
             const shouldContinue = await handleCommand(userInput, commands);
@@ -699,7 +552,7 @@ export async function runCli(): Promise<void>
                 output.write(colors.dim(`Очередь (${inputQueue.length}):\n`));
                 for (let i = 0; i < inputQueue.length; i++)
                 {
-                    const item = inputQueue[i] ?? "";
+                    const item = inputQueue.itemAt(i) ?? "";
                     const firstLine = item.split("\n")[0] ?? item;
                     const preview = firstLine.length > 100
                         ? `${firstLine.slice(0, 100)}…`
