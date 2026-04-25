@@ -11,7 +11,8 @@ export const handler: ToolHandler = async (args, context) =>
         throw new Error("Missing required args.command");
     }
 
-    const result = await context.runCommand("bash", {
+    const kind = process.platform === "win32" ? "powershell" : "bash";
+    const result = await context.runCommand(kind, {
         command: `git ${command}`,
         cwd: context.workspaceRoot,
     });

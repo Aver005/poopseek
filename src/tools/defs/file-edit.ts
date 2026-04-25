@@ -14,28 +14,66 @@ export const handler: ToolHandler = async (args, context) =>
 
     if (!requestedPath || search === null || replace === null)
     {
-        throw new Error("Missing required args.path, args.search, or args.replace");
+        return {
+            ok: false,
+            output: 'Missing required args: "path", "search", "replace"',
+            error: 'Missing required args: "path", "search", "replace"',
+        };
     }
 
-    const targetPath = context.resolvePath(requestedPath);
-    const source = await fs.promises.readFile(targetPath, "utf8");
-    if (!source.includes(search))
+    if (search.length === 0)
     {
         return {
             ok: false,
-            output: "Search pattern not found",
-            error: "Search pattern not found",
+            output: '"search" must not be empty — use file.write to overwrite the whole file',
+            error: '"search" is empty',
+        };
+    }
+
+    const targetPath = context.resolvePath(requestedPath);
+
+    let raw: string;
+    try
+    {
+        raw = await fs.promises.readFile(targetPath, "utf8");
+    }
+    catch (err)
+    {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { ok: false, output: `Cannot read file: ${msg}`, error: msg };
+    }
+
+    // Normalise line endings so \n in search/replace always matches
+    const source = raw.replace(/\r\n/g, "\n");
+    const normalizedSearch = search.replace(/\r\n/g, "\n");
+    const normalizedReplace = replace.replace(/\r\n/g, "\n");
+
+    if (!source.includes(normalizedSearch))
+    {
+        // Try to give a useful hint
+        const firstLine = normalizedSearch.split("\n")[0] ?? "";
+        const hint = firstLine.length > 0 && source.includes(firstLine)
+            ? ' (first line found but full block not matched — check whitespace/indentation)'
+            : ' (text not found anywhere in file)';
+        return {
+            ok: false,
+            output: `Search text not found${hint}`,
+            error: "Search text not found",
         };
     }
 
     const nextContent = replaceAll
-        ? source.split(search).join(replace)
-        : source.replace(search, replace);
+        ? source.split(normalizedSearch).join(normalizedReplace)
+        : source.replace(normalizedSearch, normalizedReplace);
+
     await writeTextFile(targetPath, nextContent);
+
+    const occurrences = source.split(normalizedSearch).length - 1;
+    const replaced = replaceAll ? occurrences : 1;
 
     return {
         ok: true,
-        output: "File updated",
+        output: `Replaced ${replaced} of ${occurrences} occurrence(s) in ${requestedPath}`,
         data: { path: targetPath },
     };
 };
