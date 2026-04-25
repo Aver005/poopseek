@@ -45,6 +45,17 @@ export interface CommandsContext
     addSkillFolder?: (folder: string) => Promise<void>;
     removeSkillFolder?: (folder: string) => Promise<void>;
     resetSkillFolders?: () => Promise<void>;
+    getMCPServerStatuses?: () => import("@/mcp").MCPServerInfo[];
+    getMCPTools?: () => import("@/mcp").MCPToolInfo[];
+    getMCPResources?: () => import("@/mcp").MCPResourceInfo[];
+    getMCPPrompts?: () => import("@/mcp").MCPPromptInfo[];
+    mcpConnect?: (name: string) => Promise<void>;
+    mcpDisconnect?: (name: string) => Promise<void>;
+    mcpEnable?: (name: string) => Promise<void>;
+    mcpDisable?: (name: string) => Promise<void>;
+    mcpReload?: () => Promise<void>;
+    mcpReadResource?: (serverName: string, uri: string) => Promise<string>;
+    mcpGetPrompt?: (serverName: string, promptName: string) => Promise<string>;
 }
 
 export interface CommandModule

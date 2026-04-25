@@ -6,6 +6,7 @@ import { createLoadCommand } from "./defs/load";
 import { createLogoutCommand, createReloginCommand } from "./defs/logout";
 import { createSkillsCommand } from "./defs/skills";
 import { createSkillsFolderCommand } from "./defs/skills-folder";
+import { createMCPCommand } from "./defs/mcp";
 import { createClearCommand } from "./defs/clear";
 import { createCmptCommand } from "./defs/cmpt";
 import { createCompactCommand } from "./defs/compact";
@@ -58,6 +59,7 @@ export function createCommandHandlers(
     registerCommand(createReloginCommand(context));
     registerCommand(createSkillsCommand(context));
     registerCommand(createSkillsFolderCommand(context));
+    registerCommand(createMCPCommand(context));
 
     registerCommand({
         name: "/maestro",

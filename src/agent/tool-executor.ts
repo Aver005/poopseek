@@ -14,16 +14,22 @@ export default class ToolExecutor
     private readonly workspaceRoot: string;
     private readonly askUser: AskUserFn;
     private readonly getSkillContent: ((name: string) => string | null) | undefined;
+    private readonly dynamicToolResolver: ((name: string) => import("@/tools/types").ToolHandler | undefined) | undefined;
+    private readonly getDynamicToolNames: (() => string[]) | undefined;
 
     constructor(
         workspaceRoot: string = process.cwd(),
         askUser?: AskUserFn,
         getSkillContent?: (name: string) => string | null,
+        dynamicToolResolver?: (name: string) => import("@/tools/types").ToolHandler | undefined,
+        getDynamicToolNames?: () => string[],
     )
     {
         this.workspaceRoot = path.resolve(workspaceRoot);
         this.askUser = askUser ?? (() => Promise.resolve(null));
         this.getSkillContent = getSkillContent;
+        this.dynamicToolResolver = dynamicToolResolver;
+        this.getDynamicToolNames = getDynamicToolNames;
     }
 
     private resolvePath(inputPath: string): string
@@ -105,7 +111,10 @@ export default class ToolExecutor
     {
         return {
             workspaceRoot: this.workspaceRoot,
-            getToolNames,
+            getToolNames: () => [
+                ...getToolNames(),
+                ...(this.getDynamicToolNames?.() ?? []),
+            ],
             resolvePath: (inputPath: string) => this.resolvePath(inputPath),
             runCommand: async (
                 kind: "powershell" | "bash",
@@ -122,15 +131,18 @@ export default class ToolExecutor
 
         try
         {
-            const toolHandler = toolsRegistry[toolCall.tool];
+            const toolHandler = toolsRegistry[toolCall.tool]
+                ?? this.dynamicToolResolver?.(toolCall.tool);
+
             if (toolHandler)
             {
                 return await toolHandler(args, this.getContext());
             }
 
+            const allNames = [...getToolNames(), ...(this.getDynamicToolNames?.() ?? [])];
             return {
                 ok: false,
-                output: `Unknown tool: ${toolCall.tool}. Available: ${getToolNames().join(", ")}`,
+                output: `Unknown tool: ${toolCall.tool}. Available: ${allNames.join(", ")}`,
                 error: `Unknown tool: ${toolCall.tool}`,
             };
         }

@@ -41,6 +41,7 @@ import type { ModelType } from "@/deepseek-client/types";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
 import { SkillManager } from "@/skills";
+import { MCPManager, loadMCPConfig } from "@/mcp";
 import { loadSkillFolders, saveSkillFolders } from "@/skills/skill-folders-store";
 import { ensureValidToken } from "@/cli/auth-flow";
 import { createAuthActions } from "@/cli/auth-flow";
@@ -111,6 +112,28 @@ export async function runCli(): Promise<void>
     skillManager.setExtraFolders(savedSkillFolders);
     skillManager.discover(process.cwd());
 
+    // --- MCP ---
+
+    const mcpManager = new MCPManager();
+    const mcpConfig = loadMCPConfig(process.cwd());
+
+    const syncMCP = async (): Promise<void> =>
+    {
+        contextManager.setMCPToolsDoc(mcpManager.generateToolsDoc());
+        const resourcesCtx = await mcpManager.buildResourcesContext().catch(() => "");
+        contextManager.setMCPResourcesContext(resourcesCtx);
+        skillManager.setExternalSkills(mcpManager.getPromptsAsSkills());
+    };
+
+    await mcpManager.initialize(mcpConfig.servers, mcpConfig.disabled);
+    await syncMCP();
+
+    if (mcpManager.getServerCount() > 0)
+    {
+        const connectedCount = mcpManager.getServerStatuses().filter((s) => s.status === "connected").length;
+        output.write(`\nMCP: ${connectedCount}/${mcpManager.getServerCount()} серверов подключено\n`);
+    }
+
     const syncSkills = (): void => contextManager.setSkillsContent(skillManager.getActiveContent());
 
     const buildAvailableSkillsHint = (): string =>
@@ -143,6 +166,8 @@ export async function runCli(): Promise<void>
             const skill = skillManager.getSkills().find((s) => s.name === skillName);
             return skill ? skill.body : null;
         },
+        mcpManager.createDynamicToolResolver(),
+        () => mcpManager.getDynamicToolNames(),
     );
     let modelType: ModelType = "default";
     const agentLoop = new AgentLoop(() => deepseekClient, () => session, contextManager, toolExecutor, {
@@ -508,6 +533,48 @@ export async function runCli(): Promise<void>
             syncAvailableSkills();
             await saveSkillFolders([]);
         },
+        getMCPServerStatuses: () => mcpManager.getServerStatuses(),
+        getMCPTools: () => mcpManager.getAllTools(),
+        getMCPResources: () => mcpManager.getAllResources(),
+        getMCPPrompts: () => mcpManager.getAllPrompts(),
+        mcpConnect: async (name) =>
+        {
+            await mcpManager.connectServer(name);
+            await syncMCP();
+            syncSkills();
+            syncAvailableSkills();
+        },
+        mcpDisconnect: async (name) =>
+        {
+            await mcpManager.disconnectServer(name);
+            await syncMCP();
+            syncSkills();
+            syncAvailableSkills();
+        },
+        mcpEnable: async (name) =>
+        {
+            await mcpManager.enableServer(name);
+            await syncMCP();
+            syncSkills();
+            syncAvailableSkills();
+        },
+        mcpDisable: async (name) =>
+        {
+            await mcpManager.disableServer(name);
+            await syncMCP();
+            syncSkills();
+            syncAvailableSkills();
+        },
+        mcpReload: async () =>
+        {
+            const freshConfig = loadMCPConfig(process.cwd());
+            await mcpManager.reloadAll(freshConfig.servers, freshConfig.disabled);
+            await syncMCP();
+            syncSkills();
+            syncAvailableSkills();
+        },
+        mcpReadResource: (serverName, uri) => mcpManager.readMCPResource(serverName, uri),
+        mcpGetPrompt: (serverName, promptName) => mcpManager.getMCPPrompt(serverName, promptName),
     });
 
     // --- Terminal input callbacks ---

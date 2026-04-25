@@ -260,6 +260,7 @@ export function discoverSkills(
 export class SkillManager
 {
     private skills: SkillMeta[] = [];
+    private externalSkills: SkillMeta[] = [];
     private active = new Set<string>();
     private extraFolders: string[] = [];
     private workspaceRoot = "";
@@ -294,6 +295,11 @@ export class SkillManager
         this.extraFolders = [];
     }
 
+    setExternalSkills(skills: SkillMeta[]): void
+    {
+        this.externalSkills = skills;
+    }
+
     discover(workspaceRoot: string): void
     {
         this.workspaceRoot = workspaceRoot;
@@ -307,7 +313,7 @@ export class SkillManager
 
     getSkills(): SkillMeta[]
     {
-        return this.skills;
+        return [...this.skills, ...this.externalSkills];
     }
 
     activate(name: string): boolean

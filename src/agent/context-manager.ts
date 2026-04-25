@@ -52,6 +52,8 @@ export default class ContextManager
     private bootstrapPending = true;
     private skillsContent: string = "";
     private availableSkillsHint: string = "";
+    private mcpToolsDoc: string = "";
+    private mcpResourcesContext: string = "";
 
     constructor(
         basePrompt: string,
@@ -163,6 +165,16 @@ export default class ContextManager
     setAvailableSkillsHint(hint: string): void
     {
         this.availableSkillsHint = hint;
+    }
+
+    setMCPToolsDoc(doc: string): void
+    {
+        this.mcpToolsDoc = doc;
+    }
+
+    setMCPResourcesContext(context: string): void
+    {
+        this.mcpResourcesContext = context;
     }
 
     clearHistory(): void
@@ -291,6 +303,16 @@ export default class ContextManager
         if (this.skillsContent.trim().length > 0)
         {
             blocks.push("", "### ACTIVE SKILLS", this.skillsContent.trim());
+        }
+
+        if (this.mcpToolsDoc.trim().length > 0)
+        {
+            blocks.push("", "### MCP TOOLS", this.mcpToolsDoc.trim());
+        }
+
+        if (this.mcpResourcesContext.trim().length > 0)
+        {
+            blocks.push("", "### MCP RESOURCES", this.mcpResourcesContext.trim());
         }
 
         return blocks.join("\n");
