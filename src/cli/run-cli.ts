@@ -39,6 +39,7 @@ import {
 import type { Command } from "@/commands/types";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type { ModelType } from "@/deepseek-client/types";
+import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
 
 declare const __APP_VERSION__: string | undefined;
@@ -106,7 +107,8 @@ export async function runCli(): Promise<void>
         session = await deepseekClient.createSession();
         contextManager.markSessionReset();
     };
-    const toolExecutor = new ToolExecutor(process.cwd());
+    let askUserImpl: AskUserFn = () => Promise.resolve(null);
+    const toolExecutor = new ToolExecutor(process.cwd(), (req) => askUserImpl(req));
     let modelType: ModelType = "default";
     const agentLoop = new AgentLoop(deepseekClient, () => session, contextManager, toolExecutor, {
         maxStepsPerTurn: 12,
@@ -185,6 +187,52 @@ export async function runCli(): Promise<void>
         });
     };
 
+    askUserImpl = async (request) =>
+    {
+        generationIndicator.stop();
+        terminalInput.setRenderEnabled(true);
+        terminalInput.setMode("active");
+
+        try
+        {
+            if (request.type === "text")
+            {
+                output.write(`\n${colors.cyan("?")} ${request.prompt}\n`);
+                return await waitForInput();
+            }
+
+            if (request.type === "confirm")
+            {
+                return await terminalInput.choose(request.question, [
+                    { value: "yes", label: "Да" },
+                    { value: "no", label: "Нет" },
+                ]);
+            }
+
+            if (request.type === "choice")
+            {
+                const items = [
+                    ...request.options.map((o) => ({ value: o, label: o })),
+                    { value: "__custom__", label: colors.dim("Свой вариант...") },
+                ];
+                const selected = await terminalInput.choose(request.title, items);
+                if (selected === "__custom__")
+                {
+                    output.write(`\n${colors.cyan("?")} Введите свой вариант:\n`);
+                    return await waitForInput();
+                }
+                return selected;
+            }
+
+            return null;
+        }
+        finally
+        {
+            terminalInput.setMode("queue");
+            terminalInput.setRenderEnabled(false);
+        }
+    };
+
     const executeSidechat = async (
         question: string,
         options: {
@@ -210,7 +258,7 @@ export async function runCli(): Promise<void>
             { maxMessages: 10 },
             variableProcessor,
         );
-        const sideTool = new ToolExecutor(process.cwd());
+        const sideTool = new ToolExecutor(process.cwd(), (req) => askUserImpl(req));
         const sideLoop = new AgentLoop(deepseekClient, () => sideSession, sideContext, sideTool, {
             maxStepsPerTurn: 6,
             getModelType: () => modelType,

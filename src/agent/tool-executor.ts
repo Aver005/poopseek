@@ -1,7 +1,7 @@
 import path from "node:path";
 import { getToolNames, toolsRegistry } from "@/tools";
 import { toStringValue } from "@/tools/args";
-import type { CommandResult, ToolContext } from "@/tools/types";
+import type { AskUserFn, CommandResult, ToolContext } from "@/tools/types";
 import type { ToolCallEnvelope, ToolExecutionResult } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown>
@@ -12,10 +12,12 @@ function isRecord(value: unknown): value is Record<string, unknown>
 export default class ToolExecutor
 {
     private readonly workspaceRoot: string;
+    private readonly askUser: AskUserFn;
 
-    constructor(workspaceRoot: string = process.cwd())
+    constructor(workspaceRoot: string = process.cwd(), askUser?: AskUserFn)
     {
         this.workspaceRoot = path.resolve(workspaceRoot);
+        this.askUser = askUser ?? (() => Promise.resolve(null));
     }
 
     private resolvePath(inputPath: string): string
@@ -103,6 +105,7 @@ export default class ToolExecutor
                 kind: "powershell" | "bash",
                 args: Record<string, unknown>,
             ) => this.runCommand(kind, args),
+            askUser: this.askUser,
         };
     }
 

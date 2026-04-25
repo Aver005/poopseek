@@ -7,6 +7,13 @@ export interface CommandResult
     stderr: string;
 }
 
+export type UserInputRequest =
+    | { type: "text"; prompt: string }
+    | { type: "choice"; title: string; options: string[] }
+    | { type: "confirm"; question: string };
+
+export type AskUserFn = (request: UserInputRequest) => Promise<string | null>;
+
 export interface ToolContext
 {
     workspaceRoot: string;
@@ -16,6 +23,7 @@ export interface ToolContext
         kind: "powershell" | "bash",
         args: Record<string, unknown>,
     ) => Promise<CommandResult>;
+    askUser: AskUserFn;
 }
 
 export type ToolHandler = (

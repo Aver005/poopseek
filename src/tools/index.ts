@@ -16,6 +16,9 @@ import {
     name as powershellName,
 } from "./defs/powershell";
 import { handler as toolsListHandler, name as toolsListName } from "./defs/tools-list";
+import { handler as userAskHandler, name as userAskName } from "./defs/user-ask";
+import { handler as userChoiceHandler, name as userChoiceName } from "./defs/user-choice";
+import { handler as userConfirmHandler, name as userConfirmName } from "./defs/user-confirm";
 
 export const toolsRegistry: Record<string, ToolHandler> = {
     [toolsListName]: toolsListHandler,
@@ -31,6 +34,9 @@ export const toolsRegistry: Record<string, ToolHandler> = {
     [memorySaveName]: memorySaveHandler,
     [memoryReadName]: memoryReadHandler,
     [memoryListName]: memoryListHandler,
+    [userAskName]: userAskHandler,
+    [userChoiceName]: userChoiceHandler,
+    [userConfirmName]: userConfirmHandler,
 };
 
 export function getToolNames(): string[]
