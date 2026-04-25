@@ -40,6 +40,8 @@ import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type { ModelType } from "@/deepseek-client/types";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
+import { SkillManager } from "@/skills";
+import { loadSkillFolders, saveSkillFolders } from "@/skills/skill-folders-store";
 import { ensureValidToken } from "@/cli/auth-flow";
 import { createAuthActions } from "@/cli/auth-flow";
 import { createInputQueue } from "@/cli/input-queue";
@@ -111,6 +113,12 @@ export async function runCli(): Promise<void>
         maxStepsPerTurn: 12,
         getModelType: () => modelType,
     });
+
+    const skillManager = new SkillManager();
+    const savedSkillFolders = await loadSkillFolders();
+    skillManager.setExtraFolders(savedSkillFolders);
+    skillManager.discover(process.cwd());
+    const syncSkills = (): void => contextManager.setSkillsContent(skillManager.getActiveContent());
 
     const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
     const generationIndicator = createGenerationIndicator(output);
@@ -424,6 +432,38 @@ export async function runCli(): Promise<void>
         },
         logout,
         relogin,
+        getSkills: () => skillManager.getSkills(),
+        isSkillActive: (name) => skillManager.isActive(name),
+        activateSkill: (name) =>
+        {
+            const ok = skillManager.activate(name);
+            if (ok) syncSkills();
+            return ok;
+        },
+        deactivateSkill: (name) =>
+        {
+            const ok = skillManager.deactivate(name);
+            syncSkills();
+            return ok;
+        },
+        clearSkills: () =>
+        {
+            skillManager.clearActive();
+            syncSkills();
+        },
+        getSkillFolders: () => skillManager.getExtraFolders(),
+        addSkillFolder: async (folder) =>
+        {
+            skillManager.addExtraFolder(folder);
+            skillManager.rediscover();
+            await saveSkillFolders(skillManager.getExtraFolders());
+        },
+        resetSkillFolders: async () =>
+        {
+            skillManager.resetExtraFolders();
+            skillManager.rediscover();
+            await saveSkillFolders([]);
+        },
     });
 
     // --- Terminal input callbacks ---

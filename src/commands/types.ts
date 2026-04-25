@@ -34,6 +34,14 @@ export interface CommandsContext
     } | null>;
     logout?: () => Promise<void>;
     relogin?: () => Promise<void>;
+    getSkills?: () => { name: string; description: string }[];
+    isSkillActive?: (name: string) => boolean;
+    activateSkill?: (name: string) => boolean;
+    deactivateSkill?: (name: string) => boolean;
+    clearSkills?: () => void;
+    getSkillFolders?: () => string[];
+    addSkillFolder?: (folder: string) => Promise<void>;
+    resetSkillFolders?: () => Promise<void>;
 }
 
 export interface CommandModule

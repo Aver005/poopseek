@@ -50,6 +50,7 @@ export default class ContextManager
     private messages: AgentMessage[] = [];
     private approxTokensSinceRefresh = 0;
     private bootstrapPending = true;
+    private skillsContent: string = "";
 
     constructor(
         basePrompt: string,
@@ -153,6 +154,11 @@ export default class ContextManager
         ];
     }
 
+    setSkillsContent(content: string): void
+    {
+        this.skillsContent = content;
+    }
+
     clearHistory(): void
     {
         this.messages = [];
@@ -201,6 +207,11 @@ export default class ContextManager
             "### TOOLS SNAPSHOT",
             this.processVariables(this.toolsPrompt),
         ];
+
+        if (this.skillsContent.trim().length > 0)
+        {
+            blocks.push("", "### SKILLS SNAPSHOT", this.skillsContent.trim());
+        }
 
         return blocks.join("\n");
     }
