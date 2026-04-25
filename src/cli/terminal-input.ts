@@ -25,6 +25,7 @@ type TerminalInputController = {
     setQueueSize: (size: number) => void;
     setRenderEnabled: (enabled: boolean) => void;
     setQueueCallbacks: (callbacks: QueueCallbacks) => void;
+    setStatusLine: (getter: () => string) => void;
     choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
     confirm: (message: string) => Promise<boolean>;
     close: () => void;
@@ -220,6 +221,7 @@ function buildRenderedBlock(
     workspaceRoot: string,
     fileCompletionState: FileCompletionState,
     fileSelectionIndex: number,
+    statusLine: string,
 ): string
 {
     const cursorMetrics = getCursorMetrics(value, cursor);
@@ -242,13 +244,17 @@ function buildRenderedBlock(
         `${index === 0 ? firstLinePrefix : CONTINUATION_PREFIX}${formatInputLineWithMentions(line, workspaceRoot)}`
     ).concat((() =>
     {
-        if (mode === "queue") return [];
-        const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
-        const hintLines = fileHintLines.length > 0
-            ? fileHintLines
-            : getCommandHintLines(value, commands);
-        if (hintLines.length === 0) return [];
-        return [colors.dim("Подсказки:"), ...hintLines];
+        const extra: string[] = [];
+        if (mode !== "queue")
+        {
+            const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
+            const hintLines = fileHintLines.length > 0
+                ? fileHintLines
+                : getCommandHintLines(value, commands);
+            if (hintLines.length > 0) extra.push(colors.dim("Подсказки:"), ...hintLines);
+        }
+        if (statusLine.length > 0) extra.push(statusLine);
+        return extra;
     })()).join("\n");
 }
 
@@ -394,6 +400,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 getWorkspaceRoot(),
                 getActiveFileCompletionState(),
                 fileSelectionIndex,
+                getStatusLine(),
             );
         const renderedLines = renderedBlock.split("\n");
         const renderedLineCount = renderedLines.length;
@@ -752,6 +759,13 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         queueCallbacks = callbacks;
     };
 
+    let getStatusLine: () => string = () => "";
+
+    const setStatusLine = (getter: () => string): void =>
+    {
+        getStatusLine = getter;
+    };
+
     const choose = (title: string, items: TerminalChoiceItem[]): Promise<string | null> =>
     {
         if (items.length === 0) return Promise.resolve(null);
@@ -799,5 +813,5 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         return promise;
     };
 
-    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, choose, confirm, close };
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, setStatusLine, choose, confirm, close };
 }

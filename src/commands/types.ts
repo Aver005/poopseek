@@ -56,6 +56,10 @@ export interface CommandsContext
     mcpReload?: () => Promise<void>;
     mcpReadResource?: (serverName: string, uri: string) => Promise<string>;
     mcpGetPrompt?: (serverName: string, promptName: string) => Promise<string>;
+    getSearchEnabled?: () => boolean;
+    setSearchEnabled?: (enabled: boolean) => void;
+    getThinkingEnabled?: () => boolean;
+    setThinkingEnabled?: (enabled: boolean) => void;
 }
 
 export interface CommandModule

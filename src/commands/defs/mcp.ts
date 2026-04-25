@@ -26,6 +26,7 @@ function sourceLabel(source: string): string
         case "vscode-global": return colors.blue("VS Code global");
         case "cursor": return colors.blue("Cursor");
         case "cursor-global": return colors.blue("Cursor global");
+        case "trae": return colors.blue("Trae");
         case "manual": return colors.dim("manual");
         default:
             return source.startsWith("extra:")

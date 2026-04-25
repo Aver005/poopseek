@@ -17,6 +17,8 @@ export interface AgentLoopOptions
     maxStepsPerTurn: number;
     maxToolsPerStep: number;
     getModelType?: () => ModelType;
+    getSearchEnabled?: () => boolean;
+    getThinkingEnabled?: () => boolean;
 }
 
 export interface AgentTurnCallbacks
@@ -124,6 +126,8 @@ export default class AgentLoop
             {
                 const response = await this.getDeepseekClient().sendMessage(nextPrompt, session, {
                     model_type: this.options.getModelType?.(),
+                    search_enabled: this.options.getSearchEnabled?.(),
+                    thinking_enabled: this.options.getThinkingEnabled?.(),
                 });
                 collected = await collectDeepseekOutput(response);
             }

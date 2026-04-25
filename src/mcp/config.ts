@@ -239,5 +239,18 @@ export function loadMCPConfig(workspaceRoot: string): LoadedMCPConfig
         );
     }
 
+    // 9. Trae IDE
+    const traeMCP = tryReadJson<ClaudeDesktopConfig>(
+        path.join(getAppDataDir(), "Trae", "User", "mcp.json"),
+    );
+    if (traeMCP?.mcpServers)
+    {
+        mergeServers(
+            result.servers,
+            parseExternalServers(traeMCP.mcpServers),
+            "trae",
+        );
+    }
+
     return result;
 }

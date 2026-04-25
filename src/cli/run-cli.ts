@@ -170,11 +170,24 @@ export async function runCli(): Promise<void>
         () => mcpManager.getDynamicToolNames(),
     );
     let modelType: ModelType = "default";
+    let searchEnabled = false;
+    let thinkingEnabled = false;
     const agentLoop = new AgentLoop(() => deepseekClient, () => session, contextManager, toolExecutor, {
         getModelType: () => modelType,
+        getSearchEnabled: () => searchEnabled,
+        getThinkingEnabled: () => thinkingEnabled,
     });
 
     const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
+    terminalInput.setStatusLine(() =>
+    {
+        const parts: string[] = [colors.magenta(modelType)];
+        if (searchEnabled) parts.push(colors.green("web"));
+        if (thinkingEnabled) parts.push(colors.cyan("think"));
+        const activeSkillsCount = skillManager.getActiveNames().length;
+        if (activeSkillsCount > 0) parts.push(colors.yellow(`${activeSkillsCount} skills`));
+        return colors.dim("◆ ") + parts.join(colors.dim(" · "));
+    });
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
     const terminalCapabilities = getTerminalCapabilities();
@@ -338,16 +351,9 @@ export async function runCli(): Promise<void>
                 })),
             );
 
-            if (!selectedId)
-            {
-                return { loaded: false, cancelled: true };
-            }
-
+            if (!selectedId) return { loaded: false, cancelled: true };
             const snapshot = await loadStoredSession(sessionsDir, selectedId);
-            if (!snapshot)
-            {
-                return { loaded: false };
-            }
+            if (!snapshot) return { loaded: false };
 
             currentLocalSession = {
                 id: snapshot.id,
@@ -365,6 +371,10 @@ export async function runCli(): Promise<void>
         setTheme: (theme) => setTheme(theme),
         getModelType: () => modelType,
         setModelType: (nextModelType) => modelType = nextModelType,
+        getSearchEnabled: () => searchEnabled,
+        setSearchEnabled: (enabled) => searchEnabled = enabled,
+        getThinkingEnabled: () => thinkingEnabled,
+        setThinkingEnabled: (enabled) => thinkingEnabled = enabled,
         runSidechat,
         confirm: (message) => terminalInput.confirm(message),
         resolveSessionForLoad: async (id) =>

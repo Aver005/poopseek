@@ -67,6 +67,7 @@ src/commands/defs/mcp.ts  — /mcp command (list/tools/resources/prompts/connect
 3. `%APPDATA%\Claude\claude_desktop_config.json`
 4. `.vscode/mcp.json`, `%APPDATA%\Code\User\settings.json` (mcp.servers)
 5. `~/.cursor/mcp.json`, `%APPDATA%\Cursor\User\settings.json`
+6. `%APPDATA%\Trae\User\mcp.json`
 
 ### Tool naming: `mcp__serverName__toolName`
 ### Primitives: Tools (callable), Resources (auto-injected as context), Prompts (as Skills)
