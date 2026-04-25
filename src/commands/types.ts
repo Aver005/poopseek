@@ -34,6 +34,7 @@ export interface CommandsContext
     } | null>;
     logout?: () => Promise<void>;
     relogin?: () => Promise<void>;
+    choose?: (title: string, items: { value: string; label: string; hint?: string }[]) => Promise<string | null>;
     getSkills?: () => { name: string; description: string }[];
     isSkillActive?: (name: string) => boolean;
     activateSkill?: (name: string) => boolean;
@@ -41,6 +42,7 @@ export interface CommandsContext
     clearSkills?: () => void;
     getSkillFolders?: () => string[];
     addSkillFolder?: (folder: string) => Promise<void>;
+    removeSkillFolder?: (folder: string) => Promise<void>;
     resetSkillFolders?: () => Promise<void>;
 }
 

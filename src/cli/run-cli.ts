@@ -432,6 +432,7 @@ export async function runCli(): Promise<void>
         },
         logout,
         relogin,
+        choose: (title, items) => terminalInput.choose(title, items),
         getSkills: () => skillManager.getSkills(),
         isSkillActive: (name) => skillManager.isActive(name),
         activateSkill: (name) =>
@@ -455,6 +456,12 @@ export async function runCli(): Promise<void>
         addSkillFolder: async (folder) =>
         {
             skillManager.addExtraFolder(folder);
+            skillManager.rediscover();
+            await saveSkillFolders(skillManager.getExtraFolders());
+        },
+        removeSkillFolder: async (folder) =>
+        {
+            skillManager.removeExtraFolder(folder);
             skillManager.rediscover();
             await saveSkillFolders(skillManager.getExtraFolders());
         },

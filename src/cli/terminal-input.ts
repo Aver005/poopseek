@@ -330,6 +330,13 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         cursor: 0,
     };
 
+    const history: string[] = [];
+    let historyIndex = -1;
+    let historyDraft = "";
+
+    let cmdTabIndex = -1;
+    let cmdTabQuery = "";
+
     const getWorkspaceRoot = options.getWorkspaceRoot ?? (() => process.cwd());
 
     const getDriver = async (): Promise<TerminalDriver> =>
@@ -419,11 +426,21 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         state.value = "";
         state.cursor = 0;
 
+        const trimmedValue = value.trim();
+        if (trimmedValue.length > 0)
+        {
+            if (history.at(-1) !== trimmedValue) history.push(trimmedValue);
+        }
+        historyIndex = -1;
+        historyDraft = "";
+        cmdTabIndex = -1;
+        cmdTabQuery = "";
+
         if (!renderEnabled) queueCallbacks.onValueChange?.("");
 
         for (const handler of submitHandlers)
         {
-            handler(value.trim());
+            handler(trimmedValue);
         }
 
         render();
@@ -505,6 +522,10 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
         if (data.isCharacter)
         {
+            historyIndex = -1;
+            historyDraft = "";
+            cmdTabIndex = -1;
+            cmdTabQuery = "";
             const previousCharacter = state.cursor > 0 ? state.value.at(state.cursor - 1) : undefined;
             if (name === "n" && previousCharacter === "\\")
             {
@@ -561,17 +582,43 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
             {
                 if (mode === "queue") return;
                 const completionState = getActiveFileCompletionState();
-                if (completionState.options.length === 0) return;
-                const selectedOption = completionState.options[fileSelectionIndex];
-                if (completionState.options.length > 1 && selectedOption?.insertPath === completionState.query)
+                if (completionState.options.length > 0)
                 {
-                    fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
+                    const selectedOption = completionState.options[fileSelectionIndex];
+                    if (completionState.options.length > 1 && selectedOption?.insertPath === completionState.query)
+                    {
+                        fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
+                    }
+                    const completionResult = applyFileCompletion(state.value, state.cursor, getWorkspaceRoot(), fileSelectionIndex);
+                    if (!completionResult.completed) return;
+                    state.value = completionResult.value;
+                    state.cursor = completionResult.cursor;
+                    render();
+                    return;
                 }
-                const completionResult = applyFileCompletion(state.value, state.cursor, getWorkspaceRoot(), fileSelectionIndex);
-                if (!completionResult.completed) return;
-                state.value = completionResult.value;
-                state.cursor = completionResult.cursor;
-                render();
+                // Command autocomplete: cycle through matching commands when input starts with /
+                {
+                    const trimmed = state.value.trimStart();
+                    if (trimmed.startsWith("/") && !trimmed.includes(" "))
+                    {
+                        const matches = Array.from(activeCommands.values())
+                            .map((c) => c.name)
+                            .filter((n) => n.startsWith(trimmed.toLowerCase()));
+                        if (matches.length > 0)
+                        {
+                            if (cmdTabQuery !== trimmed)
+                            {
+                                cmdTabQuery = trimmed;
+                                cmdTabIndex = -1;
+                            }
+                            cmdTabIndex = (cmdTabIndex + 1) % matches.length;
+                            state.value = matches[cmdTabIndex] ?? state.value;
+                            state.cursor = state.value.length;
+                            render();
+                            return;
+                        }
+                    }
+                }
                 return;
             }
             case "UP":
@@ -584,6 +631,17 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                         fileSelectionIndex = fileSelectionIndex === 0
                             ? completionState.options.length - 1
                             : fileSelectionIndex - 1;
+                        render();
+                        return;
+                    }
+                    // History navigation: only on single-line input or when cursor is on the first row
+                    const { row } = getCursorMetrics(state.value, state.cursor);
+                    if (row === 0 && history.length > 0)
+                    {
+                        if (historyIndex === -1) historyDraft = state.value;
+                        historyIndex = Math.min(historyIndex + 1, history.length - 1);
+                        state.value = history[history.length - 1 - historyIndex] ?? "";
+                        state.cursor = state.value.length;
                         render();
                         return;
                     }
@@ -600,6 +658,19 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                     if (completionState.options.length > 0)
                     {
                         fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
+                        render();
+                        return;
+                    }
+                    // History navigation: navigate forward or restore draft
+                    const { row } = getCursorMetrics(state.value, state.cursor);
+                    const lineCount = splitLines(state.value).length;
+                    if (historyIndex >= 0 && row === lineCount - 1)
+                    {
+                        historyIndex -= 1;
+                        state.value = historyIndex < 0
+                            ? historyDraft
+                            : (history[history.length - 1 - historyIndex] ?? "");
+                        state.cursor = state.value.length;
                         render();
                         return;
                     }

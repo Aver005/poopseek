@@ -5,7 +5,7 @@ export function createSkillsFolderCommand(context: CommandsContext): Command
 {
     return {
         name: "/skills-folder",
-        description: "Управление папками навыков: [list] | add <путь> | reset",
+        description: "Управление папками навыков: list | add <путь> | remove | reset",
         execute: async (args) =>
         {
             const sub = args[0]?.toLowerCase();
@@ -49,6 +49,33 @@ export function createSkillsFolderCommand(context: CommandsContext): Command
                 return true;
             }
 
+            if (sub === "remove")
+            {
+                const folders = context.getSkillFolders?.() ?? [];
+                writeLine("");
+                if (folders.length === 0)
+                {
+                    writeLine("Нет дополнительных папок для удаления.");
+                    writeLine("");
+                    return true;
+                }
+                const selected = await context.choose?.(
+                    "Выберите папку для удаления",
+                    folders.map((f) => ({ value: f, label: f })),
+                );
+                if (!selected)
+                {
+                    writeLine("Отменено.");
+                    writeLine("");
+                    return true;
+                }
+                await context.removeSkillFolder?.(selected);
+                writeLine(`Папка удалена: ${selected}`);
+                writeLine("Навыки переобнаружены.");
+                writeLine("");
+                return true;
+            }
+
             if (sub === "reset")
             {
                 await context.resetSkillFolders?.();
@@ -60,7 +87,7 @@ export function createSkillsFolderCommand(context: CommandsContext): Command
             }
 
             writeLine("");
-            writeLine("Использование: /skills-folder [list | add <путь> | reset]");
+            writeLine("Использование: /skills-folder [list | add <путь> | remove | reset]");
             writeLine("");
             return true;
         },

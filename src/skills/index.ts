@@ -283,6 +283,12 @@ export class SkillManager
         }
     }
 
+    removeExtraFolder(folder: string): void
+    {
+        const normalized = path.resolve(folder);
+        this.extraFolders = this.extraFolders.filter((f) => f !== normalized);
+    }
+
     resetExtraFolders(): void
     {
         this.extraFolders = [];
