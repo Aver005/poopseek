@@ -1,3 +1,4 @@
+import { parse as parseYaml } from "yaml";
 import type { ToolCallEnvelope, ToolFlowAction } from "./types";
 
 const TOOL_FLOW_ACTIONS: Record<ToolFlowAction, true> = {
@@ -106,6 +107,13 @@ function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
 {
     try
     {
+        const envelope = toEnvelope(parseYaml(candidate) as unknown);
+        if (envelope) return envelope;
+    }
+    catch { /* fall through */ }
+
+    try
+    {
         const envelope = toEnvelope(JSON.parse(candidate) as unknown);
         if (envelope) return envelope;
     }
@@ -166,7 +174,7 @@ export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
     const toolCalls: ToolCallSegment[] = [];
     let lastEnd = 0;
 
-    const fencedRegex = /```json\s*([\s\S]*?)\s*```/gi;
+    const fencedRegex = /```(?:yaml|json)\s*([\s\S]*?)\s*```/gi;
 
     for (const match of text.matchAll(fencedRegex))
     {
