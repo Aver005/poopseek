@@ -38,6 +38,7 @@ export interface CommandsContext
     getSkills?: () => { name: string; description: string }[];
     isSkillActive?: (name: string) => boolean;
     activateSkill?: (name: string) => boolean;
+    activateAllSkills?: () => void;
     deactivateSkill?: (name: string) => boolean;
     clearSkills?: () => void;
     getSkillFolders?: () => string[];

@@ -13,11 +13,17 @@ export default class ToolExecutor
 {
     private readonly workspaceRoot: string;
     private readonly askUser: AskUserFn;
+    private readonly getSkillContent: ((name: string) => string | null) | undefined;
 
-    constructor(workspaceRoot: string = process.cwd(), askUser?: AskUserFn)
+    constructor(
+        workspaceRoot: string = process.cwd(),
+        askUser?: AskUserFn,
+        getSkillContent?: (name: string) => string | null,
+    )
     {
         this.workspaceRoot = path.resolve(workspaceRoot);
         this.askUser = askUser ?? (() => Promise.resolve(null));
+        this.getSkillContent = getSkillContent;
     }
 
     private resolvePath(inputPath: string): string
@@ -106,6 +112,7 @@ export default class ToolExecutor
                 args: Record<string, unknown>,
             ) => this.runCommand(kind, args),
             askUser: this.askUser,
+            getSkillContent: this.getSkillContent,
         };
     }
 

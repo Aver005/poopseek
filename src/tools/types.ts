@@ -24,6 +24,7 @@ export interface ToolContext
         args: Record<string, unknown>,
     ) => Promise<CommandResult>;
     askUser: AskUserFn;
+    getSkillContent?: (name: string) => string | null;
 }
 
 export type ToolHandler = (

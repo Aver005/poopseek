@@ -19,6 +19,7 @@ import { handler as toolsListHandler, name as toolsListName } from "./defs/tools
 import { handler as userAskHandler, name as userAskName } from "./defs/user-ask";
 import { handler as userChoiceHandler, name as userChoiceName } from "./defs/user-choice";
 import { handler as userConfirmHandler, name as userConfirmName } from "./defs/user-confirm";
+import { handler as skillReadHandler, name as skillReadName } from "./defs/skill-read";
 
 export const toolsRegistry: Record<string, ToolHandler> = {
     [toolsListName]: toolsListHandler,
@@ -37,6 +38,7 @@ export const toolsRegistry: Record<string, ToolHandler> = {
     [userAskName]: userAskHandler,
     [userChoiceName]: userChoiceHandler,
     [userConfirmName]: userConfirmHandler,
+    [skillReadName]: skillReadHandler,
 };
 
 export function getToolNames(): string[]

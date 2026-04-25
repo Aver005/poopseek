@@ -51,6 +51,7 @@ export default class ContextManager
     private approxTokensSinceRefresh = 0;
     private bootstrapPending = true;
     private skillsContent: string = "";
+    private availableSkillsHint: string = "";
 
     constructor(
         basePrompt: string,
@@ -159,6 +160,11 @@ export default class ContextManager
         this.skillsContent = content;
     }
 
+    setAvailableSkillsHint(hint: string): void
+    {
+        this.availableSkillsHint = hint;
+    }
+
     clearHistory(): void
     {
         this.messages = [];
@@ -208,9 +214,14 @@ export default class ContextManager
             this.processVariables(this.toolsPrompt),
         ];
 
+        if (this.availableSkillsHint.trim().length > 0)
+        {
+            blocks.push("", "### AVAILABLE SKILLS", this.availableSkillsHint.trim());
+        }
+
         if (this.skillsContent.trim().length > 0)
         {
-            blocks.push("", "### SKILLS SNAPSHOT", this.skillsContent.trim());
+            blocks.push("", "### ACTIVE SKILLS", this.skillsContent.trim());
         }
 
         return blocks.join("\n");

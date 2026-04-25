@@ -106,19 +106,49 @@ export async function runCli(): Promise<void>
         session = await deepseekClient.createSession();
         contextManager.markSessionReset();
     };
+    const skillManager = new SkillManager();
+    const savedSkillFolders = await loadSkillFolders();
+    skillManager.setExtraFolders(savedSkillFolders);
+    skillManager.discover(process.cwd());
+
+    const syncSkills = (): void => contextManager.setSkillsContent(skillManager.getActiveContent());
+
+    const buildAvailableSkillsHint = (): string =>
+    {
+        const all = skillManager.getSkills();
+        if (all.length === 0) return "";
+        const namesList = all.map((s) => s.name).join(", ");
+        const exampleName = all[0]!.name;
+        return [
+            `Навыки: ${namesList}`,
+            "",
+            "Получить полное содержимое навыка:",
+            "```json",
+            `{"tool": "skill.read", "args": {"name": "${exampleName}"}, "onError": "continue", "onSuccess": "continue"}`,
+            "```",
+        ].join("\n");
+    };
+
+    const syncAvailableSkills = (): void =>
+        contextManager.setAvailableSkillsHint(buildAvailableSkillsHint());
+
+    syncAvailableSkills();
+
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
-    const toolExecutor = new ToolExecutor(process.cwd(), (req) => askUserImpl(req));
+    const toolExecutor = new ToolExecutor(
+        process.cwd(),
+        (req) => askUserImpl(req),
+        (skillName) =>
+        {
+            const skill = skillManager.getSkills().find((s) => s.name === skillName);
+            return skill ? skill.body : null;
+        },
+    );
     let modelType: ModelType = "default";
     const agentLoop = new AgentLoop(() => deepseekClient, () => session, contextManager, toolExecutor, {
         maxStepsPerTurn: 12,
         getModelType: () => modelType,
     });
-
-    const skillManager = new SkillManager();
-    const savedSkillFolders = await loadSkillFolders();
-    skillManager.setExtraFolders(savedSkillFolders);
-    skillManager.discover(process.cwd());
-    const syncSkills = (): void => contextManager.setSkillsContent(skillManager.getActiveContent());
 
     const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
     const generationIndicator = createGenerationIndicator(output);
@@ -441,6 +471,11 @@ export async function runCli(): Promise<void>
             if (ok) syncSkills();
             return ok;
         },
+        activateAllSkills: () =>
+        {
+            skillManager.activateAll();
+            syncSkills();
+        },
         deactivateSkill: (name) =>
         {
             const ok = skillManager.deactivate(name);
@@ -457,18 +492,21 @@ export async function runCli(): Promise<void>
         {
             skillManager.addExtraFolder(folder);
             skillManager.rediscover();
+            syncAvailableSkills();
             await saveSkillFolders(skillManager.getExtraFolders());
         },
         removeSkillFolder: async (folder) =>
         {
             skillManager.removeExtraFolder(folder);
             skillManager.rediscover();
+            syncAvailableSkills();
             await saveSkillFolders(skillManager.getExtraFolders());
         },
         resetSkillFolders: async () =>
         {
             skillManager.resetExtraFolders();
             skillManager.rediscover();
+            syncAvailableSkills();
             await saveSkillFolders([]);
         },
     });

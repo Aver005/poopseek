@@ -59,6 +59,40 @@ export function createCommandHandlers(
     registerCommand(createSkillsCommand(context));
     registerCommand(createSkillsFolderCommand(context));
 
+    registerCommand({
+        name: "/maestro",
+        description: "Активировать все навыки (алиас /skills all)",
+        execute: () =>
+        {
+            context.activateAllSkills?.();
+            const skills = context.getSkills?.() ?? [];
+            writeLine("");
+            if (skills.length === 0)
+            {
+                writeLine("Навыков нет — нечего активировать.");
+            }
+            else
+            {
+                writeLine(`Режим Маэстро: все ${skills.length} навыков активированы.`);
+            }
+            writeLine("");
+            return true;
+        },
+    });
+
+    registerCommand({
+        name: "/noob",
+        description: "Деактивировать все навыки (алиас /skills reset)",
+        execute: () =>
+        {
+            context.clearSkills?.();
+            writeLine("");
+            writeLine("Режим Нуба: все навыки деактивированы.");
+            writeLine("");
+            return true;
+        },
+    });
+
     return commands;
 }
 

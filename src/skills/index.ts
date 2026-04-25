@@ -318,6 +318,14 @@ export class SkillManager
         return true;
     }
 
+    activateAll(): void
+    {
+        for (const skill of this.skills)
+        {
+            this.active.add(skill.name);
+        }
+    }
+
     deactivate(name: string): boolean
     {
         return this.active.delete(name);

@@ -45,7 +45,7 @@ export function createSkillsCommand(context: CommandsContext): Command
 {
     return {
         name: "/skills",
-        description: "Навыки: [list [page]] | use <name> | off <name> | clear",
+        description: "Навыки: [list [page]] | all | reset | use <name> | off <name> | clear",
         execute: async (args) =>
         {
             const sub = args[0]?.toLowerCase();
@@ -125,6 +125,32 @@ export function createSkillsCommand(context: CommandsContext): Command
                 return true;
             }
 
+            if (sub === "all")
+            {
+                context.activateAllSkills?.();
+                const skills = context.getSkills?.() ?? [];
+                writeLine("");
+                if (skills.length === 0)
+                {
+                    writeLine("Навыков нет — нечего активировать.");
+                }
+                else
+                {
+                    writeLine(`Активированы все навыки (${skills.length}): ${skills.map((s) => colors.green(s.name)).join(", ")}`);
+                }
+                writeLine("");
+                return true;
+            }
+
+            if (sub === "reset")
+            {
+                context.clearSkills?.();
+                writeLine("");
+                writeLine("Все навыки деактивированы.");
+                writeLine("");
+                return true;
+            }
+
             if (sub === "use")
             {
                 const name = args[1];
@@ -169,7 +195,7 @@ export function createSkillsCommand(context: CommandsContext): Command
             }
 
             writeLine("");
-            writeLine("Использование: /skills [list [page] | use <name> | off <name> | clear]");
+            writeLine("Использование: /skills [list [page] | all | reset | use <name> | off <name> | clear]");
             writeLine("");
             return true;
         },
