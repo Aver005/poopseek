@@ -145,6 +145,7 @@ export async function executeRefactor(
         refactorTool,
         {
             maxStepsPerTurn: cfg.maxSteps,
+            maxToolsPerStep: 20,
             getModelType: deps.getModelType,
         },
     );
