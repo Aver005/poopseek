@@ -10,6 +10,7 @@ import { createMCPCommand } from "./defs/mcp";
 import { createWebCommand } from "./defs/web";
 import { createThinkCommand } from "./defs/think";
 import { createReviewCommand } from "./defs/review";
+import { createRefactorCommand } from "./defs/refactor";
 import { createClearCommand } from "./defs/clear";
 import { createCmptCommand } from "./defs/cmpt";
 import { createCompactCommand } from "./defs/compact";
@@ -66,6 +67,7 @@ export function createCommandHandlers(
     registerCommand(createWebCommand(context));
     registerCommand(createThinkCommand(context));
     registerCommand(createReviewCommand(context));
+    registerCommand(createRefactorCommand(context));
 
     registerCommand({
         name: "/maestro",

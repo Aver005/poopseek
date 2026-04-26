@@ -48,6 +48,7 @@ import { createAuthActions } from "@/cli/auth-flow";
 import { createInputQueue } from "@/cli/input-queue";
 import { createSidechatRunner } from "@/cli/sidechat";
 import { createReviewRunner } from "@/cli/review";
+import { createRefactorRunner } from "@/cli/refactor";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -327,6 +328,18 @@ export async function runCli(): Promise<void>
         setRenderEnabled: (enabled) => terminalInput.setRenderEnabled(enabled),
     });
 
+    const { runRefactor } = createRefactorRunner({
+        getClient: () => deepseekClient,
+        getModelType: () => modelType,
+        getWorkspaceRoot: () => process.cwd(),
+        refactorPrompt: prompts.refactorPrompt,
+        toolsPrompt: prompts.toolsPrompt,
+        variableProcessor,
+        generationIndicator,
+        getAskUser: () => askUserImpl,
+        setRenderEnabled: (enabled) => terminalInput.setRenderEnabled(enabled),
+    });
+
     // --- Command handlers ---
 
     let commands = new Map<string, Command>();
@@ -599,6 +612,7 @@ export async function runCli(): Promise<void>
         mcpReadResource: (serverName, uri) => mcpManager.readMCPResource(serverName, uri),
         mcpGetPrompt: (serverName, promptName) => mcpManager.getMCPPrompt(serverName, promptName),
         runReview,
+        runRefactor,
     });
 
     // --- Terminal input callbacks ---

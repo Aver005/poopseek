@@ -58,7 +58,7 @@ function parseScope(args: string[]): ReviewScope | null
     }
 
     // Anything else treat as branch base
-    return { kind: "branch", base: args[0] };
+    return { kind: "branch", base: args[0] ?? "main" };
 }
 
 export function createReviewCommand(context: CommandsContext): Command

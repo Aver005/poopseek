@@ -61,6 +61,7 @@ export interface CommandsContext
     getThinkingEnabled?: () => boolean;
     setThinkingEnabled?: (enabled: boolean) => void;
     runReview?: (scope: import("@/cli/review").ReviewScope) => Promise<void>;
+    runRefactor?: (level: import("@/cli/refactor").RefactorLevel, focus?: string) => Promise<void>;
 }
 
 export interface CommandModule
