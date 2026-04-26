@@ -1,6 +1,8 @@
 import type { ToolHandler } from "./types";
 
 import { handler as bashHandler, name as bashName } from "./defs/bash";
+import { handler as todoWriteHandler, name as todoWriteName } from "./defs/todo-write";
+import { handler as todoReadHandler, name as todoReadName } from "./defs/todo-read";
 import { handler as fileEditHandler, name as fileEditName } from "./defs/file-edit";
 import { handler as fileFindHandler, name as fileFindName } from "./defs/file-find";
 import { handler as fileListHandler, name as fileListName } from "./defs/file-list";
@@ -24,6 +26,8 @@ import { handler as skillReadHandler, name as skillReadName } from "./defs/skill
 
 export const toolsRegistry: Record<string, ToolHandler> = {
     [toolsListName]: toolsListHandler,
+    [todoWriteName]: todoWriteHandler,
+    [todoReadName]: todoReadHandler,
     [bashName]: bashHandler,
     [powershellName]: powershellHandler,
     [fileFindName]: fileFindHandler,
