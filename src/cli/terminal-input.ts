@@ -64,6 +64,68 @@ const PROMPT_WIDTH = 2;
 const CONTINUATION_WIDTH = 2;
 const SHIFT_ENTER_SEQUENCES = new Set(["\x1b[13;2u", "\x1b\r"]);
 
+const PASTE_S = "\x02";
+const PASTE_E = "\x03";
+
+function makePasteSentinel(id: number): string
+{
+    return `${PASTE_S}p:${id}${PASTE_E}`;
+}
+
+function pasteTokenText(lineCount: number): string
+{
+    return `[вставка: ${lineCount} строк]`;
+}
+
+function getSentinelBefore(value: string, cursor: number): { start: number; end: number; id: number } | null
+{
+    if (cursor === 0 || value[cursor - 1] !== PASTE_E) return null;
+    const start = value.lastIndexOf(PASTE_S, cursor - 2);
+    if (start === -1) return null;
+    const inner = value.slice(start + 1, cursor - 1);
+    if (!inner.startsWith("p:")) return null;
+    const id = parseInt(inner.slice(2), 10);
+    return isNaN(id) ? null : { start, end: cursor, id };
+}
+
+function getSentinelAfter(value: string, cursor: number): { start: number; end: number; id: number } | null
+{
+    if (cursor >= value.length || value[cursor] !== PASTE_S) return null;
+    const end = value.indexOf(PASTE_E, cursor + 1);
+    if (end === -1) return null;
+    const inner = value.slice(cursor + 1, end);
+    if (!inner.startsWith("p:")) return null;
+    const id = parseInt(inner.slice(2), 10);
+    return isNaN(id) ? null : { start: cursor, end: end + 1, id };
+}
+
+function expandPasteSentinels(value: string, blocks: Map<string, string>): string
+{
+    return value.replace(/\x02p:(\d+)\x03/g, (_, id) => blocks.get(id) ?? "");
+}
+
+function getVisualColumn(value: string, cursor: number, blocks: Map<string, string>): number
+{
+    const lineStart = getLineStart(value, cursor);
+    const raw = value.slice(lineStart, cursor);
+    const visual = raw.replace(/\x02p:(\d+)\x03/g, (_, id) =>
+    {
+        const content = blocks.get(id) ?? "";
+        return pasteTokenText(content.split("\n").length);
+    });
+    return visual.length;
+}
+
+function renderLineWithPasteBlocks(line: string, blocks: Map<string, string>): string
+{
+    return line.replace(/\x02p:(\d+)\x03/g, (_, id) =>
+    {
+        const content = blocks.get(id) ?? "";
+        const lineCount = content.split("\n").length;
+        return colors.yellow(pasteTokenText(lineCount));
+    });
+}
+
 function splitLines(value: string): string[]
 {
     return value.length === 0 ? [""] : value.split("\n");
@@ -150,6 +212,9 @@ function createNativeDriver(): TerminalDriver
         if (key?.name === "home") return { name: "HOME", data: { code: sequence, isCharacter: false } };
         if (key?.name === "end") return { name: "END", data: { code: sequence, isCharacter: false } };
         if (key?.name === "tab") return { name: "TAB", data: { code: sequence, isCharacter: false } };
+        if (key?.ctrl && key.name === "e") return { name: "CTRL_E", data: { code: sequence, isCharacter: false } };
+        if (sequence === "\x1b[200~") return { name: "PASTE_START", data: { code: sequence, isCharacter: false } };
+        if (sequence === "\x1b[201~") return { name: "PASTE_END", data: { code: sequence, isCharacter: false } };
         return { name: char, data: { code: sequence, isCharacter: char.length > 0 } };
     };
 
@@ -159,10 +224,12 @@ function createNativeDriver(): TerminalDriver
             if (!input.isTTY) return;
             input.setRawMode?.(true);
             input.resume();
+            output.write("\x1b[?2004h");
         },
         releaseInput: (): void =>
         {
             if (!input.isTTY) return;
+            output.write("\x1b[?2004l");
             input.setRawMode?.(false);
         },
         hideCursor: (): void => { output.write("\x1b[?25l"); },
@@ -198,8 +265,8 @@ async function createTerminalDriver(): Promise<TerminalDriver>
         const terminalKit = terminalKitModule.default;
         const term = terminalKit.terminal;
         return {
-            grabInput: (): void => { term.grabInput(true); },
-            releaseInput: (): void => { term.grabInput(false); },
+            grabInput: (): void => { term.grabInput(true); output.write("\x1b[?2004h"); },
+            releaseInput: (): void => { output.write("\x1b[?2004l"); term.grabInput(false); },
             hideCursor: (): void => { term.hideCursor(); },
             showCursor: (): void => { term.hideCursor(false); },
             onKey: (listener): void => { term.on("key", listener); },
@@ -222,6 +289,8 @@ function buildRenderedBlock(
     fileCompletionState: FileCompletionState,
     fileSelectionIndex: number,
     statusLine: string,
+    pasteBlocks: Map<string, string>,
+    showPasteHint: boolean,
 ): string
 {
     const cursorMetrics = getCursorMetrics(value, cursor);
@@ -241,17 +310,24 @@ function buildRenderedBlock(
         : PROMPT_PREFIX;
 
     return inputLines.map((line, index) =>
-        `${index === 0 ? firstLinePrefix : CONTINUATION_PREFIX}${formatInputLineWithMentions(line, workspaceRoot)}`
+        `${index === 0 ? firstLinePrefix : CONTINUATION_PREFIX}${renderLineWithPasteBlocks(formatInputLineWithMentions(line, workspaceRoot), pasteBlocks)}`
     ).concat((() =>
     {
         const extra: string[] = [];
         if (mode !== "queue")
         {
-            const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
-            const hintLines = fileHintLines.length > 0
-                ? fileHintLines
-                : getCommandHintLines(value, commands);
-            if (hintLines.length > 0) extra.push(colors.dim("Подсказки:"), ...hintLines);
+            if (showPasteHint)
+            {
+                extra.push(colors.dim("Backspace — удалить блок  Ctrl+E — развернуть"));
+            }
+            else
+            {
+                const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
+                const hintLines = fileHintLines.length > 0
+                    ? fileHintLines
+                    : getCommandHintLines(value, commands);
+                if (hintLines.length > 0) extra.push(colors.dim("Подсказки:"), ...hintLines);
+            }
         }
         if (statusLine.length > 0) extra.push(statusLine);
         return extra;
@@ -331,6 +407,63 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
     const submitHandlers = new Set<(value: string) => void>();
 
+    const pasteBlocks = new Map<string, string>();
+    let pasteIdCounter = 0;
+    let isPasting = false;
+    let pasteBuffer = "";
+
+    const charBatch: string[] = [];
+    let charBatchScheduled = false;
+
+    const flushCharBatch = (): void =>
+    {
+        if (charBatch.length === 0) return;
+        const chars = charBatch.splice(0);
+        charBatchScheduled = false;
+        historyIndex = -1;
+        historyDraft = "";
+        cmdTabIndex = -1;
+        cmdTabQuery = "";
+        const text = chars.join("");
+        const isLarge = text.includes("\n") || text.length > 80;
+        if (isLarge)
+        {
+            const id = pasteIdCounter++;
+            pasteBlocks.set(String(id), text);
+            const sentinel = makePasteSentinel(id);
+            state.value = state.value.slice(0, state.cursor) + sentinel + state.value.slice(state.cursor);
+            state.cursor += sentinel.length;
+        }
+        else if (chars.length === 1)
+        {
+            const char = chars[0]!;
+            const previousCharacter = state.cursor > 0 ? state.value.at(state.cursor - 1) : undefined;
+            if (char === "n" && previousCharacter === "\\")
+            {
+                state.value = state.value.slice(0, state.cursor - 1) + "\n" + state.value.slice(state.cursor);
+            }
+            else
+            {
+                state.value = state.value.slice(0, state.cursor) + char + state.value.slice(state.cursor);
+                state.cursor += char.length;
+            }
+        }
+        else
+        {
+            state.value = state.value.slice(0, state.cursor) + text + state.value.slice(state.cursor);
+            state.cursor += text.length;
+        }
+        render();
+        if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+    };
+
+    const scheduleCharBatchFlush = (): void =>
+    {
+        if (charBatchScheduled) return;
+        charBatchScheduled = true;
+        process.nextTick(flushCharBatch);
+    };
+
     const state = {
         value: "",
         cursor: 0,
@@ -387,6 +520,9 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     const render = (): void =>
     {
         if (!renderEnabled) return;
+        const sentBefore = getSentinelBefore(state.value, state.cursor);
+        const sentAfter = getSentinelAfter(state.value, state.cursor);
+        const showPasteHint = sentBefore !== null || sentAfter !== null;
         const renderedBlock = confirmState
             ? buildConfirmBlock(confirmState.message)
             : choiceState
@@ -401,15 +537,18 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 getActiveFileCompletionState(),
                 fileSelectionIndex,
                 getStatusLine(),
+                pasteBlocks,
+                showPasteHint,
             );
         const renderedLines = renderedBlock.split("\n");
         const renderedLineCount = renderedLines.length;
         const cursorMetrics = getCursorMetrics(state.value, state.cursor);
+        const visualCol = getVisualColumn(state.value, state.cursor, pasteBlocks);
         const horizontalOffset = choiceState
             ? 0
             : (cursorMetrics.row === 0
-                ? PROMPT_WIDTH + cursorMetrics.column
-                : CONTINUATION_WIDTH + cursorMetrics.column);
+                ? PROMPT_WIDTH + visualCol
+                : CONTINUATION_WIDTH + visualCol);
         const linesUpFromBottom = choiceState
             ? 0
             : renderedLineCount - 1 - cursorMetrics.row;
@@ -428,7 +567,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         lastCursorRow = choiceState ? renderedLineCount - 1 : cursorMetrics.row;
     };
 
-    const submit = (value: string): void =>
+    const submit = (rawValue: string): void =>
     {
         clearPreviousRender();
         if (renderEnabled) output.write("\n");
@@ -437,7 +576,9 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         state.value = "";
         state.cursor = 0;
 
-        const trimmedValue = value.trim();
+        const expandedValue = expandPasteSentinels(rawValue, pasteBlocks);
+        pasteBlocks.clear();
+        const trimmedValue = expandedValue.trim();
         if (trimmedValue.length > 0)
         {
             if (history.at(-1) !== trimmedValue) history.push(trimmedValue);
@@ -460,6 +601,46 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
     const onKey = (name: string, _matches: string[], data: TerminalKeyData): void =>
     {
+        if (name === "PASTE_START")
+        {
+            isPasting = true;
+            pasteBuffer = "";
+            return;
+        }
+
+        if (isPasting)
+        {
+            if (name === "PASTE_END")
+            {
+                isPasting = false;
+                if (pasteBuffer.length > 0)
+                {
+                    const isLarge = pasteBuffer.includes("\n") || pasteBuffer.length > 80;
+                    if (isLarge)
+                    {
+                        const id = pasteIdCounter++;
+                        pasteBlocks.set(String(id), pasteBuffer);
+                        const sentinel = makePasteSentinel(id);
+                        state.value = state.value.slice(0, state.cursor) + sentinel + state.value.slice(state.cursor);
+                        state.cursor += sentinel.length;
+                    }
+                    else
+                    {
+                        state.value = state.value.slice(0, state.cursor) + pasteBuffer + state.value.slice(state.cursor);
+                        state.cursor += pasteBuffer.length;
+                    }
+                    pasteBuffer = "";
+                    render();
+                    if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+                }
+                return;
+            }
+            if (name === "ENTER" || name === "KP_ENTER") { pasteBuffer += "\n"; return; }
+            if (name === "TAB") { pasteBuffer += "\t"; return; }
+            if (data.isCharacter) { pasteBuffer += name; return; }
+            return;
+        }
+
         if (confirmState)
         {
             if (name === "ENTER" || name === "KP_ENTER")
@@ -522,6 +703,20 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
             return;
         }
 
+        if (name === "CTRL_E")
+        {
+            const sent = getSentinelBefore(state.value, state.cursor) ?? getSentinelAfter(state.value, state.cursor);
+            if (sent)
+            {
+                const content = pasteBlocks.get(String(sent.id)) ?? "";
+                pasteBlocks.delete(String(sent.id));
+                state.value = state.value.slice(0, sent.start) + content + state.value.slice(sent.end);
+                state.cursor = sent.start + content.length;
+                render();
+            }
+            return;
+        }
+
         if (isShiftEnter(data.code))
         {
             state.value = `${state.value.slice(0, state.cursor)}\n${state.value.slice(state.cursor)}`;
@@ -533,24 +728,19 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
         if (data.isCharacter)
         {
-            historyIndex = -1;
-            historyDraft = "";
-            cmdTabIndex = -1;
-            cmdTabQuery = "";
-            const previousCharacter = state.cursor > 0 ? state.value.at(state.cursor - 1) : undefined;
-            if (name === "n" && previousCharacter === "\\")
-            {
-                state.value = [state.value.slice(0, state.cursor - 1), "\n", state.value.slice(state.cursor)].join("");
-                render();
-                if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
-                return;
-            }
-            state.value = [state.value.slice(0, state.cursor), name, state.value.slice(state.cursor)].join("");
-            state.cursor += name.length;
-            render();
-            if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+            charBatch.push(name);
+            scheduleCharBatchFlush();
             return;
         }
+
+        if ((name === "ENTER" || name === "KP_ENTER") && charBatch.length > 0)
+        {
+            charBatch.push("\n");
+            scheduleCharBatchFlush();
+            return;
+        }
+
+        flushCharBatch();
 
         switch (name)
         {
@@ -559,28 +749,59 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 submit(state.value);
                 return;
             case "BACKSPACE":
+            {
                 if (state.cursor === 0) return;
-                state.value = [state.value.slice(0, state.cursor - 1), state.value.slice(state.cursor)].join("");
-                state.cursor -= 1;
+                const sentB = getSentinelBefore(state.value, state.cursor);
+                if (sentB)
+                {
+                    pasteBlocks.delete(String(sentB.id));
+                    state.value = state.value.slice(0, sentB.start) + state.value.slice(sentB.end);
+                    state.cursor = sentB.start;
+                }
+                else
+                {
+                    state.value = state.value.slice(0, state.cursor - 1) + state.value.slice(state.cursor);
+                    state.cursor -= 1;
+                }
                 render();
                 if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
                 return;
+            }
             case "DELETE":
+            {
                 if (state.cursor >= state.value.length) return;
-                state.value = [state.value.slice(0, state.cursor), state.value.slice(state.cursor + 1)].join("");
+                const sentD = getSentinelAfter(state.value, state.cursor);
+                if (sentD)
+                {
+                    pasteBlocks.delete(String(sentD.id));
+                    state.value = state.value.slice(0, sentD.start) + state.value.slice(sentD.end);
+                }
+                else
+                {
+                    state.value = state.value.slice(0, state.cursor) + state.value.slice(state.cursor + 1);
+                }
                 render();
                 if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
                 return;
+            }
             case "LEFT":
+            {
                 if (state.cursor === 0) return;
+                const sentL = getSentinelBefore(state.value, state.cursor);
+                if (sentL) { state.cursor = sentL.start; render(); return; }
                 state.cursor -= 1;
                 render();
                 return;
+            }
             case "RIGHT":
+            {
                 if (state.cursor >= state.value.length) return;
+                const sentR = getSentinelAfter(state.value, state.cursor);
+                if (sentR) { state.cursor = sentR.end; render(); return; }
                 state.cursor += 1;
                 render();
                 return;
+            }
             case "HOME":
                 state.cursor = getLineStart(state.value, state.cursor);
                 render();
