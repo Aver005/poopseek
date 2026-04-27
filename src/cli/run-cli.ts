@@ -900,8 +900,9 @@ export async function runCli(): Promise<void>
                         generationIndicator.stop();
                         hadToolInThisTurn = true;
                         wroteAnyChunk = false;
-                        const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
+                        const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
                         output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
+                        output.write("\n");
                         generationIndicator.activate("Продолжаю...");
                     },
                 });

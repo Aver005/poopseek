@@ -4,10 +4,12 @@ All notable changes to PoopSeek are documented here.
 
 ---
 
-## [1.1.0] — Unreleased
+## [1.1.0] — 2026-04-28
 
 ### Agent Engine
 
+- **Sub-agent tools** — new `agent.ask` and `agent.parallel` tools let the main agent delegate analytical tasks to isolated sub-agents that can read multiple files and return structured JSON responses, enabling parallel processing of independent tasks. Added `SubAgentRunner` class and extended `ToolContext` with `spawnSubAgent` and `spawnSubAgents` methods.
+- **Progress reporting for tools** — `ToolContext` now supports optional `onProgress` callback; `agent.ask` and `agent.parallel` report their status inline, and `GenerationIndicator` was enhanced with an `activate` method for real-time updates.
 - **Token-aware context refresh** — `ContextManager` now tracks approximate token count per session and automatically injects a compact refresh snapshot every ~64k tokens, preventing context degradation on long conversations. New `PreparedTurnMessage` type exposes `approxTokens`, `includedBootstrap`, and `includedRefresh` flags.
 - **Session reset** — added `markSessionReset()` to `ContextManager`; resets the token counter and schedules a bootstrap message on the next turn.
 - **Batched tool calls** — the agent loop now parses and dispatches multiple tool calls in a single model response step, significantly reducing round-trips for multi-step operations. `maxStepsPerTurn` raised from 10 → 256.
@@ -50,6 +52,7 @@ All notable changes to PoopSeek are documented here.
 
 ### MCP Integration
 
+- **Connection caching and timeout** — `MCPManager` now caches connection status to avoid repeated failed attempts; implements connection timeout to prevent hanging on unresponsive servers; persistent cache stored in platform-specific config directories.
 - **Full Model Context Protocol support** via `@modelcontextprotocol/sdk@1.29.0` — both STDIO and Streamable HTTP transports.
 - **`MCPManager`** (`src/mcp/manager.ts`) — manages server lifecycle (connect/disconnect/reconnect), exposes tools, resources, and prompts via unified accessors.
 - **Auto-discovery** — `MCPConfigLoader` (`src/mcp/config.ts`) resolves servers from (in priority order): `./mcp.config.json`, `%APPDATA%/poopseek/mcp.config.json`, Claude Desktop, VS Code, Cursor, and Trae IDE config files.
@@ -61,6 +64,8 @@ All notable changes to PoopSeek are documented here.
 
 ### New Commands
 
+- **`/provider`** — multi-provider support with command to list, configure, and switch between LLM providers (DeepSeek web, OpenAI-compatible APIs, Anthropic Claude, Google Gemini, Ollama, etc.). Replaces hardcoded DeepSeek client with flexible `ILLMProvider` abstraction.
+- **`/auth`** — manage account settings, including user name and provider configurations; works alongside revamped `/provider` command.
 - **`/think`** — toggles DeepSeek reasoning mode (`thinking_enabled`) on/off for the current session.
 - **`/web`** — toggles web search (`search_enabled`) on/off for the current session.
 - **`/logout`** — revokes the stored API token, then prompts for a new one immediately (relogin flow). Token validation added to `DeepseekClient`.
@@ -86,9 +91,20 @@ All notable changes to PoopSeek are documented here.
 
 ### CLI & Terminal
 
+- **Onboarding flow** — first-time users now go through a setup wizard to set a preferred name and configure LLM providers; runtime config extended with `userName`, `configuredProviders`, and `onboardingDone` flag.
 - **`$OS` variable** — new variable resolver that exposes `windows`, `linux`, or `macos`; used in prompts to gate platform-specific tool suggestions.
 - **Auth/input/sidechat modules** — `run-cli.ts` refactored: authentication flow extracted to `src/cli/auth-flow.ts`, input queuing to `src/cli/input-queue.ts`, sidechat handling to `src/cli/sidechat.ts`.
 - **Atomic file writes** — shared `writeTextFile()` utility (`src/tools/utils/write-text-file.ts`) used by `file.write`, `file.edit`, and `git.edit` to ensure crash-safe output via temp-file + rename.
+
+### Fixes
+
+- **Input queue logic** — fixed handling of empty submissions by moving early return after waiter resolution.
+- **Provider configuration** — sanitized existing providers in auth command, preserving skipped providers in selection list; improved provider switching to reuse existing configs and auto-save new ones.
+- **Auth provider handling** — enhanced provider configuration to prevent loss of configured providers when skipping reconfiguration. (`src/tools/utils/write-text-file.ts`) used by `file.write`, `file.edit`, and `git.edit` to ensure crash-safe output via temp-file + rename.
+
+### Dependencies
+
+- **OpenAI SDK** — added `openai` package; refactored OpenAI-compatible provider to use official SDK instead of custom implementation.
 
 ### Prompts & Docs
 

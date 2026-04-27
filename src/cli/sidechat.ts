@@ -101,7 +101,7 @@ async function executeSidechat(
             },
             onToolDone: (toolName, toolResult) =>
             {
-                const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
+                const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
                 write(`${colors.dim("[btw/tool]")} ${colors.cyan(toolName)} ${marker}\n`);
             },
         });

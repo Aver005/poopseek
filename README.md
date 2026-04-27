@@ -68,17 +68,17 @@ bun run build:exe --version 1.2.3
 ```
 > создай файл test.txt с текстом "Hello World"
 🔨 Выполняется: file-write
-[tool] file-write ok=true
+[tool] file-write ok
 Файл test.txt успешно создан.
 
 > покажи содержимое файла
 🔨 Выполняется: file-read
-[tool] file-read ok=true
+[tool] file-read ok
 Содержимое: Hello World
 
 > сколько файлов в текущей папке?
 🔨 Выполняется: bash
-[tool] bash ok=true
+[tool] bash ok
 Всего файлов: 12
 ```
 

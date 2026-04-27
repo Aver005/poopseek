@@ -169,14 +169,20 @@ export function createProviderCommand(context: CommandsContext): Command
                     }
 
                     const idx = parseInt(sel, 10) - 1;
-                    if (idx < 0 || idx >= configured.length)
+                    if (!Number.isInteger(idx) || idx < 0 || idx >= configured.length)
                     {
-                        writeLine("Отменено.");
+                        writeLine("Некорректный номер. Введите число из списка.");
                         writeLine("");
                         return true;
                     }
 
-                    const config = configured[idx]!;
+                    const config = configured[idx];
+                    if (!config)
+                    {
+                        writeLine("Не удалось выбрать провайдер. Повторите команду.");
+                        writeLine("");
+                        return true;
+                    }
                     writeLine("");
                     writeLine(`Переключение на ${PROVIDER_LABELS[config.id as ProviderId] ?? config.id}...`);
                     try

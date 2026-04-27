@@ -135,7 +135,7 @@ export async function executeReview(scope: ReviewScope, deps: ReviewDeps): Promi
             },
             onToolDone: (toolName, toolResult) =>
             {
-                const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
+                const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
                 output.write(`${colors.dim("[review/tool]")} ${colors.cyan(toolName)} ${marker}\n`);
             },
         });
