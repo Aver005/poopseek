@@ -66,6 +66,10 @@ export interface CommandsContext
     getCurrentProvider?: () => import("@/providers").ILLMProvider;
     setProvider?: (provider: import("@/providers").ILLMProvider, config: import("@/providers").ProviderConfig) => Promise<void>;
     waitForInput?: () => Promise<string>;
+    getToken?: () => string;
+    getUserName?: () => string | null;
+    getConfiguredProviders?: () => import("@/providers").ProviderConfig[];
+    saveUserConfig?: (update: { userName?: string | null; configuredProviders?: import("@/providers").ProviderConfig[] }) => Promise<void>;
 }
 
 export interface CommandModule

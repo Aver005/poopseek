@@ -1,7 +1,8 @@
 import type { VariableModule } from "../types";
 
-function resolveUserName(): string
+function resolveUserName(configuredName?: string | null): string
 {
+    if (configuredName) return configuredName;
     return (
         process.env.POOPSEEK_USER ??
         process.env.USERNAME ??
@@ -12,5 +13,5 @@ function resolveUserName(): string
 
 export const userVariable: VariableModule = {
     key: "user",
-    resolve: () => resolveUserName(),
+    resolve: (context) => resolveUserName(context.userName),
 };

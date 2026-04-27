@@ -2,9 +2,9 @@ import { writeLine } from "../io";
 import type { Command, CommandsContext } from "../types";
 import { createProvider, PROVIDER_IDS, type ProviderConfig } from "@/providers";
 
-type ProviderId = (typeof PROVIDER_IDS)[number];
+export type ProviderId = (typeof PROVIDER_IDS)[number];
 
-const PROVIDER_LABELS: Record<ProviderId, string> = {
+export const PROVIDER_LABELS: Record<ProviderId, string> = {
     "deepseek-web": "DeepSeek (web, бесплатно)",
     "openrouter":   "OpenRouter",
     "openai":       "OpenAI",
@@ -20,7 +20,7 @@ function isProviderId(value: string): value is ProviderId
     return (PROVIDER_IDS as readonly string[]).includes(value);
 }
 
-async function promptLine(
+export async function promptLine(
     waitForInput: () => Promise<string>,
     prompt: string,
     defaultValue?: string,
@@ -33,7 +33,7 @@ async function promptLine(
     return raw;
 }
 
-async function buildConfig(
+export async function buildConfig(
     id: ProviderId,
     waitForInput: () => Promise<string>,
 ): Promise<ProviderConfig | null>
@@ -107,7 +107,7 @@ export function createProviderCommand(context: CommandsContext): Command
         description: "Показать или сменить провайдера LLM (/provider [id])",
         execute: async (args) =>
         {
-            const { getCurrentProvider, setProvider, waitForInput } = context;
+            const { getCurrentProvider, setProvider, waitForInput, getConfiguredProviders, getToken } = context;
 
             if (!getCurrentProvider || !setProvider || !waitForInput)
             {
@@ -119,22 +119,72 @@ export function createProviderCommand(context: CommandsContext): Command
 
             const rawId = args[0]?.toLowerCase();
 
-            // Show current + list available
             if (!rawId)
             {
                 const current = getCurrentProvider();
+                const configured = getConfiguredProviders?.() ?? [];
+
                 writeLine("");
                 writeLine(`Текущий провайдер: ${current.info.label}`);
                 writeLine("");
-                writeLine("Доступные провайдеры:");
-                for (const id of PROVIDER_IDS)
+
+                if (configured.length > 0)
                 {
-                    const marker = current.info.id === id ? "→" : " ";
-                    writeLine(`  ${marker} ${id.padEnd(14)} ${PROVIDER_LABELS[id]}`);
+                    writeLine("Настроенные провайдеры:");
+                    configured.forEach((p, i) =>
+                    {
+                        const marker = current.info.id === p.id ? "→" : " ";
+                        const label = PROVIDER_LABELS[p.id as ProviderId] ?? p.id;
+                        writeLine(`  ${marker} ${i + 1}. ${label}`);
+                    });
+                    writeLine("");
+                    writeLine("Номер для переключения, Enter для отмены (добавить новый: /provider <id>):");
+
+                    const sel = (await waitForInput()).trim();
+                    if (!sel)
+                    {
+                        writeLine("");
+                        return true;
+                    }
+
+                    const idx = parseInt(sel, 10) - 1;
+                    if (idx < 0 || idx >= configured.length)
+                    {
+                        writeLine("Отменено.");
+                        writeLine("");
+                        return true;
+                    }
+
+                    const config = configured[idx]!;
+                    writeLine("");
+                    writeLine(`Переключение на ${PROVIDER_LABELS[config.id as ProviderId] ?? config.id}...`);
+                    try
+                    {
+                        const newProvider = await createProvider(config, getToken?.() ?? "");
+                        await setProvider(newProvider, config);
+                        writeLine(`Провайдер переключён: ${newProvider.info.label}`);
+                        writeLine("История очищена, новая сессия начата.");
+                    }
+                    catch (error)
+                    {
+                        const message = error instanceof Error ? error.message : String(error);
+                        writeLine(`Ошибка подключения: ${message}`);
+                    }
+                    writeLine("");
                 }
-                writeLine("");
-                writeLine("Использование: /provider <id>");
-                writeLine("");
+                else
+                {
+                    writeLine("Доступные провайдеры:");
+                    for (const id of PROVIDER_IDS)
+                    {
+                        const marker = current.info.id === id ? "→" : " ";
+                        writeLine(`  ${marker} ${id.padEnd(14)} ${PROVIDER_LABELS[id]}`);
+                    }
+                    writeLine("");
+                    writeLine("Использование: /provider <id>");
+                    writeLine("");
+                }
+
                 return true;
             }
 
@@ -162,7 +212,7 @@ export function createProviderCommand(context: CommandsContext): Command
             try
             {
                 writeLine("Подключение...");
-                const newProvider = await createProvider(config, "");
+                const newProvider = await createProvider(config, getToken?.() ?? "");
                 await setProvider(newProvider, config);
                 writeLine(`Провайдер переключён: ${newProvider.info.label}`);
                 writeLine("История очищена, новая сессия начата.");

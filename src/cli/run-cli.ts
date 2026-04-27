@@ -49,6 +49,7 @@ import { SubAgentRunner } from "@/agent/sub-agent";
 import { createReviewRunner } from "@/cli/review";
 import { createRefactorRunner } from "@/cli/refactor";
 import { LoadingView } from "@/cli/views/loading";
+import { runOnboarding } from "@/cli/onboarding";
 import {
     createProvider,
     DeepseekWebProvider,
@@ -68,30 +69,50 @@ export async function runCli(): Promise<void>
         : "";
     const appVersion = embeddedVersion || envVersion || "dev";
 
+    // --- Onboarding (first launch) ---
+
+    let runtimeConfig = loadedRuntimeConfig.config;
+
+    if (!runtimeConfig.onboardingDone)
+    {
+        const result = await runOnboarding(runtimeConfig, runtimeConfigPath);
+        runtimeConfig = {
+            ...runtimeConfig,
+            userName: result.userName,
+            configuredProviders: result.configuredProviders,
+            provider: result.activeProvider,
+            token: result.token,
+            onboardingDone: true,
+        };
+        await saveRuntimeConfig(runtimeConfigPath, runtimeConfig);
+    }
+
     // --- Provider initialization ---
 
     let provider: ILLMProvider;
-    let token: string = "";
+    let token: string = runtimeConfig.token ?? "";
 
-    const savedProviderConfig = loadedRuntimeConfig.config.provider;
+    const savedProviderConfig = runtimeConfig.provider;
 
     if (savedProviderConfig && savedProviderConfig.id !== "deepseek-web")
     {
-        // Non-deepseek-web provider: create directly from config (no token needed)
         provider = await createProvider(savedProviderConfig, "");
     }
     else
     {
-        // deepseek-web (default) or no saved provider: need token
-        const initialToken = envToken ?? loadedRuntimeConfig.config.token ?? await promptForToken();
+        const initialToken = envToken ?? runtimeConfig.token ?? await promptForToken();
         token = await ensureValidToken({
             initialToken,
             envToken,
-            savedToken: loadedRuntimeConfig.config.token,
+            savedToken: runtimeConfig.token,
             runtimeConfigPath,
+            baseConfig: runtimeConfig,
         });
         provider = await DeepseekWebProvider.create(token);
     }
+
+    let userNameForContext = runtimeConfig.userName;
+    let configuredProviders = runtimeConfig.configuredProviders;
 
     const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
     const generationIndicator = createGenerationIndicator(output);
@@ -126,7 +147,10 @@ export async function runCli(): Promise<void>
     reportProgress?.(20);
 
     const prompts = await readPromptFiles();
-    const variableProcessor = createVariableProcessor({ workspaceRoot: process.cwd() });
+    const variableProcessor = createVariableProcessor({
+        workspaceRoot: process.cwd(),
+        get userName() { return userNameForContext; },
+    });
     const contextManager = new ContextManager(
         prompts.basePrompt,
         prompts.toolsPrompt,
@@ -369,6 +393,7 @@ export async function runCli(): Promise<void>
         {
             provider = newProvider;
         },
+        getRuntimeConfig: () => runtimeConfig,
     });
 
     // --- Sidechat ---
@@ -704,13 +729,25 @@ export async function runCli(): Promise<void>
             contextManager.clearHistory();
             startNewLocalSession();
             contextManager.markSessionReset();
-            await saveRuntimeConfig(runtimeConfigPath, {
-                token: config.id === "deepseek-web" ? token : null,
+            runtimeConfig = {
+                ...runtimeConfig,
                 provider: config,
-            });
+                token: config.id === "deepseek-web" ? token : runtimeConfig.token,
+            };
+            await saveRuntimeConfig(runtimeConfigPath, runtimeConfig);
             await saveCurrentLocalSession();
         },
         waitForInput: () => inputQueue.waitForNext(),
+        getToken: () => token,
+        getUserName: () => userNameForContext,
+        getConfiguredProviders: () => configuredProviders,
+        saveUserConfig: async (update) =>
+        {
+            if (update.userName !== undefined) userNameForContext = update.userName ?? null;
+            if (update.configuredProviders !== undefined) configuredProviders = update.configuredProviders;
+            runtimeConfig = { ...runtimeConfig, ...update };
+            await saveRuntimeConfig(runtimeConfigPath, runtimeConfig);
+        },
     });
 
     // --- Terminal input callbacks ---

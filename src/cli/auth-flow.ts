@@ -1,7 +1,7 @@
 import { stdout as output } from "node:process";
 import type ContextManager from "@/agent/context-manager";
 import { colors } from "@/cli/colors";
-import { promptForToken, saveRuntimeConfig } from "@/cli/runtime-config";
+import { promptForToken, saveRuntimeConfig, type RuntimeConfig } from "@/cli/runtime-config";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import { DeepseekWebProvider } from "@/providers";
 import type { ILLMProvider } from "@/providers";
@@ -11,9 +11,10 @@ export async function ensureValidToken(params: {
     envToken: string | null | undefined;
     savedToken: string | null | undefined;
     runtimeConfigPath: string;
+    baseConfig: RuntimeConfig;
 }): Promise<string>
 {
-    const { initialToken, envToken, savedToken, runtimeConfigPath } = params;
+    const { initialToken, envToken, savedToken, runtimeConfigPath, baseConfig } = params;
     let token = initialToken;
 
     while (true)
@@ -24,7 +25,7 @@ export async function ensureValidToken(params: {
         {
             if (savedToken !== token && !envToken)
             {
-                await saveRuntimeConfig(runtimeConfigPath, { token, provider: null });
+                await saveRuntimeConfig(runtimeConfigPath, { ...baseConfig, token, provider: null });
             }
             return token;
         }
@@ -47,6 +48,7 @@ export type AuthActionDeps = {
     writeOutput: (value: string) => void;
     startNewLocalSession: () => void;
     onReloggedIn: (provider: ILLMProvider) => void;
+    getRuntimeConfig: () => import("@/cli/runtime-config").RuntimeConfig;
 };
 
 export function createAuthActions(deps: AuthActionDeps): {
@@ -69,7 +71,7 @@ export function createAuthActions(deps: AuthActionDeps): {
 
             if (validation.valid)
             {
-                await saveRuntimeConfig(deps.runtimeConfigPath, { token: trimmed, provider: null });
+                await saveRuntimeConfig(deps.runtimeConfigPath, { ...deps.getRuntimeConfig(), token: trimmed, provider: null });
                 const newProvider = await DeepseekWebProvider.create(trimmed);
                 deps.contextManager.markSessionReset();
                 deps.startNewLocalSession();
@@ -85,7 +87,7 @@ export function createAuthActions(deps: AuthActionDeps): {
 
     const logout = async (): Promise<void> =>
     {
-        await saveRuntimeConfig(deps.runtimeConfigPath, { token: null, provider: null });
+        await saveRuntimeConfig(deps.runtimeConfigPath, { ...deps.getRuntimeConfig(), token: null, provider: null });
         deps.writeOutput(`\n${colors.yellow("Токен сброшен.")} Перезапустите приложение.\n\n`);
         process.exit(0);
     };

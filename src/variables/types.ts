@@ -1,6 +1,7 @@
 export interface VariableContext
 {
     workspaceRoot: string;
+    userName?: string | null;
 }
 
 export type VariableResolver = (context: VariableContext) => string;

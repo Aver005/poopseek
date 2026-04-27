@@ -8,6 +8,9 @@ import type { ProviderConfig } from "@/providers";
 export type RuntimeConfig = {
     token: string | null;
     provider: ProviderConfig | null;
+    configuredProviders: ProviderConfig[];
+    userName: string | null;
+    onboardingDone: boolean;
 };
 
 type RuntimeConfigLoadResult = {
@@ -83,18 +86,25 @@ function parseProviderConfig(raw: unknown): ProviderConfig | null
     }
 }
 
+function parseProviderList(raw: unknown): ProviderConfig[]
+{
+    if (!Array.isArray(raw)) return [];
+    return raw.map(parseProviderConfig).filter((p): p is ProviderConfig => p !== null);
+}
+
 function parseRuntimeConfig(raw: unknown): RuntimeConfig
 {
     if (typeof raw !== "object" || raw === null)
-        return { token: null, provider: null };
+        return { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false };
 
-    const maybeConfig = raw as Record<string, unknown>;
-    const token = typeof maybeConfig.token === "string"
-        ? normalizeOptionalString(maybeConfig.token)
-        : null;
-    const provider = parseProviderConfig(maybeConfig.provider);
+    const obj = raw as Record<string, unknown>;
+    const token = typeof obj.token === "string" ? normalizeOptionalString(obj.token) : null;
+    const provider = parseProviderConfig(obj.provider);
+    const configuredProviders = parseProviderList(obj.configuredProviders);
+    const userName = typeof obj.userName === "string" ? normalizeOptionalString(obj.userName) : null;
+    const onboardingDone = obj.onboardingDone === true;
 
-    return { token, provider };
+    return { token, provider, configuredProviders, userName, onboardingDone };
 }
 
 export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConfigLoadResult>
@@ -103,30 +113,15 @@ export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConf
     {
         const configRaw = await fs.promises.readFile(configPath, "utf8");
         const parsed = JSON.parse(configRaw) as unknown;
-        return {
-            config: parseRuntimeConfig(parsed),
-            exists: true,
-        };
+        return { config: parseRuntimeConfig(parsed), exists: true };
     }
     catch (error)
     {
         const nodeError = error as NodeJS.ErrnoException;
         if (nodeError.code === "ENOENT")
-        {
-            return {
-                config: { token: null, provider: null },
-                exists: false,
-            };
-        }
-
+            return { config: { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false }, exists: false };
         if (error instanceof SyntaxError)
-        {
-            return {
-                config: { token: null, provider: null },
-                exists: true,
-            };
-        }
-
+            return { config: { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false }, exists: true };
         throw error;
     }
 }
@@ -140,6 +135,9 @@ export async function saveRuntimeConfig(configPath: string, config: RuntimeConfi
         {
             token: config.token,
             provider: config.provider,
+            configuredProviders: config.configuredProviders,
+            userName: config.userName,
+            onboardingDone: config.onboardingDone,
         },
         null,
         4,
@@ -150,11 +148,7 @@ export async function saveRuntimeConfig(configPath: string, config: RuntimeConfi
 
 export async function promptForToken(): Promise<string>
 {
-    const promptInterface = readline.createInterface({
-        input,
-        output,
-    });
-
+    const promptInterface = readline.createInterface({ input, output });
     try
     {
         while (true)
@@ -162,9 +156,7 @@ export async function promptForToken(): Promise<string>
             const providedToken = normalizeOptionalString(
                 await promptInterface.question("Введите DEEPSEEK_TOKEN: "),
             );
-
-            if (providedToken !== null)
-                return providedToken;
+            if (providedToken !== null) return providedToken;
         }
     }
     finally

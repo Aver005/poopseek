@@ -12,6 +12,7 @@ import { createThinkCommand } from "./defs/think";
 import { createReviewCommand } from "./defs/review";
 import { createRefactorCommand } from "./defs/refactor";
 import { createProviderCommand } from "./defs/provider";
+import { createAuthCommand } from "./defs/auth";
 import { createClearCommand } from "./defs/clear";
 import { createCmptCommand } from "./defs/cmpt";
 import { createCompactCommand } from "./defs/compact";
@@ -70,6 +71,7 @@ export function createCommandHandlers(
     registerCommand(createReviewCommand(context));
     registerCommand(createRefactorCommand(context));
     registerCommand(createProviderCommand(context));
+    registerCommand(createAuthCommand(context));
 
     registerCommand({
         name: "/maestro",
