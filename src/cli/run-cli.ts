@@ -217,6 +217,7 @@ export async function runCli(): Promise<void>
         mcpManager.createDynamicToolResolver(),
         () => mcpManager.getDynamicToolNames(),
         subAgentRunner,
+        (message) => generationIndicator.activate(message),
     );
     reportProgress?.(95);
     let modelType: ModelType = "default";
@@ -765,6 +766,7 @@ export async function runCli(): Promise<void>
             }
 
             let wroteAnyChunk = false;
+            let hadToolInThisTurn = false;
             isMainTurnActive = true;
             try
             {
@@ -782,7 +784,14 @@ export async function runCli(): Promise<void>
                         generationIndicator.stop();
                         if (!wroteAnyChunk)
                         {
-                            output.write("\n");
+                            if (hadToolInThisTurn)
+                            {
+                                output.write("\n" + colors.dim("─".repeat(48)) + "\n");
+                            }
+                            else
+                            {
+                                output.write("\n");
+                            }
                             wroteAnyChunk = true;
                         }
                         output.write(renderMarkdown(chunk));
@@ -796,8 +805,12 @@ export async function runCli(): Promise<void>
                     },
                     onToolDone: (toolName, toolResult) =>
                     {
+                        generationIndicator.stop();
+                        hadToolInThisTurn = true;
+                        wroteAnyChunk = false;
                         const marker = toolResult.ok ? colors.green("ok=true") : colors.red("ok=false");
                         output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
+                        generationIndicator.activate("Продолжаю...");
                     },
                 });
                 await saveCurrentLocalSession();

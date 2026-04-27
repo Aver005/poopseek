@@ -18,6 +18,7 @@ export default class ToolExecutor
     private readonly dynamicToolResolver: ((name: string) => import("@/tools/types").ToolHandler | undefined) | undefined;
     private readonly getDynamicToolNames: (() => string[]) | undefined;
     private readonly subAgentRunner: SubAgentRunner | undefined;
+    private readonly onProgress: ((message: string) => void) | undefined;
 
     constructor(
         workspaceRoot: string = process.cwd(),
@@ -26,6 +27,7 @@ export default class ToolExecutor
         dynamicToolResolver?: (name: string) => import("@/tools/types").ToolHandler | undefined,
         getDynamicToolNames?: () => string[],
         subAgentRunner?: SubAgentRunner,
+        onProgress?: (message: string) => void,
     )
     {
         this.workspaceRoot = path.resolve(workspaceRoot);
@@ -34,6 +36,7 @@ export default class ToolExecutor
         this.dynamicToolResolver = dynamicToolResolver;
         this.getDynamicToolNames = getDynamicToolNames;
         this.subAgentRunner = subAgentRunner;
+        this.onProgress = onProgress;
     }
 
     private resolvePath(inputPath: string): string
@@ -132,6 +135,7 @@ export default class ToolExecutor
             spawnSubAgents: this.subAgentRunner
                 ? (tasks) => this.subAgentRunner!.runParallel(tasks)
                 : undefined,
+            onProgress: this.onProgress,
         };
     }
 

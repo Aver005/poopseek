@@ -40,7 +40,7 @@ function parseTask(raw: unknown): SubAgentTask | null
 
 export const handler: ToolHandler = async (args, context) =>
 {
-    if (!context.spawnSubAgents)
+    if (!context.spawnSubAgent)
     {
         return { ok: false, output: "Sub-agent support not initialized", error: "not_available" };
     }
@@ -53,7 +53,20 @@ export const handler: ToolHandler = async (args, context) =>
         return { ok: false, output: "No valid tasks provided (each task needs args.instruction)", error: "no_tasks" };
     }
 
-    const results = await context.spawnSubAgents(tasks);
+    const total = tasks.length;
+    let completed = 0;
+
+    context.onProgress?.(`Суб-агентов: 0 / ${total}`);
+
+    const results = await Promise.all(
+        tasks.map(async (task) =>
+        {
+            const result = await context.spawnSubAgent!(task);
+            completed += 1;
+            context.onProgress?.(`Суб-агентов: ${completed} / ${total}`);
+            return result;
+        }),
+    );
 
     const allOk = results.every((r) => r.ok);
     const dataArray = results.map((r, i) => ({

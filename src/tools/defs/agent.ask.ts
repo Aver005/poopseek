@@ -33,6 +33,8 @@ export const handler: ToolHandler = async (args, context) =>
         return { ok: false, output: "Missing required args.instruction", error: "missing_instruction" };
     }
 
+    context.onProgress?.("Запускаю суб-агента...");
+
     const result = await context.spawnSubAgent({
         instruction,
         files: toStringArray(args.files),

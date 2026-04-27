@@ -30,6 +30,7 @@ export interface ToolContext
     getSkillContent?: (name: string) => string | null;
     spawnSubAgent?: (task: SubAgentTask) => Promise<SubAgentResult>;
     spawnSubAgents?: (tasks: SubAgentTask[]) => Promise<SubAgentResult[]>;
+    onProgress?: (message: string) => void;
 }
 
 export type ToolHandler = (

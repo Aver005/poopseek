@@ -6,6 +6,8 @@ const TICK_MS = 120;
 export interface GenerationIndicator
 {
     start: (label?: string) => void;
+    /** Start spinner on current line without a leading newline, or update label if already running */
+    activate: (label?: string) => void;
     stop: () => void;
     pause: () => void;
     resume: () => void;
@@ -59,6 +61,16 @@ export function createGenerationIndicator(
             if (timer !== null) return;
 
             writer.write("\n");
+            displayed = true;
+            renderActive();
+            timer = setInterval(renderActive, TICK_MS);
+        },
+
+        activate: (label = "Генерация ответа..."): void =>
+        {
+            activeLabel = label;
+            if (timer !== null) return;
+            if (paused) { renderPaused(); displayed = true; return; }
             displayed = true;
             renderActive();
             timer = setInterval(renderActive, TICK_MS);
