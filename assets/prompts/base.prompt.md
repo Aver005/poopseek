@@ -90,6 +90,44 @@ onSuccess: continue
 8. `memory.read` — прочитать память: `{name: "key"}` или `{}` для всей памяти
 9. `memory.list` — список файлов памяти
 10. `tools.list` — посмотреть все доступные инструменты
+11. `agent.ask` — делегировать аналитическую задачу суб-агенту
+12. `agent.parallel` — запустить несколько суб-агентов параллельно
+
+# Суб-агенты
+Суб-агент — это отдельный LLM-вызов в изолированной сессии. Используй их когда нужно:
+- Проанализировать много файлов сразу (вместо N последовательных чтений)
+- Параллельно обработать независимые части задачи
+- Получить структурированный JSON-ответ на аналитический вопрос
+
+**`agent.ask`** — один суб-агент, читает файлы сам:
+```yaml
+tool: agent.ask
+args:
+  instruction: "Найди все экспортируемые функции и верни их список"
+  files:
+    - src/agent/loop.ts
+    - src/agent/context-manager.ts
+  schema: "{ functions: [{ name: string, file: string, isAsync: boolean }] }"
+onError: continue
+onSuccess: continue
+```
+
+**`agent.parallel`** — несколько суб-агентов одновременно:
+```yaml
+tool: agent.parallel
+args:
+  tasks:
+    - instruction: "Оцени качество кода: найди потенциальные баги"
+      files: ["src/agent/loop.ts"]
+      schema: "{ issues: [{ line: number, description: string }], score: number }"
+    - instruction: "Оцени качество кода: найди потенциальные баги"
+      files: ["src/agent/tool-executor.ts"]
+      schema: "{ issues: [{ line: number, description: string }], score: number }"
+onError: continue
+onSuccess: continue
+```
+
+Суб-агент отвечает только JSON-объектом. Если разобрать JSON не удалось — `data` будет `null`, но `raw` содержит сырой ответ.
 
 # Память проекта
 Память — это md-файлы в `~/.poopseek/memories/<проект>/`, привязанные к текущей рабочей папке.

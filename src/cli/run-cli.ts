@@ -47,6 +47,7 @@ import { ensureValidToken } from "@/cli/auth-flow";
 import { createAuthActions } from "@/cli/auth-flow";
 import { createInputQueue } from "@/cli/input-queue";
 import { createSidechatRunner } from "@/cli/sidechat";
+import { SubAgentRunner } from "@/agent/sub-agent";
 import { createReviewRunner } from "@/cli/review";
 import { createRefactorRunner } from "@/cli/refactor";
 import { LoadingView } from "@/cli/views/loading";
@@ -200,6 +201,11 @@ export async function runCli(): Promise<void>
     syncAvailableSkills();
 
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
+    const subAgentRunner = new SubAgentRunner(
+        () => deepseekClient,
+        () => modelType,
+        process.cwd(),
+    );
     const toolExecutor = new ToolExecutor(
         process.cwd(),
         (req) => askUserImpl(req),
@@ -210,6 +216,7 @@ export async function runCli(): Promise<void>
         },
         mcpManager.createDynamicToolResolver(),
         () => mcpManager.getDynamicToolNames(),
+        subAgentRunner,
     );
     reportProgress?.(95);
     let modelType: ModelType = "default";

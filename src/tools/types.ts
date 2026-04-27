@@ -1,4 +1,7 @@
 import type { ToolExecutionResult } from "@/agent/types";
+import type { SubAgentResult, SubAgentTask } from "@/agent/sub-agent";
+
+export type { SubAgentTask, SubAgentResult };
 
 export interface CommandResult
 {
@@ -25,6 +28,8 @@ export interface ToolContext
     ) => Promise<CommandResult>;
     askUser: AskUserFn;
     getSkillContent?: (name: string) => string | null;
+    spawnSubAgent?: (task: SubAgentTask) => Promise<SubAgentResult>;
+    spawnSubAgents?: (tasks: SubAgentTask[]) => Promise<SubAgentResult[]>;
 }
 
 export type ToolHandler = (

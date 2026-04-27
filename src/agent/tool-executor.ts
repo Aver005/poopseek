@@ -3,6 +3,7 @@ import { getToolNames, toolsRegistry } from "@/tools";
 import { toStringValue } from "@/tools/args";
 import type { AskUserFn, CommandResult, ToolContext } from "@/tools/types";
 import type { ToolCallEnvelope, ToolExecutionResult } from "./types";
+import type { SubAgentRunner } from "./sub-agent";
 
 function isRecord(value: unknown): value is Record<string, unknown>
 {
@@ -16,6 +17,7 @@ export default class ToolExecutor
     private readonly getSkillContent: ((name: string) => string | null) | undefined;
     private readonly dynamicToolResolver: ((name: string) => import("@/tools/types").ToolHandler | undefined) | undefined;
     private readonly getDynamicToolNames: (() => string[]) | undefined;
+    private readonly subAgentRunner: SubAgentRunner | undefined;
 
     constructor(
         workspaceRoot: string = process.cwd(),
@@ -23,6 +25,7 @@ export default class ToolExecutor
         getSkillContent?: (name: string) => string | null,
         dynamicToolResolver?: (name: string) => import("@/tools/types").ToolHandler | undefined,
         getDynamicToolNames?: () => string[],
+        subAgentRunner?: SubAgentRunner,
     )
     {
         this.workspaceRoot = path.resolve(workspaceRoot);
@@ -30,6 +33,7 @@ export default class ToolExecutor
         this.getSkillContent = getSkillContent;
         this.dynamicToolResolver = dynamicToolResolver;
         this.getDynamicToolNames = getDynamicToolNames;
+        this.subAgentRunner = subAgentRunner;
     }
 
     private resolvePath(inputPath: string): string
@@ -122,6 +126,12 @@ export default class ToolExecutor
             ) => this.runCommand(kind, args),
             askUser: this.askUser,
             getSkillContent: this.getSkillContent,
+            spawnSubAgent: this.subAgentRunner
+                ? (task) => this.subAgentRunner!.run(task)
+                : undefined,
+            spawnSubAgents: this.subAgentRunner
+                ? (tasks) => this.subAgentRunner!.runParallel(tasks)
+                : undefined,
         };
     }
 
