@@ -296,6 +296,13 @@ export async function runCli(): Promise<void>
         generationIndicator.setQueueSize(size);
     });
 
+    const waitForVisibleInput = async (): Promise<string> =>
+    {
+        terminalInput.setMode("active");
+        terminalInput.setRenderEnabled(true);
+        return await inputQueue.waitForNext();
+    };
+
     // --- Output helpers ---
 
     let isMainTurnActive = false;
@@ -386,7 +393,7 @@ export async function runCli(): Promise<void>
     const { relogin, logout } = createAuthActions({
         runtimeConfigPath,
         contextManager,
-        waitForInput: () => inputQueue.waitForNext(),
+        waitForInput: waitForVisibleInput,
         writeOutput: writeDetachedOutput,
         startNewLocalSession,
         onReloggedIn: (newProvider) =>
@@ -737,7 +744,7 @@ export async function runCli(): Promise<void>
             await saveRuntimeConfig(runtimeConfigPath, runtimeConfig);
             await saveCurrentLocalSession();
         },
-        waitForInput: () => inputQueue.waitForNext(),
+        waitForInput: waitForVisibleInput,
         getToken: () => token,
         getUserName: () => userNameForContext,
         getConfiguredProviders: () => configuredProviders,
