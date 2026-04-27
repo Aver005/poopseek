@@ -1,0 +1,31 @@
+# ── docker-compose.yml ─────────────────────────────────────────────
+# Запуск сборки:  docker compose -f docker/docker-compose.yml build
+# Запуск CLI:      docker compose -f docker/docker-compose.yml run poopseek
+
+version: "3.9"
+
+services:
+
+  # Сборка Linux-версии
+  builder:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: builder
+    image: poopseek:builder
+
+  # Готовый образ с бинарником
+  poopseek:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: poopseek:latest
+    stdin_open: true
+    tty: true
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    volumes:
+      - poopseek-memories:/home/poopseek/.poopseek
+
+volumes:
+  poopseek-memories:

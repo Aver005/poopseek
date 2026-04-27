@@ -1,0 +1,57 @@
+name: Build macOS binary
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g. 1.2.3)"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build macOS binary
+        run: |
+          VERSION="${{ inputs.version || github.ref_name }}"
+          BUILD_DIR="build"
+
+          mkdir -p "$BUILD_DIR"
+
+          bun build src/index.ts \
+              --compile \
+              --outfile "$BUILD_DIR/poopseek-macos" \
+              --target bun
+
+          cp -R assets "$BUILD_DIR/assets"
+          cp -R docs "$BUILD_DIR/docs"
+
+          if [ -n "$VERSION" ] && [ "$VERSION" != "main" ] && [ "$VERSION" != "master" ]; then
+              echo "$VERSION" > "$BUILD_DIR/VERSION.txt"
+              echo "Version: $VERSION"
+          fi
+
+          echo "Binary: $BUILD_DIR/poopseek-macos"
+          ls -lh "$BUILD_DIR/poopseek-macos"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poopseek-macos-$(uname -m)
+          path: build/

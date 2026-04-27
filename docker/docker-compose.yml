@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  builder:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: builder
+    image: poopseek:builder
+
+  # Извлечь бинарник:
+  #   docker compose -f docker/docker-compose.yml build builder
+  #   docker create --name tmp-poopseek poopseek:builder
+  #   docker cp tmp-poopseek:/out/poopseek ./build/
+  #   docker rm tmp-poopseek
+  #
+  # Или запустить CLI внутри контейнера:
+  #   docker compose -f docker/docker-compose.yml run --rm poopseek
+
+  poopseek:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: builder
+    image: poopseek:latest
+    stdin_open: true
+    tty: true
+    entrypoint: /out/poopseek
+    working_dir: /home/poopseek
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    volumes:
+      - poopseek-memories:/home/poopseek/.poopseek
+
+volumes:
+  poopseek-memories:

@@ -1,0 +1,52 @@
+# ── Сборка poopseek под Linux (Docker) ─────────────────────────────
+# Контекст сборки — корень проекта
+
+FROM oven/bun:1 AS builder
+
+WORKDIR /app
+
+# Зависимости
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
+# Исходники и ресурсы
+COPY tsconfig.json ./
+COPY src/ ./src/
+COPY assets/ ./assets/
+COPY docs/ ./docs/
+COPY scripts/ ./scripts/
+
+# Компиляция в один исполняемый файл
+# Bun --compile НЕ кросс-компилирует: бинарник будет под платформу контейнера (linux/amd64)
+RUN bun build src/index.ts \
+    --compile \
+    --outfile /out/poopseek \
+    --target bun
+
+# ── Финальный образ — только бинарник и ресурсы ────────────────────
+FROM debian:bookworm-slim
+
+# Минимальные рантайм-зависимости:
+# - libstdc++ нужна Bun-скомпилированному бинарнику
+# - git опционален, но инструмент умеет с ним работать
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Пользователь без рута
+RUN useradd --create-home --shell /bin/bash poopseek
+USER poopseek
+WORKDIR /home/poopseek
+
+# Бинарник
+COPY --from=builder /out/poopseek /usr/local/bin/poopseek
+
+# Ресурсы (вшивать в бинарник Bun пока не умеет — копируем рядом)
+COPY --from=builder /app/assets/ ./assets/
+COPY --from=builder /app/docs/ ./docs/
+
+# Точка входа
+ENTRYPOINT ["poopseek"]
+CMD ["--help"]
