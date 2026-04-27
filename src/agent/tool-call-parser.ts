@@ -103,14 +103,91 @@ function extractJsonLikeBlocks(text: string): string[]
     return result;
 }
 
-function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
+function extractYamlLikeBlocks(text: string): string[]
 {
-    try
+    const lines = text.split(/\r?\n/);
+    const result: string[] = [];
+
+    const getIndent = (line: string): number =>
     {
-        const envelope = toEnvelope(parseYaml(candidate) as unknown);
-        if (envelope) return envelope;
+        const match = line.match(/^\s*/);
+        return match?.[0]?.length ?? 0;
+    };
+
+    let index = 0;
+    while (index < lines.length)
+    {
+        const startLine = lines[index];
+        if (!startLine || !/^\s*tool\s*:/.test(startLine))
+        {
+            index += 1;
+            continue;
+        }
+
+        const blockLines: string[] = [startLine];
+        index += 1;
+        let scalarIndent: number | null = null;
+
+        while (index < lines.length)
+        {
+            const line = lines[index] ?? "";
+            const trimmed = line.trim();
+            const indent = getIndent(line);
+
+            if (scalarIndent !== null)
+            {
+                if (trimmed.length === 0 || indent >= scalarIndent)
+                {
+                    blockLines.push(line);
+                    index += 1;
+                    continue;
+                }
+                scalarIndent = null;
+            }
+
+            if (trimmed.length === 0)
+            {
+                blockLines.push(line);
+                index += 1;
+                continue;
+            }
+
+            if (
+                /^\s/.test(line)
+                || /^(tool|args|onError|onSuccess)\s*:/.test(trimmed)
+            )
+            {
+                blockLines.push(line);
+                if (/^[A-Za-z_][A-Za-z0-9_-]*\s*:\s*[>|][-+0-9]*\s*$/.test(trimmed))
+                {
+                    scalarIndent = indent + 1;
+                }
+                index += 1;
+                continue;
+            }
+
+            break;
+        }
+
+        const candidate = blockLines.join("\n").trim();
+        if (candidate.length > 0) result.push(candidate);
+        if (result.length >= 10) return result;
     }
-    catch { /* fall through */ }
+
+    return result;
+}
+
+function tryParseEnvelope(candidate: string, allowYaml = true): ToolCallEnvelope | null
+{
+    if (allowYaml)
+    {
+        try
+        {
+            const envelope = toEnvelope(parseYaml(candidate, { logLevel: "error" }) as unknown);
+            if (envelope) return envelope;
+        }
+        catch { /* fall through */ }
+    }
 
     try
     {
@@ -174,16 +251,17 @@ export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
     const toolCalls: ToolCallSegment[] = [];
     let lastEnd = 0;
 
-    const fencedRegex = /```(?:yaml|json)\s*([\s\S]*?)\s*```/gi;
+    const fencedRegex = /```(yaml|json)\s*([\s\S]*?)\s*```/gi;
 
     for (const match of text.matchAll(fencedRegex))
     {
         if (toolCalls.length >= maxTools) break;
 
-        const content = match[1]?.trim();
+        const blockType = match[1]?.toLowerCase();
+        const content = match[2]?.trim();
         if (!content) continue;
 
-        const envelope = tryParseEnvelope(content);
+        const envelope = tryParseEnvelope(content, blockType === "yaml");
         if (!envelope) continue;
 
         const start = match.index ?? 0;
@@ -198,8 +276,18 @@ export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
     // Fallback: no fenced tool blocks found → try bare JSON (single tool, no preText)
     if (toolCalls.length === 0)
     {
+        const bareYamlResult = extractYamlLikeBlocks(text).reduce<ToolCallEnvelope | null>(
+            (found, candidate) => found ?? tryParseEnvelope(candidate, true),
+            null,
+        );
+
+        if (bareYamlResult)
+        {
+            return { toolCalls: [{ preText: "", envelope: bareYamlResult }], postText: "" };
+        }
+
         const bareResult = extractJsonLikeBlocks(text).reduce<ToolCallEnvelope | null>(
-            (found, candidate) => found ?? tryParseEnvelope(candidate),
+            (found, candidate) => found ?? tryParseEnvelope(candidate, false),
             null,
         );
 
