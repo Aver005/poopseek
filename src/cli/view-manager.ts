@@ -1,5 +1,121 @@
 import { stdout as output } from "node:process";
 
+const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+
+type ScreenCursor = {
+    row: number;
+    col: number;
+};
+
+type ScreenState = ScreenCursor & {
+    pendingWrap: boolean;
+};
+
+function stripAnsi(value: string): string
+{
+    return value.replace(ANSI_PATTERN, "");
+}
+
+function getTerminalWidth(): number
+{
+    return Math.max(1, output.columns ?? 80);
+}
+
+function advanceCursor(state: ScreenState, columns: number, width: number): ScreenState
+{
+    if (columns <= 0) return state;
+
+    let nextState = state;
+
+    for (let index = 0; index < columns; index += 1)
+    {
+        if (nextState.pendingWrap)
+        {
+            nextState = {
+                row: nextState.row + 1,
+                col: 0,
+                pendingWrap: false,
+            };
+        }
+
+        if (nextState.col >= width - 1)
+        {
+            nextState = {
+                row: nextState.row,
+                col: width - 1,
+                pendingWrap: true,
+            };
+            continue;
+        }
+
+        nextState = {
+            row: nextState.row,
+            col: nextState.col + 1,
+            pendingWrap: false,
+        };
+    }
+
+    return nextState;
+}
+
+function advanceLine(state: ScreenState): ScreenState
+{
+    return {
+        row: state.row + 1,
+        col: 0,
+        pendingWrap: false,
+    };
+}
+
+function getRenderedMetrics(
+    lines: string[],
+    cursorLineIndex: number,
+    cursorCol: number,
+): {
+    totalRows: number;
+    cursor: ScreenCursor;
+}
+{
+    const width = getTerminalWidth();
+    const lastLineIndex = Math.max(0, lines.length - 1);
+    const safeCursorLineIndex = Math.max(0, Math.min(cursorLineIndex, lastLineIndex));
+    const normalizedCursorCol = Math.max(0, cursorCol);
+
+    let cursor: ScreenCursor = { row: 0, col: 0 };
+    let current: ScreenState = { row: 0, col: 0, pendingWrap: false };
+
+    for (let index = 0; index < lines.length; index += 1)
+    {
+        const visibleLine = stripAnsi(lines[index] ?? "");
+        const visibleLength = visibleLine.length;
+
+        if (index < safeCursorLineIndex)
+        {
+            current = advanceCursor(current, visibleLength, width);
+            current = advanceLine(current);
+            continue;
+        }
+
+        if (index === safeCursorLineIndex)
+        {
+            const cursorState = advanceCursor(current, normalizedCursorCol, width);
+            cursor = { row: cursorState.row, col: cursorState.col };
+        }
+
+        current = advanceCursor(current, visibleLength, width);
+
+        if (index < lines.length - 1)
+        {
+            current = advanceLine(current);
+        }
+    }
+
+    return {
+        totalRows: current.row + 1,
+        cursor,
+    };
+}
+
 export type ViewRenderResult = {
     lines: string[];
     cursorRow: number;
@@ -139,17 +255,17 @@ export class ViewManager {
         if (!view) return;
 
         const result = view.render();
-        const lineCount = result.lines.length;
+        const metrics = getRenderedMetrics(result.lines, result.cursorRow, result.cursorCol);
 
         this._clearZone();
         output.write(result.lines.join("\n"));
 
-        const linesUpFromBottom = lineCount - 1 - result.cursorRow;
+        const linesUpFromBottom = metrics.totalRows - 1 - metrics.cursor.row;
         if (linesUpFromBottom > 0) output.write(`\x1b[${linesUpFromBottom}A`);
         output.write("\r");
-        if (result.cursorCol > 0) output.write(`\x1b[${result.cursorCol}C`);
+        if (metrics.cursor.col > 0) output.write(`\x1b[${metrics.cursor.col}C`);
 
-        this._lastLineCount = lineCount;
-        this._lastCursorRow = result.cursorRow;
+        this._lastLineCount = metrics.totalRows;
+        this._lastCursorRow = metrics.cursor.row;
     }
 }

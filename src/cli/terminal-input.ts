@@ -287,17 +287,7 @@ function buildRenderedBlock(
     showPasteHint: boolean,
 ): string
 {
-    const cursorMetrics = getCursorMetrics(value, cursor);
     const inputLines = splitLines(value).map((line) => line);
-    const activeLine = inputLines[cursorMetrics.row];
-
-    if (activeLine !== undefined)
-    {
-        const prefix = activeLine.slice(0, cursorMetrics.column);
-        const nextCharacter = activeLine.at(cursorMetrics.column);
-        const suffix = activeLine.slice(cursorMetrics.column + (nextCharacter === undefined ? 0 : 1));
-        inputLines[cursorMetrics.row] = `${prefix}_${suffix}`;
-    }
 
     const firstLinePrefix = mode === "queue"
         ? QUEUE_PREFIX
@@ -315,13 +305,14 @@ function buildRenderedBlock(
 
     if (mode !== "queue")
     {
+        if (statusLine.length > 0)
+        {
+            lines.push(statusLine);
+        }
+
         if (showPasteHint)
         {
             lines.push(colors.dim("Backspace — удалить блок  Ctrl+E — развернуть"));
-        }
-        else if (statusLine.length > 0)
-        {
-            lines.push(statusLine);
         }
         else
         {
@@ -789,7 +780,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         {
             vm.setDriver(driver);
             driver.grabInput();
-            driver.hideCursor();
+            driver.showCursor();
             vm.invalidate();
         });
     };

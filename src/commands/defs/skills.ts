@@ -90,16 +90,22 @@ export function createSkillsCommand(context: CommandsContext): Command
                     return true;
                 }
 
-                await new Promise<void>((resolve) =>
+                let resolveClose: (() => void) | null = null;
+                const closed = new Promise<void>((resolve) =>
                 {
-                    vm.push(new SkillsView({
-                        getSkills: () => context.getSkills?.() ?? [],
-                        isActive: (name) => context.isSkillActive?.(name) ?? false,
-                        activate: (name) => { context.activateSkill?.(name); },
-                        deactivate: (name) => { context.deactivateSkill?.(name); },
-                        onClose: resolve,
-                    }));
+                    resolveClose = resolve;
                 });
+
+                vm.resume();
+                await vm.push(new SkillsView({
+                    getSkills: () => context.getSkills?.() ?? [],
+                    isActive: (name) => context.isSkillActive?.(name) ?? false,
+                    activate: (name) => { context.activateSkill?.(name); },
+                    deactivate: (name) => { context.deactivateSkill?.(name); },
+                    onClose: () => resolveClose?.(),
+                }));
+                await closed;
+                vm.suspend();
 
                 writeLine("");
                 const activeNames = (context.getSkills?.() ?? [])
