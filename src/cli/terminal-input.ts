@@ -25,6 +25,7 @@ export type TerminalInputMode = "active" | "queue";
 type QueueCallbacks = {
     onValueChange?: (value: string) => void;
     onStop?: () => void;
+    onInterrupt?: () => void;
 };
 
 type TerminalInputController = {
@@ -258,13 +259,46 @@ async function createTerminalDriver(): Promise<TerminalDriver>
         const terminalKitModule = await import("terminal-kit");
         const terminalKit = terminalKitModule.default;
         const term = terminalKit.terminal;
+        const listeners = new Map<TerminalKeyHandler, TerminalKeyHandler>();
+        const normalizeName = (name: string, data?: TerminalKeyData, matches?: string[]): string =>
+        {
+            const raw = name ?? "";
+            const upper = raw.toUpperCase();
+            const hasCtrlCMatch = (matches ?? []).some((item) => item.toUpperCase() === "CTRL_C");
+            if (
+                upper === "CTRL_C"
+                || upper === "CTRL-C"
+                || upper === "CTRL C"
+                || upper === "^C"
+                || hasCtrlCMatch
+                || data?.code === "\x03"
+            )
+            {
+                return "CTRL_C";
+            }
+            return raw;
+        };
         return {
             grabInput: (): void => { term.grabInput(true); output.write("\x1b[?2004h"); },
             releaseInput: (): void => { output.write("\x1b[?2004l"); term.grabInput(false); },
             hideCursor: (): void => { term.hideCursor(); },
             showCursor: (): void => { term.hideCursor(false); },
-            onKey: (listener): void => { term.on("key", listener); },
-            offKey: (listener): void => { term.off("key", listener); },
+            onKey: (listener): void =>
+            {
+                const wrapped: TerminalKeyHandler = (name, matches, data) =>
+                {
+                    listener(normalizeName(name, data, matches), matches, data ?? {});
+                };
+                listeners.set(listener, wrapped);
+                term.on("key", wrapped);
+            },
+            offKey: (listener): void =>
+            {
+                const wrapped = listeners.get(listener);
+                if (!wrapped) return;
+                term.off("key", wrapped);
+                listeners.delete(listener);
+            },
         };
     }
     catch
@@ -526,6 +560,12 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
         if (name === "CTRL_C")
         {
+            if (vm.suspended)
+            {
+                queueCallbacks.onInterrupt?.();
+                queueCallbacks.onStop?.();
+                return;
+            }
             submit("/exit");
             return;
         }

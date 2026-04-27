@@ -3,38 +3,43 @@ import ContextManager from "@/agent/context-manager";
 import AgentLoop from "@/agent/loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { colors, getColorMode, setTheme } from "@/cli/colors";
-import {
-    getFileAttachmentPreviewLines,
-    prepareInputWithFileMentions,
-} from "@/cli/file-mentions";
+import
+    {
+        getFileAttachmentPreviewLines,
+        prepareInputWithFileMentions,
+    } from "@/cli/file-mentions";
 import { createGenerationIndicator } from "@/cli/generation-indicator";
 import { renderMarkdown } from "@/cli/markdown";
 import { readPromptFiles } from "@/cli/prompt-files";
-import {
-    createStoredSessionId,
-    deriveSessionTitle,
-    getSessionsDirectory,
-    listStoredSessions,
-    loadStoredSession,
-    saveStoredSession,
-} from "@/cli/session-store";
-import {
-    getFirstEnvValue,
-    getRuntimeConfigPath,
-    loadRuntimeConfig,
-    promptForToken,
-    saveRuntimeConfig,
-} from "@/cli/runtime-config";
-import {
-    adaptTextToTerminal,
-    getTerminalCapabilities,
-} from "@/cli/terminal-capabilities";
+import
+    {
+        createStoredSessionId,
+        deriveSessionTitle,
+        getSessionsDirectory,
+        listStoredSessions,
+        loadStoredSession,
+        saveStoredSession,
+    } from "@/cli/session-store";
+import
+    {
+        getFirstEnvValue,
+        getRuntimeConfigPath,
+        loadRuntimeConfig,
+        promptForToken,
+        saveRuntimeConfig,
+    } from "@/cli/runtime-config";
+import
+    {
+        adaptTextToTerminal,
+        getTerminalCapabilities,
+    } from "@/cli/terminal-capabilities";
 import { createTerminalInput } from "@/cli/terminal-input";
 import { getToolDetail, getToolProgressMessage } from "@/cli/tool-progress-messages";
-import {
-    createCommandHandlers,
-    handleCommand,
-} from "@/commands";
+import
+    {
+        createCommandHandlers,
+        handleCommand,
+    } from "@/commands";
 import type { Command } from "@/commands/types";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
@@ -50,11 +55,12 @@ import { createReviewRunner } from "@/cli/review";
 import { createRefactorRunner } from "@/cli/refactor";
 import { LoadingView } from "@/cli/views/loading";
 import { runOnboarding } from "@/cli/onboarding";
-import {
-    createProvider,
-    DeepseekWebProvider,
-    type ILLMProvider,
-} from "@/providers";
+import
+    {
+        createProvider,
+        DeepseekWebProvider,
+        type ILLMProvider,
+    } from "@/providers";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -444,6 +450,8 @@ export async function runCli(): Promise<void>
     // --- Command handlers ---
 
     let commands = new Map<string, Command>();
+    let activeInterruptController: AbortController | null = null;
+    let interruptActiveCommand: ((error: Error) => void) | null = null;
     commands = createCommandHandlers(terminalInput, {
         viewManager: terminalInput.viewManager,
         getSessionInfo: () =>
@@ -546,9 +554,22 @@ export async function runCli(): Promise<void>
             if (!(provider instanceof DeepseekWebProvider)) return null;
             const deepseekProvider = provider;
 
+            activeInterruptController = new AbortController();
+            const signal = activeInterruptController.signal;
+            const assertNotAborted = (): void =>
+            {
+                if (signal.aborted) throw new Error("Загрузка сессии прервана (Ctrl+C)");
+            };
+            const yieldControl = async (): Promise<void> =>
+            {
+                await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            };
+            let historyData: Awaited<ReturnType<typeof deepseekProvider.fetchHistory>>;
             try
             {
-                const historyData = await deepseekProvider.fetchHistory(id);
+                historyData = await deepseekProvider.fetchHistory(id, signal);
+                assertNotAborted();
+
                 const { chat_session, chat_messages } = historyData;
 
                 const messageMap = new Map(
@@ -556,8 +577,25 @@ export async function runCli(): Promise<void>
                 );
                 const chain: typeof chat_messages = [];
                 let currentId: number | null = chat_session.current_message_id;
+                const visited = new Set<number>();
+                let guard = 0;
                 while (currentId !== null)
                 {
+                    if ((guard & 255) === 0)
+                    {
+                        await yieldControl();
+                        assertNotAborted();
+                    }
+                    if (visited.has(currentId))
+                    {
+                        throw new Error(`cycle detected in message chain at id=${currentId}`);
+                    }
+                    visited.add(currentId);
+                    guard += 1;
+                    if (guard > chat_messages.length + 1)
+                    {
+                        throw new Error("message chain traversal overflow");
+                    }
                     const msg = messageMap.get(currentId);
                     if (!msg) break;
                     chain.unshift(msg);
@@ -565,9 +603,17 @@ export async function runCli(): Promise<void>
                 }
 
                 const localMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
-                for (const msg of chain)
+                const MAX_MESSAGE_CONTENT = 12000;
+                const MAX_LOCAL_MESSAGES = 300;
+                for (let index = 0; index < chain.length; index += 1)
                 {
-                    if (msg.status !== "FINISHED") continue;
+                    if ((index & 63) === 0)
+                    {
+                        await yieldControl();
+                        assertNotAborted();
+                    }
+                    const msg = chain[index];
+                    if (!msg || msg.status !== "FINISHED") continue;
                     const role = msg.role === "USER" ? "user" : msg.role === "ASSISTANT" ? "assistant" : null;
                     if (!role) continue;
                     const contentType = role === "user" ? "REQUEST" : "RESPONSE";
@@ -576,7 +622,13 @@ export async function runCli(): Promise<void>
                         .map((f) => f.content)
                         .join("\n")
                         .trim();
-                    if (content.length > 0) localMessages.push({ role, content });
+                    if (content.length === 0) continue;
+                    if (content.startsWith("### TOOL RESULT:") || content.startsWith("### SYSTEM SNAPSHOT")) continue;
+                    const capped = content.length > MAX_MESSAGE_CONTENT
+                        ? content.slice(0, MAX_MESSAGE_CONTENT)
+                        : content;
+                    localMessages.push({ role, content: capped });
+                    if (localMessages.length >= MAX_LOCAL_MESSAGES) break;
                 }
 
                 const lastMsg = chain[chain.length - 1];
@@ -600,9 +652,9 @@ export async function runCli(): Promise<void>
                     },
                 };
             }
-            catch
+            finally
             {
-                return null;
+                activeInterruptController = null;
             }
         },
         compactContext: async () =>
@@ -773,6 +825,13 @@ export async function runCli(): Promise<void>
             generationIndicator.setTypingText(value);
         },
         onStop: () => generationIndicator.resume(),
+        onInterrupt: () =>
+        {
+            activeInterruptController?.abort("user-interrupt");
+            activeInterruptController = null;
+            interruptActiveCommand?.(new Error("Операция прервана (Ctrl+C)"));
+            interruptActiveCommand = null;
+        },
     });
 
     const parseBtwQuestion = (value: string): string | null =>
@@ -838,8 +897,44 @@ export async function runCli(): Promise<void>
 
             const userInput = await inputQueue.waitForNext();
             if (!userInput) continue;
+            if (userInput.startsWith("/"))
+            {
+                terminalInput.setMode("active");
+                terminalInput.setRenderEnabled(true);
+            }
 
-            const shouldContinue = await handleCommand(userInput, commands);
+            const shouldContinue = await (async (): Promise<boolean> =>
+            {
+                let settled = false;
+                const interruptPromise = new Promise<never>((_, reject) =>
+                {
+                    interruptActiveCommand = (error: Error) =>
+                    {
+                        if (settled) return;
+                        settled = true;
+                        reject(error);
+                    };
+                });
+                try
+                {
+                    const commandPromise = handleCommand(userInput, commands).then((value) =>
+                    {
+                        settled = true;
+                        return value;
+                    });
+                    return await Promise.race([commandPromise, interruptPromise]);
+                }
+                catch (error)
+                {
+                    const message = error instanceof Error ? error.message : String(error);
+                    output.write(`\n${colors.red(message)}\n\n`);
+                    return true;
+                }
+                finally
+                {
+                    interruptActiveCommand = null;
+                }
+            })();
             if (!shouldContinue) break;
             if (userInput.startsWith("/"))
             {

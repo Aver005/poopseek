@@ -7,6 +7,7 @@ import PowService from "../services/PowService";
 
 export default class DeepseekClient
 {
+    private static readonly HISTORY_TIMEOUT_MS = 8000;
     private readonly token: string;
     private readonly powService: PowService;
     private currentSession: ChatSession | null = null;
@@ -83,36 +84,101 @@ export default class DeepseekClient
         return response;
     }
 
-    async fetchHistory(sessionId: string): Promise<DeepseekHistoryData>
+    async fetchHistory(sessionId: string, signal?: AbortSignal): Promise<DeepseekHistoryData>
     {
         const url = `${API_ENDPOINTS.HISTORY_MESSAGES}?chat_session_id=${encodeURIComponent(sessionId)}`;
         const headers = HeadersBuilder.getAuthHeaders(this.token);
-        const response = await fetch(url, { method: "GET", headers });
+        const controller = new AbortController();
+        type RaceResult =
+            | { kind: "response"; response: Response }
+            | { kind: "error"; error: unknown }
+            | { kind: "timeout" }
+            | { kind: "interrupt" };
 
-        if (!response.ok)
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        let removeExternalAbortListener: (() => void) | null = null;
+        try
         {
-            const errorData = await response.text();
-            throw new Error(`History fetch failed: ${response.status} ${errorData}`);
+            const fetchPromise: Promise<RaceResult> = fetch(url, {
+                method: "GET",
+                headers,
+                signal: controller.signal,
+            })
+                .then((response) => ({ kind: "response", response }))
+                .catch((error: unknown) => ({ kind: "error", error }));
+
+            const timeoutPromise = new Promise<RaceResult>((resolve) =>
+            {
+                timeoutId = setTimeout(() =>
+                {
+                    controller.abort("history-timeout");
+                    resolve({ kind: "timeout" });
+                }, DeepseekClient.HISTORY_TIMEOUT_MS);
+            });
+
+            const interruptPromise = new Promise<RaceResult>((resolve) =>
+            {
+                if (!signal) return;
+                if (signal.aborted)
+                {
+                    controller.abort(signal.reason ?? "user-interrupt");
+                    resolve({ kind: "interrupt" });
+                    return;
+                }
+                const onAbort = (): void =>
+                {
+                    controller.abort(signal.reason ?? "user-interrupt");
+                    resolve({ kind: "interrupt" });
+                };
+                signal.addEventListener("abort", onAbort, { once: true });
+                removeExternalAbortListener = () => signal.removeEventListener("abort", onAbort);
+            });
+
+            const winner = await Promise.race([fetchPromise, timeoutPromise, interruptPromise]);
+            if (winner.kind === "timeout")
+            {
+                throw new Error(`History fetch timeout after ${DeepseekClient.HISTORY_TIMEOUT_MS}ms`);
+            }
+            if (winner.kind === "interrupt")
+            {
+                throw new Error("Загрузка сессии прервана (Ctrl+C)");
+            }
+            if (winner.kind === "error")
+            {
+                throw winner.error;
+            }
+            const response = winner.response;
+
+            if (!response.ok)
+            {
+                const errorData = await response.text();
+                throw new Error(`History fetch failed: ${response.status} ${errorData}`);
+            }
+
+            const json = (await response.json()) as unknown;
+            const data = getRecord(json, "data");
+            const bizData = getRecord(data, "biz_data");
+
+            if (!isRecord(bizData))
+            {
+                throw new Error("Invalid history response: missing biz_data");
+            }
+
+            const chatSession = bizData.chat_session;
+            const chatMessages = bizData.chat_messages;
+
+            if (!isRecord(chatSession) || !Array.isArray(chatMessages))
+            {
+                throw new Error("Invalid history response: missing chat_session or chat_messages");
+            }
+
+            return bizData as unknown as DeepseekHistoryData;
         }
-
-        const json = (await response.json()) as unknown;
-        const data = getRecord(json, "data");
-        const bizData = getRecord(data, "biz_data");
-
-        if (!isRecord(bizData))
+        finally
         {
-            throw new Error("Invalid history response: missing biz_data");
+            if (timeoutId) clearTimeout(timeoutId);
+            removeExternalAbortListener?.();
         }
-
-        const chatSession = bizData.chat_session;
-        const chatMessages = bizData.chat_messages;
-
-        if (!isRecord(chatSession) || !Array.isArray(chatMessages))
-        {
-            throw new Error("Invalid history response: missing chat_session or chat_messages");
-        }
-
-        return bizData as unknown as DeepseekHistoryData;
     }
 
     loadExistingSession(sessionId: string, parentMessageId: number | null = null): ChatSession

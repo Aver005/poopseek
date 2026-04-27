@@ -52,9 +52,9 @@ export class DeepseekWebProvider implements ILLMProvider
         return this.client;
     }
 
-    async fetchHistory(sessionId: string)
+    async fetchHistory(sessionId: string, signal?: AbortSignal)
     {
-        return this.client.fetchHistory(sessionId);
+        return this.client.fetchHistory(sessionId, signal);
     }
 
     loadRemoteSession(sessionId: string, parentMessageId: number | null): void

@@ -9,18 +9,36 @@ const TYPE_LABELS: Record<"local" | "global", string> = {
 
 export function createLoadCommand(context: CommandsContext): Command
 {
+    const extractSessionId = (raw: string): string =>
+    {
+        const trimmed = raw.trim().replace(/^["'`]+|["'`]+$/g, "");
+        const uuidMatch = trimmed.match(
+            /(?:urn:uuid:)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/,
+        );
+        return (uuidMatch?.[1] ?? trimmed).trim();
+    };
+
     return {
         name: "/load",
         description: "Загрузить сессию по ID (локальную или DeepSeek): /load <id>",
         execute: async (args) =>
         {
-            const id = args[0]?.trim() ?? "";
+            const id = extractSessionId(args[0] ?? "");
 
             if (!id)
             {
                 writeLine("");
                 writeLine("Использование: /load <session_id>");
                 writeLine("Пример: /load 2d2ae5cb-62bc-4434-a8df-f901a4acfbbd");
+                writeLine("");
+                return true;
+            }
+
+            const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(id);
+            if (!isUuid)
+            {
+                writeLine("");
+                writeLine(`Некорректный session_id: ${id}`);
                 writeLine("");
                 return true;
             }
@@ -37,7 +55,18 @@ export function createLoadCommand(context: CommandsContext): Command
             writeLine("Поиск сессии...");
             writeLine("");
 
-            const resolved = await context.resolveSessionForLoad(id);
+            let resolved: Awaited<ReturnType<NonNullable<typeof context.resolveSessionForLoad>>>;
+            try
+            {
+                resolved = await context.resolveSessionForLoad(id);
+            }
+            catch (error)
+            {
+                const message = error instanceof Error ? error.message : String(error);
+                writeLine(`Ошибка загрузки: ${message}`);
+                writeLine("");
+                return true;
+            }
 
             if (!resolved)
             {
