@@ -85,9 +85,7 @@ poopseek/
 ```json
 {
     "tool": "bash",
-    "args": { "command": "ls -la" },
-    "onError": "continue",
-    "onSuccess": "continue"
+    "args": { "command": "ls -la" }
 }
 ```
 

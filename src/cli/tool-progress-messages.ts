@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { colors } from "@/cli/colors";
 import { adaptTextToTerminal } from "@/cli/terminal-capabilities";
 
 const TOOL_MESSAGES: Record<string, string[]> = {
@@ -152,6 +153,84 @@ export function getToolProgressMessage(toolName: string): string
         return adaptTextToTerminal(getRandomItem(scopedMessages));
 
     return adaptTextToTerminal(getRandomItem(FALLBACK_MESSAGES));
+}
+
+export function renderToolResultExtra(toolName: string, data: unknown): string | null
+{
+    if (!data || typeof data !== "object") return null;
+    const d = data as Record<string, unknown>;
+
+    if (toolName === "todo.write" || toolName === "todo.read")
+    {
+        const items = Array.isArray(d.items) ? (d.items as Array<Record<string, unknown>>) : null;
+        if (!items || items.length === 0) return null;
+
+        const lines: string[] = [];
+
+        if (toolName === "todo.write" && d.changes && typeof d.changes === "object")
+        {
+            const ch = d.changes as Record<string, unknown>;
+            const added = Array.isArray(ch.added) ? (ch.added as Array<Record<string, unknown>>) : [];
+            const removed = Array.isArray(ch.removed) ? (ch.removed as Array<Record<string, unknown>>) : [];
+            const statusChanged = Array.isArray(ch.statusChanged) ? (ch.statusChanged as Array<Record<string, unknown>>) : [];
+
+            let hadChanges = false;
+            for (const item of removed)
+            {
+                lines.push(colors.dim(`  − ${String(item.content)}`));
+                hadChanges = true;
+            }
+            for (const item of added)
+            {
+                lines.push(colors.green(`  + ${String(item.content)}`));
+                hadChanges = true;
+            }
+            for (const change of statusChanged)
+            {
+                const t = change.item as Record<string, unknown>;
+                const prev = String(change.prevStatus);
+                const next = String(t.status);
+                const icon = next === "done" ? "✓" : next === "in_progress" ? "~" : "○";
+                const colorFn = next === "done" ? colors.green : next === "in_progress" ? colors.yellow : colors.dim;
+                lines.push(colorFn(`  ${icon} ${prev} → ${next}: ${String(t.content)}`));
+                hadChanges = true;
+            }
+            if (hadChanges) lines.push("");
+        }
+
+        for (const item of items)
+        {
+            const status = String(item.status);
+            const content = String(item.content);
+            const iconChar = status === "done" ? "[x]" : status === "in_progress" ? "[~]" : "[ ]";
+            const icon = status === "done"
+                ? colors.green(iconChar)
+                : status === "in_progress"
+                    ? colors.yellow(iconChar)
+                    : colors.dim(iconChar);
+            const suffix = status === "in_progress" ? colors.yellow("  ← сейчас") : "";
+            lines.push(`  ${icon} ${content}${suffix}`);
+        }
+
+        return `${lines.join("\n")}\n`;
+    }
+
+    if (toolName === "memory.save")
+    {
+        const name = typeof d.name === "string" ? d.name : null;
+        const snippet = typeof d.snippet === "string" ? d.snippet : null;
+        if (!name) return null;
+
+        const lines: string[] = [colors.cyan(`  ${name}`)];
+        if (snippet && snippet.length > 0)
+        {
+            const preview = snippet.length > 200 ? `${snippet.slice(0, 200)}…` : snippet;
+            lines.push(colors.dim(`  ${preview.replace(/\r?\n/g, " ↵ ")}`));
+        }
+        return `${lines.join("\n")}\n`;
+    }
+
+    return null;
 }
 
 export function getToolDetail(toolName: string, args: Record<string, unknown>): string | null

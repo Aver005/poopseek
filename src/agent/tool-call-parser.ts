@@ -1,26 +1,8 @@
-import type { ToolCallEnvelope, ToolFlowAction } from "./types";
-
-const TOOL_FLOW_ACTIONS: Record<ToolFlowAction, true> = {
-    continue: true,
-    stop: true,
-    "try-again": true,
-    ignore: true,
-    "ask-user": true,
-};
+import type { ToolCallEnvelope } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown>
 {
     return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizeAction(
-    value: unknown,
-    fallback: ToolFlowAction,
-): ToolFlowAction
-{
-    if (typeof value !== "string") return fallback;
-    if (!(value in TOOL_FLOW_ACTIONS)) return fallback;
-    return value as ToolFlowAction;
 }
 
 function toEnvelope(value: unknown): ToolCallEnvelope | null
@@ -29,15 +11,8 @@ function toEnvelope(value: unknown): ToolCallEnvelope | null
     if (typeof value.tool !== "string" || value.tool.length === 0) return null;
 
     const args = isRecord(value.args) ? value.args : {};
-    const onError = normalizeAction(value.onError, "continue");
-    const onSuccess = normalizeAction(value.onSuccess, "continue");
 
-    return {
-        tool: value.tool,
-        args,
-        onError,
-        onSuccess,
-    };
+    return { tool: value.tool, args };
 }
 
 function extractJsonLikeBlocks(text: string): string[]

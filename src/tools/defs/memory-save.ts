@@ -25,6 +25,6 @@ export const handler: ToolHandler = async (args, context) =>
     return {
         ok: true,
         output: `Memory saved: ${fileName}`,
-        data: { path: targetPath, name: fileName },
+        data: { path: targetPath, name: fileName, snippet: data.slice(0, 300).trim() },
     };
 };

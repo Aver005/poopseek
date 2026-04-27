@@ -213,9 +213,7 @@
   "tool": "powershell",
   "args": {
     "command": "Write-Host \"=== Структура ===\"\nGet-ChildItem -Recurse -Include \"*.ts\",\"*.tsx\",\"*.js\",\"*.jsx\",\"*.py\",\"*.go\",\"*.rs\" |\n  Where-Object { $_.FullName -notmatch \"node_modules|build|dist|\\.git\" } |\n  Measure-Object | Select-Object -ExpandProperty Count\nWrite-Host \"=== Крупные файлы ===\"\nGet-ChildItem -Recurse -Include \"*.ts\",\"*.tsx\" |\n  Where-Object { $_.FullName -notmatch \"node_modules|build|dist\" } |\n  ForEach-Object { [PSCustomObject]@{Lines=(Get-Content $_.FullName).Count; File=$_.FullName} } |\n  Sort-Object Lines -Descending | Select-Object -First 10 | Format-Table -AutoSize\nWrite-Host \"=== any count ===\"\n(Select-String -Path \"src\\**\\*.ts\" -Pattern \": any|as any\" -Recurse).Count\nWrite-Host \"=== Catch blocks ===\"\n(Select-String -Path \"src\\**\\*.ts\" -Pattern \"catch\" -Recurse).Count"
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -277,9 +275,7 @@
         "status": "pending"
       }
     ]
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -291,9 +287,7 @@
   "tool": "powershell",
   "args": {
     "command": "bun run build 2>&1 | tail -5"
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -303,9 +297,7 @@
   "tool": "powershell",
   "args": {
     "command": "git add -A && git commit -m \"refactor: <что именно сделано>\""
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -364,9 +356,7 @@
   "tool": "powershell",
   "args": {
     "command": "$content = @'\n// новое содержимое файла\n'@\nSet-Content -Path \"src/foo.ts\" -Value $content -Encoding UTF8"
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 

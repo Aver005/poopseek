@@ -80,41 +80,15 @@ export class StreamingToolParser {
     return finalTools;
   }
 
-  /**
-   * Проверить, что JSON полностью валидный (не оборван)
-   */
   private tryParseCompleteJson(content: string): ToolCallEnvelope | null {
     try {
-      // Пробуем распарсить
       const parsed = JSON.parse(content);
-      
-      // Проверяем, что это валидный тул-вызов
-      if (typeof parsed.tool !== "string" || parsed.tool.length === 0) {
-        return null;
-      }
-      
+      if (typeof parsed.tool !== "string" || parsed.tool.length === 0) return null;
       const args = typeof parsed.args === "object" && parsed.args !== null ? parsed.args : {};
-      const onError = this.normalizeAction(parsed.onError, "continue") as any;
-      const onSuccess = this.normalizeAction(parsed.onSuccess, "continue") as any;
-      
-      return {
-        tool: parsed.tool,
-        args,
-        onError,
-        onSuccess
-      };
-    } catch (e) {
-      // JSON невалидный — возможно, оборван
+      return { tool: parsed.tool, args };
+    } catch {
       return null;
     }
-  }
-
-  private normalizeAction(value: unknown, fallback: string): string {
-    const validActions = ["continue", "stop", "try-again", "ignore", "ask-user"];
-    if (typeof value === "string" && validActions.includes(value)) {
-      return value;
-    }
-    return fallback;
   }
 
   /**

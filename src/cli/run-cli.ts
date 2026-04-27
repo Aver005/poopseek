@@ -34,7 +34,7 @@ import
         getTerminalCapabilities,
     } from "@/cli/terminal-capabilities";
 import { createTerminalInput } from "@/cli/terminal-input";
-import { getToolDetail, getToolProgressMessage } from "@/cli/tool-progress-messages";
+import { getToolDetail, getToolProgressMessage, renderToolResultExtra } from "@/cli/tool-progress-messages";
 import
     {
         createCommandHandlers,
@@ -234,7 +234,7 @@ export async function runCli(): Promise<void>
             "",
             "Получить полное содержимое навыка:",
             "```json",
-            `{"tool": "skill.read", "args": {"name": "${exampleName}"}, "onError": "continue", "onSuccess": "continue"}`,
+            `{"tool": "skill.read", "args": {"name": "${exampleName}"}}`,
             "```",
         ].join("\n");
     };
@@ -988,7 +988,7 @@ export async function runCli(): Promise<void>
                         generationIndicator.stop();
                         const detail = getToolDetail(toolName, toolArgs);
                         const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
-                        output.write(`\n${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
+                        output.write(`${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
                     },
                     onToolDone: (toolName, toolResult) =>
                     {
@@ -997,6 +997,11 @@ export async function runCli(): Promise<void>
                         wroteAnyChunk = false;
                         const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
                         output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
+                        if (toolResult.ok)
+                        {
+                            const extra = renderToolResultExtra(toolName, toolResult.data);
+                            if (extra) output.write(extra);
+                        }
                         output.write("\n");
                         generationIndicator.activate("Продолжаю...");
                     },

@@ -15,9 +15,7 @@
   "tool": "powershell",
   "args": {
     "command": "git diff HEAD"
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 

@@ -7,19 +7,10 @@ export interface AgentMessage
     name?: string;
 }
 
-export type ToolFlowAction =
-    | "continue"
-    | "stop"
-    | "try-again"
-    | "ignore"
-    | "ask-user";
-
 export interface ToolCallEnvelope
 {
     tool: string;
     args: Record<string, unknown>;
-    onError: ToolFlowAction;
-    onSuccess: ToolFlowAction;
 }
 
 export interface ToolExecutionResult

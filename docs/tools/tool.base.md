@@ -4,24 +4,11 @@
 ```json
 {
     "tool": "tools.list",
-    "args": {},
-    "onError": "ignore",
-    "onSuccess": "continue",
+    "args": {}
 }
 ```
 
-`onError` - Что делать при неудачном вызове
-- `continue` - продолжить выполнение
-- `stop` - остановить выполнение
-- `try-again` - попробовать снова
-- `ignore` - игнорировать ошибку
-- `ask-user` - спросить пользователя что делать
-
-`onSuccess` - Что делать при успешном вызове
-- `continue` - продолжить выполнение
-- `stop` - остановить выполнение
-- `try-again` - попробовать снова
-- `ask-user` - спросить пользователя что делать
+После выполнения результат возвращается модели — она сама решает что делать дальше.
 
 ---
 
@@ -37,24 +24,18 @@
 {
     "tool": "git",
     "args": { "command": "status" },
-    "onError": "continue",
-    "onSuccess": "continue"
 }
 ```
 ```json
 {
     "tool": "git",
     "args": { "command": "log --oneline -10" },
-    "onError": "stop",
-    "onSuccess": "continue"
 }
 ```
 ```json
 {
     "tool": "git",
     "args": { "command": "diff HEAD" },
-    "onError": "stop",
-    "onSuccess": "continue"
 }
 ```
 
@@ -82,8 +63,6 @@
     "args": {
         "patch": "--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -10,4 +10,4 @@\n function greet() {\n-    return 'hello';\n+    return 'hi';\n }\n"
     },
-    "onError": "stop",
-    "onSuccess": "continue"
 }
 ```
 

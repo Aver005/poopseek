@@ -631,8 +631,6 @@ export class MCPManager
                         args: Object.fromEntries(
                             Object.keys(props).slice(0, 3).map((k) => [k, "..."]),
                         ),
-                        onError: "continue",
-                        onSuccess: "continue",
                     },
                     null,
                     4,

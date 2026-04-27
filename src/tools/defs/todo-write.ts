@@ -1,5 +1,5 @@
 import type { ToolHandler } from "../types";
-import { formatTodoList, parseIncomingItems, writeTodos } from "../utils/todo-store";
+import { parseIncomingItems, readTodos, writeTodos } from "../utils/todo-store";
 
 export const name = "todo.write";
 
@@ -15,6 +15,7 @@ export const handler: ToolHandler = async (args, context) =>
         };
     }
 
+    const previous = await readTodos(context.workspaceRoot);
     await writeTodos(context.workspaceRoot, items);
 
     const done = items.filter((t) => t.status === "done").length;
@@ -24,9 +25,17 @@ export const handler: ToolHandler = async (args, context) =>
     const inProgressItem = items.find((t) => t.status === "in_progress");
     const currentTask = inProgressItem ? ` Сейчас: "${inProgressItem.content}".` : "";
 
+    const prevMap = new Map(previous.map((t) => [t.id, t]));
+    const newMap = new Map(items.map((t) => [t.id, t]));
+    const added = items.filter((t) => !prevMap.has(t.id));
+    const removed = previous.filter((t) => !newMap.has(t.id));
+    const statusChanged = items
+        .filter((t) => { const p = prevMap.get(t.id); return p !== undefined && p.status !== t.status; })
+        .map((t) => ({ item: t, prevStatus: prevMap.get(t.id)!.status }));
+
     return {
         ok: true,
         output: `Список задач обновлён (${items.length}): ${done} выполнено, ${inProgress} в работе, ${pending} ожидает.${currentTask}`,
-        data: { items, counts: { done, inProgress, pending, total: items.length } },
+        data: { items, counts: { done, inProgress, pending, total: items.length }, changes: { added, removed, statusChanged } },
     };
 };

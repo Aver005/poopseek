@@ -6,7 +6,6 @@ import type {
     AgentTurnResult,
     ToolCallEnvelope,
     ToolExecutionResult,
-    ToolFlowAction,
 } from "./types";
 
 export interface AgentLoopOptions
@@ -45,36 +44,16 @@ function buildToolResultPayload(toolName: string, result: ToolExecutionResult): 
     );
 }
 
-function resolveAction(
-    ok: boolean,
-    onSuccess: ToolFlowAction,
-    onError: ToolFlowAction,
-): ToolFlowAction
-{
-    return ok ? onSuccess : onError;
-}
-
-async function executeWithRetry(
+async function executeTool(
     executor: ToolExecutor,
     envelope: ToolCallEnvelope,
     callbacks: AgentTurnCallbacks,
-): Promise<{ result: ToolExecutionResult; action: ToolFlowAction }>
+): Promise<ToolExecutionResult>
 {
     callbacks.onToolStart?.(envelope.tool, envelope.args);
-    let result = await executor.execute(envelope);
+    const result = await executor.execute(envelope);
     callbacks.onToolDone?.(envelope.tool, result);
-
-    let action = resolveAction(result.ok, envelope.onSuccess, envelope.onError);
-
-    if (action === "try-again")
-    {
-        callbacks.onToolStart?.(envelope.tool, envelope.args);
-        result = await executor.execute(envelope);
-        callbacks.onToolDone?.(envelope.tool, result);
-        action = resolveAction(result.ok, envelope.onSuccess, envelope.onError);
-    }
-
-    return { result, action };
+    return result;
 }
 
 export default class AgentLoop
@@ -147,8 +126,6 @@ export default class AgentLoop
             lastAssistantText = "";
 
             const batchResults: Array<{ name: string; content: string }> = [];
-            let shouldStop = false;
-            let shouldAskUser = false;
 
             for (const segment of parsed.toolCalls)
             {
@@ -158,46 +135,20 @@ export default class AgentLoop
                 }
 
                 toolCallCount += 1;
-                const { result, action } = await executeWithRetry(
-                    this.toolExecutor,
-                    segment.envelope,
-                    callbacks,
-                );
+                const result = await executeTool(this.toolExecutor, segment.envelope, callbacks);
 
                 batchResults.push({
                     name: segment.envelope.tool,
                     content: buildToolResultPayload(segment.envelope.tool, result),
                 });
-
-                if (action === "stop")
-                {
-                    shouldStop = true;
-                    break;
-                }
-
-                if (action === "ask-user")
-                {
-                    shouldAskUser = true;
-                    break;
-                }
             }
 
-            if (!shouldStop && !shouldAskUser && parsed.postText.length > 0)
+            if (parsed.postText.length > 0)
             {
                 callbacks.onAssistantChunk?.(parsed.postText);
             }
 
             nextPrompt = this.contextManager.prepareToolBatchTurn(batchResults).prompt;
-
-            if (shouldStop) break;
-
-            if (shouldAskUser)
-            {
-                lastAssistantText =
-                    "Нужна реакция пользователя по результату инструмента. Продолжите диалог.";
-                callbacks.onAssistantChunk?.(lastAssistantText);
-                break;
-            }
         }
 
         return {

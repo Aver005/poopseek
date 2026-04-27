@@ -13,9 +13,7 @@
 ```json
 {
   "tool": "tools.list",
-  "args": {},
-  "onError": "ignore",
-  "onSuccess": "continue"
+  "args": {}
 }
 ```
 - Вызвать bash-команду (только если bash доступен; на Windows предпочитай powershell)
@@ -24,9 +22,7 @@
   "tool": "bash",
   "args": {
     "command": "ls -l"
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -46,9 +42,7 @@
   "tool": "user.ask",
   "args": {
     "question": "Как назвать новую переменную?"
-  },
-  "onError": "ask-user",
-  "onSuccess": "continue"
+  }
 }
 ```
 Результат: `{ ok: true, output: "<ответ пользователя>" }`
@@ -60,9 +54,7 @@
   "args": {
     "title": "Выбери архитектурный подход",
     "options": ["Монолит", "Микросервисы", "Модульный монолит"]
-  },
-  "onError": "ask-user",
-  "onSuccess": "continue"
+  }
 }
 ```
 Результат: `{ ok: true, output: "<выбранный или введённый вариант>" }`
@@ -73,9 +65,7 @@
   "tool": "user.confirm",
   "args": {
     "question": "Удалить старый конфиг?"
-  },
-  "onError": "ask-user",
-  "onSuccess": "continue"
+  }
 }
 ```
 Результат: `{ ok: true, output: "yes" | "no", data: { confirmed: true | false } }`
@@ -118,9 +108,7 @@
     "instruction": "Найди все экспортируемые функции и верни их список",
     "files": ["src/agent/loop.ts", "src/agent/context-manager.ts"],
     "schema": "{ functions: [{ name: string, file: string, isAsync: boolean }] }"
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -141,9 +129,7 @@
         "schema": "{ issues: [{ line: number, description: string }], score: number }"
       }
     ]
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -192,9 +178,7 @@
         "status": "pending"
       }
     ]
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 
@@ -202,9 +186,7 @@
 ```json
 {
   "tool": "todo.read",
-  "args": {},
-  "onError": "continue",
-  "onSuccess": "continue"
+  "args": {}
 }
 ```
 
@@ -220,25 +202,16 @@
 ```json
 {
   "tool": "<название-инструмента>",
-  "args": {},
-  "onError": "continue",
-  "onSuccess": "continue"
+  "args": {}
 }
 ```
-
-`onError` управляет поведением при ошибке:
-- `continue` — получить результат ошибки и продолжить (по умолчанию; агент самостоятельно исправится)
-- `stop` — завершить цепочку и дать ответ пользователю
-- `ask-user` — остановиться и явно попросить пользователя (только если без него невозможно продолжить)
 
 Пример с комментарием и двумя инструментами:
 Сначала проверю структуру проекта, а потом прочитаю конфиг.
 ```json
 {
   "tool": "file.list",
-  "args": {},
-  "onError": "continue",
-  "onSuccess": "continue"
+  "args": {}
 }
 ```
 ```json
@@ -246,9 +219,7 @@
   "tool": "file.read",
   "args": {
     "path": "package.json"
-  },
-  "onError": "continue",
-  "onSuccess": "continue"
+  }
 }
 ```
 

@@ -6,7 +6,6 @@ import type {
     AgentTurnResult,
     ToolCallEnvelope,
     ToolExecutionResult,
-    ToolFlowAction,
 } from "./types";
 
 export interface StreamingAgentLoopOptions {
@@ -42,33 +41,15 @@ function buildToolResultPayload(toolName: string, result: ToolExecutionResult): 
     );
 }
 
-function resolveAction(
-    ok: boolean,
-    onSuccess: ToolFlowAction,
-    onError: ToolFlowAction,
-): ToolFlowAction {
-    return ok ? onSuccess : onError;
-}
-
-async function executeWithRetry(
+async function executeTool(
     executor: ToolExecutor,
     envelope: ToolCallEnvelope,
     callbacks: StreamingAgentTurnCallbacks,
-): Promise<{ result: ToolExecutionResult; action: ToolFlowAction }> {
+): Promise<ToolExecutionResult> {
     callbacks.onToolStart?.(envelope.tool, envelope.args);
-    let result = await executor.execute(envelope);
+    const result = await executor.execute(envelope);
     callbacks.onToolDone?.(envelope.tool, result);
-
-    let action = resolveAction(result.ok, envelope.onSuccess, envelope.onError);
-
-    if (action === "try-again") {
-        callbacks.onToolStart?.(envelope.tool, envelope.args);
-        result = await executor.execute(envelope);
-        callbacks.onToolDone?.(envelope.tool, result);
-        action = resolveAction(result.ok, envelope.onSuccess, envelope.onError);
-    }
-
-    return { result, action };
+    return result;
 }
 
 /**
@@ -108,96 +89,47 @@ export default class StreamingAgentLoop {
             callbacks.onModelRequestStart?.();
             
             const toolParser = new StreamingToolParser({ maxTools: this.options.maxToolsPerStep });
-            const fullTextChunks: string[] = [];
             let assistantText = "";
             let hasDetectedTools = false;
-            let shouldStop = false;
-            let shouldAskUser = false;
             const batchResults: Array<{ name: string; content: string }> = [];
-            let lastPreTextAccumulator = "";
 
             try {
-                // Process chunks as they arrive
                 for await (const chunk of this.getProvider().complete(
                     nextPrompt,
                     this.options.getCallOptions?.(),
                 )) {
-                    fullTextChunks.push(chunk);
                     assistantText += chunk;
-                    
-                    // Feed chunk to streaming parser
+
                     const completedTools = toolParser.feed(chunk);
-                    
                     if (completedTools.length > 0) {
                         hasDetectedTools = true;
-                        
-                        // Execute detected tools as they become available
                         for (const toolEvent of completedTools) {
-                            // Send pre-text to callbacks
                             if (toolEvent.preText.length > 0) {
                                 callbacks.onAssistantChunk?.(toolEvent.preText);
                             }
-
                             toolCallCount += 1;
-                            const { result, action } = await executeWithRetry(
-                                this.toolExecutor,
-                                toolEvent.envelope,
-                                callbacks,
-                            );
-
+                            const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
                             batchResults.push({
                                 name: toolEvent.envelope.tool,
                                 content: buildToolResultPayload(toolEvent.envelope.tool, result),
                             });
-
-                            if (action === "stop") {
-                                shouldStop = true;
-                                break;
-                            }
-
-                            if (action === "ask-user") {
-                                shouldAskUser = true;
-                                break;
-                            }
                         }
-                        
-                        if (shouldStop || shouldAskUser) break;
                     }
                 }
-                
-                // Finalize: get any remaining tools that might have been incomplete
+
                 const finalTools = toolParser.finalize();
-                if (!shouldStop && !shouldAskUser && finalTools.length > 0) {
-                    for (const toolEvent of finalTools) {
-                        if (toolEvent.preText.length > 0) {
-                            callbacks.onAssistantChunk?.(toolEvent.preText);
-                        }
-
-                        toolCallCount += 1;
-                        const { result, action } = await executeWithRetry(
-                            this.toolExecutor,
-                            toolEvent.envelope,
-                            callbacks,
-                        );
-
-                        batchResults.push({
-                            name: toolEvent.envelope.tool,
-                            content: buildToolResultPayload(toolEvent.envelope.tool, result),
-                        });
-
-                        if (action === "stop") {
-                            shouldStop = true;
-                            break;
-                        }
-
-                        if (action === "ask-user") {
-                            shouldAskUser = true;
-                            break;
-                        }
+                for (const toolEvent of finalTools) {
+                    if (toolEvent.preText.length > 0) {
+                        callbacks.onAssistantChunk?.(toolEvent.preText);
                     }
+                    toolCallCount += 1;
+                    const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
+                    batchResults.push({
+                        name: toolEvent.envelope.tool,
+                        content: buildToolResultPayload(toolEvent.envelope.tool, result),
+                    });
                 }
-                
-                // If no tools were detected at all, treat as pure text response
+
                 if (!hasDetectedTools && finalTools.length === 0) {
                     if (assistantText.length > 0) {
                         callbacks.onAssistantChunk?.(assistantText);
@@ -206,30 +138,10 @@ export default class StreamingAgentLoop {
                     lastAssistantText = assistantText;
                     break;
                 }
-                
-                // Add assistant message to context (might be partial if tools were executed)
+
                 this.contextManager.addAssistant(assistantText);
-                
-                // Get post-text from parser (text after last tool)
-                const completedList = toolParser.getCompletedTools();
-                const lastTool = completedList[completedList.length - 1];
-                if (!shouldStop && !shouldAskUser && lastTool) {
-                    // Post-text would be handled by next iteration
-                }
-                
-                // Prepare next prompt with tool results
                 nextPrompt = this.contextManager.prepareToolBatchTurn(batchResults).prompt;
-                
-                if (shouldStop) break;
-                if (shouldAskUser) {
-                    lastAssistantText = "Нужна реакция пользователя по результату инструмента. Продолжите диалог.";
-                    callbacks.onAssistantChunk?.(lastAssistantText);
-                    break;
-                }
-                
-                // Continue loop if there are more tools to process
-                continue;
-                
+
             } finally {
                 callbacks.onModelRequestDone?.();
             }
