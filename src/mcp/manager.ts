@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -8,6 +11,21 @@ import type { SkillMeta } from "@/skills";
 
 const CLIENT_INFO = { name: "poopseek", version: "1.0.0" };
 const MAX_AUTO_RESOURCE_SIZE = 32_768;
+const CONNECT_TIMEOUT_MS = 8_000;
+const MCP_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
+const MCP_STATUS_CACHE_FILE = "mcp-status-cache.json";
+
+type CachedStatus = {
+    checkedAt: number;
+    signature: string;
+    status: "connected" | "error";
+    error?: string;
+};
+
+type CachedStatusFile = {
+    version: 1;
+    entries: Record<string, CachedStatus>;
+};
 
 function sanitizeNamePart(name: string): string
 {
@@ -61,6 +79,116 @@ export class MCPManager
 {
     private servers = new Map<string, ServerEntry>();
     private toolNameMap = new Map<string, { serverName: string; toolName: string }>();
+    private statusCache = new Map<string, CachedStatus>();
+    private statusCacheLoaded = false;
+    private statusCacheDirty = false;
+
+    private getStatusCachePath(): string
+    {
+        const appData = process.platform === "win32"
+            ? (process.env["APPDATA"] ?? path.join(os.homedir(), "AppData", "Roaming"))
+            : path.join(os.homedir(), ".config");
+        const configDir = process.platform === "win32"
+            ? path.join(appData, "poopseek")
+            : path.join(os.homedir(), ".config", "poopseek");
+        return path.join(configDir, MCP_STATUS_CACHE_FILE);
+    }
+
+    private getConfigSignature(config: MCPServerConfig): string
+    {
+        return JSON.stringify(config);
+    }
+
+    private async ensureStatusCacheLoaded(): Promise<void>
+    {
+        if (this.statusCacheLoaded) return;
+        this.statusCacheLoaded = true;
+        try
+        {
+            const filePath = this.getStatusCachePath();
+            const raw = await fs.readFile(filePath, "utf8");
+            const parsed = JSON.parse(raw) as CachedStatusFile;
+            const entries = parsed.entries ?? {};
+            for (const [name, value] of Object.entries(entries))
+            {
+                if (
+                    typeof value.checkedAt === "number" &&
+                    typeof value.signature === "string" &&
+                    (value.status === "connected" || value.status === "error")
+                )
+                {
+                    this.statusCache.set(name, value);
+                }
+            }
+        }
+        catch {}
+    }
+
+    private async flushStatusCache(): Promise<void>
+    {
+        if (!this.statusCacheDirty) return;
+        this.statusCacheDirty = false;
+        const filePath = this.getStatusCachePath();
+        const payload: CachedStatusFile = {
+            version: 1,
+            entries: Object.fromEntries(this.statusCache.entries()),
+        };
+        await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => undefined);
+        await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8").catch(() => undefined);
+    }
+
+    private getFreshCachedStatus(entry: ServerEntry): CachedStatus | null
+    {
+        const cached = this.statusCache.get(entry.name);
+        if (!cached) return null;
+        if (cached.signature !== this.getConfigSignature(entry.config)) return null;
+        if (Date.now() - cached.checkedAt > MCP_STATUS_CACHE_TTL_MS) return null;
+        return cached;
+    }
+
+    private applyCachedError(entry: ServerEntry): boolean
+    {
+        const cached = this.getFreshCachedStatus(entry);
+        if (!cached || cached.status !== "error") return false;
+        entry.status = "error";
+        entry.error = cached.error ?? "cached MCP connection error";
+        entry.client = null;
+        entry.tools = [];
+        entry.resources = [];
+        entry.prompts = [];
+        return true;
+    }
+
+    private saveEntryStatusToCache(entry: ServerEntry): void
+    {
+        if (entry.status !== "connected" && entry.status !== "error") return;
+        this.statusCache.set(entry.name, {
+            checkedAt: Date.now(),
+            signature: this.getConfigSignature(entry.config),
+            status: entry.status,
+            error: entry.error,
+        });
+        this.statusCacheDirty = true;
+    }
+
+    private withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T>
+    {
+        return new Promise<T>((resolve, reject) =>
+        {
+            const timer = setTimeout(() => reject(new Error(`${label} timeout (${timeoutMs}ms)`)), timeoutMs);
+            promise
+                .then((value) =>
+                {
+                    clearTimeout(timer);
+                    resolve(value);
+                })
+                .catch((error) =>
+                {
+                    clearTimeout(timer);
+                    reject(error);
+                });
+        });
+    }
 
     private buildEntry(
         name: string,
@@ -114,12 +242,20 @@ export class MCPManager
             const client = new Client(CLIENT_INFO, { capabilities: {} });
             const transport = this.createTransport(entry.config);
 
-            await client.connect(transport);
+            await this.withTimeout(
+                client.connect(transport),
+                CONNECT_TIMEOUT_MS,
+                `MCP connect: ${entry.name}`,
+            );
 
             entry.client = client;
             entry.status = "connected";
 
-            await this.refreshServerData(entry);
+            await this.withTimeout(
+                this.refreshServerData(entry),
+                CONNECT_TIMEOUT_MS,
+                `MCP metadata: ${entry.name}`,
+            );
         }
         catch (err)
         {
@@ -131,6 +267,7 @@ export class MCPManager
             entry.prompts = [];
         }
 
+        this.saveEntryStatusToCache(entry);
         this.rebuildToolNameMap();
     }
 
@@ -187,6 +324,7 @@ export class MCPManager
         disabled: Set<string>,
     ): Promise<void>
     {
+        await this.ensureStatusCacheLoaded();
         this.servers.clear();
         this.toolNameMap.clear();
 
@@ -198,10 +336,11 @@ export class MCPManager
         }
 
         const toConnect = Array.from(this.servers.values()).filter(
-            (e) => e.status !== "disabled",
+            (e) => e.status !== "disabled" && !this.applyCachedError(e),
         );
 
         await Promise.allSettled(toConnect.map((e) => this.connectEntry(e)));
+        await this.flushStatusCache();
     }
 
     async connectServer(name: string): Promise<void>
@@ -210,6 +349,7 @@ export class MCPManager
         if (!entry) throw new Error(`MCP server "${name}" not found`);
         await this.disconnectEntry(entry);
         await this.connectEntry(entry);
+        await this.flushStatusCache();
     }
 
     async disconnectServer(name: string): Promise<void>
@@ -243,6 +383,7 @@ export class MCPManager
         if (entry.status !== "disabled") return;
         entry.status = "pending";
         await this.connectEntry(entry);
+        await this.flushStatusCache();
     }
 
     async disableServer(name: string): Promise<void>
