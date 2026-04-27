@@ -344,10 +344,8 @@ export default class ContextManager
             ].join("\n");
         }
 
-        return [
-            "### USER INPUT",
-            content,
-        ].join("\n");
+        if (content.length === 0) return content;
+        return ["### USER INPUT", content].join("\n");
     }
 
     private prepareTurnMessage(

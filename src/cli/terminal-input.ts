@@ -300,32 +300,40 @@ function buildRenderedBlock(
     }
 
     const firstLinePrefix = mode === "queue"
-        ? (queueSize > 0 ? `${colors.dim(`[+${queueSize}]`)} ` : QUEUE_PREFIX)
+        ? QUEUE_PREFIX
         : PROMPT_PREFIX;
 
-    return inputLines.map((line, index) =>
+    const lines = inputLines.map((line, index) =>
         `${index === 0 ? firstLinePrefix : CONTINUATION_PREFIX}${renderLineWithPasteBlocks(formatInputLineWithMentions(line, workspaceRoot), pasteBlocks)}`
-    ).concat((() =>
+    );
+
+    // Queue indicator on its own line when in queue mode
+    if (mode === "queue" && queueSize > 0)
     {
-        const extra: string[] = [];
-        if (mode !== "queue")
+        lines.push(colors.dim(`[+${queueSize}]`));
+    }
+
+    if (mode !== "queue")
+    {
+        if (showPasteHint)
         {
-            if (showPasteHint)
-            {
-                extra.push(colors.dim("Backspace — удалить блок  Ctrl+E — развернуть"));
-            }
-            else
-            {
-                const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
-                const hintLines = fileHintLines.length > 0
-                    ? fileHintLines
-                    : getCommandHintLines(value, commands);
-                if (hintLines.length > 0) extra.push(colors.dim("Подсказки:"), ...hintLines);
-            }
+            lines.push(colors.dim("Backspace — удалить блок  Ctrl+E — развернуть"));
         }
-        if (statusLine.length > 0) extra.push(statusLine);
-        return extra;
-    })()).join("\n");
+        else if (statusLine.length > 0)
+        {
+            lines.push(statusLine);
+        }
+        else
+        {
+            const fileHintLines = getFileHintLines(fileCompletionState, fileSelectionIndex);
+            const hintLines = fileHintLines.length > 0
+                ? fileHintLines
+                : getCommandHintLines(value, commands);
+            if (hintLines.length > 0) lines.push(colors.dim("Подсказки:"), ...hintLines);
+        }
+    }
+
+    return lines.join("\n");
 }
 
 export function createTerminalInput(options: TerminalInputOptions = {}): TerminalInputController
@@ -424,7 +432,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
         if (!wasSuspended)
         {
-            vm.resume();
+            // Don't resume here — let run-cli control when rendering restarts
+            // (after mode is set to "queue" for AI requests, or after command execution)
         }
         else
         {

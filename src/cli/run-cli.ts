@@ -101,10 +101,14 @@ export async function runCli(): Promise<void>
     ]);
     await terminalInput.viewManager.push(loadingView);
     terminalInput.viewManager.renderNow();
+    const reportProgress = loadingView.getProgressReporter();
 
     let deepseekClient = new DeepseekClient(token);
     await deepseekClient.initialize();
+    reportProgress?.(20);
+
     let session = await deepseekClient.createSession();
+    reportProgress?.(30);
 
     const prompts = await readPromptFiles();
     const variableProcessor = createVariableProcessor({ workspaceRoot: process.cwd() });
@@ -114,6 +118,7 @@ export async function runCli(): Promise<void>
         { maxMessages: 40 },
         variableProcessor,
     );
+    reportProgress?.(40);
     const sessionsDir = getSessionsDirectory();
     let currentLocalSession = {
         id: createStoredSessionId(),
@@ -145,6 +150,7 @@ export async function runCli(): Promise<void>
     const savedSkillFolders = await loadSkillFolders();
     skillManager.setExtraFolders(savedSkillFolders);
     skillManager.discover(process.cwd());
+    reportProgress?.(55);
 
     // --- MCP ---
 
@@ -160,7 +166,9 @@ export async function runCli(): Promise<void>
     };
 
     await mcpManager.initialize(mcpConfig.servers, mcpConfig.disabled);
+    reportProgress?.(70);
     await syncMCP();
+    reportProgress?.(80);
 
     if (mcpManager.getServerCount() > 0)
     {
@@ -203,6 +211,7 @@ export async function runCli(): Promise<void>
         mcpManager.createDynamicToolResolver(),
         () => mcpManager.getDynamicToolNames(),
     );
+    reportProgress?.(95);
     let modelType: ModelType = "default";
     let searchEnabled = false;
     let thinkingEnabled = false;
@@ -213,6 +222,7 @@ export async function runCli(): Promise<void>
     });
 
     // Pop loading view
+    reportProgress?.(100);
     await terminalInput.viewManager.pop();
 
     // Set status line now that startup is complete
@@ -731,7 +741,11 @@ export async function runCli(): Promise<void>
 
             const shouldContinue = await handleCommand(userInput, commands);
             if (!shouldContinue) break;
-            if (userInput.startsWith("/")) continue;
+            if (userInput.startsWith("/"))
+            {
+                terminalInput.setRenderEnabled(true);
+                continue;
+            }
 
             const preparedInput = await prepareInputWithFileMentions(userInput, process.cwd());
             const attachmentPreviewLines = getFileAttachmentPreviewLines(preparedInput.attachments);

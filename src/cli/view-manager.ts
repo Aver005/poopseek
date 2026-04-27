@@ -134,6 +134,7 @@ export class ViewManager {
     }
 
     private _doRender(): void {
+        if (this._suspended) return;
         const view = this._stack.at(-1);
         if (!view) return;
 
