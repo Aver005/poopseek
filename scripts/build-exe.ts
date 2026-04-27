@@ -9,9 +9,7 @@ function getVersionArg(argv: readonly string[]): string | null
         if (arg !== "--version" && arg !== "-v") continue;
         const value = argv[i + 1]?.trim() ?? "";
         if (value.length === 0)
-        {
             throw new Error("Передай версию: --version 1.2.3");
-        }
         return value;
     }
 
