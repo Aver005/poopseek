@@ -1,135 +1,95 @@
-# DeepSeek API и конфигурация
+﻿# DeepSeek Client
 
 ## Обзор
 
-PoopSeek использует официальное API DeepSeek через кастомную обёртку в `src/deepseek-client/`. Поддерживаются потоковые ответы и сессии.
+`src/deepseek-client/` — нативная обёртка над API DeepSeek (используется провайдером `deepseek-web`). Обеспечивает создание сессий, отправку сообщений, загрузку истории и валидацию токена.
 
-## Конфигурация
+## Основные компоненты
 
-### Переменные окружения
+### DeepseekClient (`client/DeepseekClient.ts`)
 
-```bash
-# .env
-DEEPSEEK_TOKEN=your-api-key-here
-DEEPSEEK_MODEL=deepseek-chat  # опционально, по умолчанию deepseek-chat
-DEEPSEEK_API_URL=https://api.deepseek.com/v1  # опционально
-```
-
-### Файл конфигурации
-
-При первом запуске создаётся `.poopseek.json` в корне проекта:
-
-```json
-{
-    "token": "your-api-key",
-    "model": "deepseek-chat",
-    "version": "1.0.0"
-}
-```
-
-## API клиент
-
-### Основные методы
+Основной класс для взаимодействия с API.
 
 ```typescript
-// src/deepseek-client/client.ts
-export class DeepSeekClient {
-    // Отправка сообщения с потоковым ответом
-    async *streamChat(messages: Message[], options?: StreamOptions): AsyncGenerator<StreamChunk>
-    
-    // Компактное сжатие истории
-    async compact(messages: Message[]): Promise<Message>
+class DeepseekClient {
+    constructor(token: string)
+
+    // Инициализация (PoW)
+    async initialize(): Promise<void>
+
+    // Создание новой чат-сессии
+    async createSession(): Promise<ChatSession>
+
+    // Отправка сообщения (возвращает потоковый Response)
+    async sendMessage(
+        message: string,
+        session?: ChatSession | null,
+        options?: SendMessageOptions
+    ): Promise<Response>
+
+    // Загрузка истории сессии из облака DeepSeek
+    async fetchHistory(sessionId: string, signal?: AbortSignal): Promise<DeepseekHistoryData>
+
+    // Загрузка существующей сессии по ID
+    loadExistingSession(sessionId: string, parentMessageId?: number | null): ChatSession
+
+    // Статическая валидация токена
+    static async validateToken(token: string): Promise<{ valid: boolean; email?: string; error?: string }>
 }
 ```
 
-### Формат сообщений
+### ChatSession (`client/ChatSession.ts`)
+
+Управление отдельной сессией чата.
 
 ```typescript
-type Message = {
-    role: "system" | "user" | "assistant" | "tool";
-    content: string;
-    tool_calls?: ToolCall[];      // для assistant
-    tool_call_id?: string;        // для tool
-}
-
-type ToolCall = {
-    id: string;
-    type: "function";
-    function: {
-        name: string;
-        arguments: string;        // JSON строка
-    }
+class ChatSession {
+    static async create(token: string): Promise<ChatSession>
+    static fromExisting(sessionId: string, parentMessageId: number | null): ChatSession
+    getId(): string
+    getParentMessageId(): number | null
 }
 ```
 
-### Потоковые чанки
+### Конфигурация (`config/`)
+- `constants.ts` — эндпоинты API (`COMPLETION`, `HISTORY_MESSAGES`, `USERS_CURRENT`) и настройки чата (`DEFAULT_MODEL`, `DEFAULT_TEMPERATURE`, `DEFAULT_MAX_TOKENS`)
+- `headers.ts` — построение заголовков для аутентификации и запросов
+
+### Сервисы (`services/`)
+- `PowService.ts` — Proof-of-Work сервис (вычисление хеша для защиты API)
+
+### Утилиты (`utils/`)
+- `encoding.ts` — кодирование данных
+- `memory.ts` — работа с памятью
+- `record.ts` — безопасное чтение полей из JSON-ответов
+
+## SendMessageOptions
 
 ```typescript
-type StreamChunk = {
-    type: "content" | "tool_call" | "done" | "error";
-    content?: string;              // для type="content"
-    toolCall?: ToolCall;           // для type="tool_call"
-    error?: string;                // для type="error"
-}
+type SendMessageOptions = {
+    model_type?: string | null;      // "default" | "expert" | null (null = авто)
+    thinking_enabled?: boolean;      // режим рассуждений
+    search_enabled?: boolean;        // веб-поиск
+};
 ```
 
-## Управление сессией
+## Управление сессиями
 
-Клиент поддерживает автоматическое сохранение сессии между запусками через `session-manager.ts`:
+Сессии DeepSeek хранятся в облаке. Локальные копии можно сохранять через `session-store.ts`.
 
-```typescript
-// Сохранение истории сессии
-await sessionManager.save(messages);
-
-// Восстановление при следующем запуске
-const messages = await sessionManager.load();
-```
-
-Сессии хранятся в `~/.poopseek/sessions/`.
-
-## Модели
-
-Доступные модели DeepSeek:
-- `deepseek-chat` — стандартная (по умолчанию)
-- `deepseek-coder` — для задач программирования
-
-Сменить модель можно командой `/model deepseek-coder`.
-
-## Ограничения API
-
-- **Max tokens**: 4096 на запрос (можно изменить в клиенте)
-- **Context window**: 128K токенов (DeepSeek поддерживает до 1M, но PoopSeek лимитирует до 128K для производительности)
-- **Rate limit**: зависит от тарифа (обычно 10-100 запросов/минуту)
-
-## Пример: ручной вызов API
-
-```typescript
-import { DeepSeekClient } from "./deepseek-client/client.js";
-
-const client = new DeepSeekClient({
-    token: process.env.DEEPSEEK_TOKEN,
-    model: "deepseek-chat"
-});
-
-const messages = [
-    { role: "system", content: "You are a helpful assistant" },
-    { role: "user", content: "What is 2+2?" }
-];
-
-for await (const chunk of client.streamChat(messages)) {
-    if (chunk.type === "content") {
-        process.stdout.write(chunk.content);
-    }
-}
-```
+Команды для работы с сессиями:
+- `/session` — информация о текущей сессии
+- `/sessions` — список сохранённых сессий (локальных)
+- `/load <id>` — загрузить сессию (локальную или DeepSeek по UUID)
 
 ## Обработка ошибок
 
-Клиент автоматически обрабатывает:
-- Невалидный токен (401) — предложит ввести новый
-- Rate limit (429) — exponential backoff с повторами
-- Таймауты (504) — повтор с увеличением таймаута
+- `sendMessage()` бросает ошибку при не-2xx статусе с кодом и телом ответа
+- `fetchHistory()` имеет таймаут 8 секунд и поддержку прерывания через AbortSignal (Ctrl+C)
+- `validateToken()` возвращает `{ valid: false, error }` вместо бросания исключений
 
-## Переключение провайдеров
+## Провайдеры
 
-Для использования OpenAI или других провайдеров нужно реализовать адаптер в `src/llm-providers/`. См. `docs/adding-providers.md` (будет добавлено).
+DeepSeek Client используется только провайдером `deepseek-web`. Остальные провайдеры (`openai`, `openrouter`, `claude`, `gemini`, `ollama`, `lm-studio`, `hugging-face`) используют собственные реализации в `src/providers/`.
+
+Переключение между провайдерами: `/provider <id>`.

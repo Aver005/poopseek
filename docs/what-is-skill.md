@@ -1,195 +1,111 @@
+﻿# Навыки в PoopSeek
 
-## What are Agent Skills?
+## Обзор
 
-Agent skills are reusable instruction sets that extend your coding agent's capabilities. They're defined in `SKILL.md`
-files with YAML frontmatter containing a `name` and `description`.
+PoopSeek поддерживает Agent Skills specification — систему переиспользуемых наборов инструкций, расширяющих возможности агента. Навыки определяются в файлах `SKILL.md` с YAML frontmatter.
 
-Skills let agents perform specialized tasks like:
+Модуль: `src/skills/`.
 
-- Generating release notes from git history
-- Creating PRs following your team's conventions
-- Integrating with external tools (Linear, Notion, etc.)
+## Структура навыка
 
-Discover skills at **[skills.sh](https://skills.sh)**
-
-## Supported Agents
-
-Skills can be installed to any of these agents:
-
-<!-- supported-agents:start -->
-| Agent | `--agent` | Project Path | Global Path |
-|-------|-----------|--------------|-------------|
-| Amp, Kimi Code CLI, Replit, Universal | `amp`, `kimi-cli`, `replit`, `universal` | `.agents/skills/` | `~/.config/agents/skills/` |
-| Antigravity | `antigravity` | `.agents/skills/` | `~/.gemini/antigravity/skills/` |
-| Augment | `augment` | `.augment/skills/` | `~/.augment/skills/` |
-| Claude Code | `claude-code` | `.claude/skills/` | `~/.claude/skills/` |
-| OpenClaw | `openclaw` | `skills/` | `~/.openclaw/skills/` |
-| Cline, Warp | `cline`, `warp` | `.agents/skills/` | `~/.agents/skills/` |
-| CodeBuddy | `codebuddy` | `.codebuddy/skills/` | `~/.codebuddy/skills/` |
-| Codex | `codex` | `.agents/skills/` | `~/.codex/skills/` |
-| Command Code | `command-code` | `.commandcode/skills/` | `~/.commandcode/skills/` |
-| Continue | `continue` | `.continue/skills/` | `~/.continue/skills/` |
-| Cortex Code | `cortex` | `.cortex/skills/` | `~/.snowflake/cortex/skills/` |
-| Crush | `crush` | `.crush/skills/` | `~/.config/crush/skills/` |
-| Cursor | `cursor` | `.agents/skills/` | `~/.cursor/skills/` |
-| Deep Agents | `deepagents` | `.agents/skills/` | `~/.deepagents/agent/skills/` |
-| Droid | `droid` | `.factory/skills/` | `~/.factory/skills/` |
-| Firebender | `firebender` | `.agents/skills/` | `~/.firebender/skills/` |
-| Gemini CLI | `gemini-cli` | `.agents/skills/` | `~/.gemini/skills/` |
-| GitHub Copilot | `github-copilot` | `.agents/skills/` | `~/.copilot/skills/` |
-| Goose | `goose` | `.goose/skills/` | `~/.config/goose/skills/` |
-| Junie | `junie` | `.junie/skills/` | `~/.junie/skills/` |
-| iFlow CLI | `iflow-cli` | `.iflow/skills/` | `~/.iflow/skills/` |
-| Kilo Code | `kilo` | `.kilocode/skills/` | `~/.kilocode/skills/` |
-| Kiro CLI | `kiro-cli` | `.kiro/skills/` | `~/.kiro/skills/` |
-| Kode | `kode` | `.kode/skills/` | `~/.kode/skills/` |
-| MCPJam | `mcpjam` | `.mcpjam/skills/` | `~/.mcpjam/skills/` |
-| Mistral Vibe | `mistral-vibe` | `.vibe/skills/` | `~/.vibe/skills/` |
-| Mux | `mux` | `.mux/skills/` | `~/.mux/skills/` |
-| OpenCode | `opencode` | `.agents/skills/` | `~/.config/opencode/skills/` |
-| OpenHands | `openhands` | `.openhands/skills/` | `~/.openhands/skills/` |
-| Pi | `pi` | `.pi/skills/` | `~/.pi/agent/skills/` |
-| Qoder | `qoder` | `.qoder/skills/` | `~/.qoder/skills/` |
-| Qwen Code | `qwen-code` | `.qwen/skills/` | `~/.qwen/skills/` |
-| Roo Code | `roo` | `.roo/skills/` | `~/.roo/skills/` |
-| Trae | `trae` | `.trae/skills/` | `~/.trae/skills/` |
-| Trae CN | `trae-cn` | `.trae/skills/` | `~/.trae-cn/skills/` |
-| Windsurf | `windsurf` | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
-| Zencoder | `zencoder` | `.zencoder/skills/` | `~/.zencoder/skills/` |
-| Neovate | `neovate` | `.neovate/skills/` | `~/.neovate/skills/` |
-| Pochi | `pochi` | `.pochi/skills/` | `~/.pochi/skills/` |
-| AdaL | `adal` | `.adal/skills/` | `~/.adal/skills/` |
-<!-- supported-agents:end -->
-
-> [!NOTE]
-> **Kiro CLI users:** After installing skills, manually add them to your custom agent's `resources` in
-> `.kiro/agents/<agent>.json`:
->
-> ```json
-> {
->   "resources": ["skill://.kiro/skills/**/SKILL.md"]
-> }
-> ```
-
-The CLI automatically detects which coding agents you have installed. If none are detected, you'll be prompted to select
-which agents to install to.
-
-## Creating Skills
-
-Skills are directories containing a `SKILL.md` file with YAML frontmatter:
+Файл `SKILL.md`:
 
 ```markdown
 ---
 name: my-skill
-description: What this skill does and when to use it
+description: Что делает этот навык и когда применять
 ---
 
 # My Skill
 
-Instructions for the agent to follow when this skill is activated.
-
-## When to Use
-
-Describe the scenarios where this skill should be used.
-
-## Steps
-
-1. First, do this
-2. Then, do that
+Инструкции для агента при активации навыка.
 ```
 
-### Required Fields
+### Обязательные поля
+- `name` — уникальный идентификатор (lowercase, дефисы разрешены)
+- `description` — краткое описание
 
-- `name`: Unique identifier (lowercase, hyphens allowed)
-- `description`: Brief explanation of what the skill does
+### Опциональные поля
+- `metadata.internal: true` — скрыть навык из обычного обнаружения
 
-### Optional Fields
+## Где PoopSeek ищет навыки
 
-- `metadata.internal`: Set to `true` to hide the skill from normal discovery. Internal skills are only visible and
-  installable when `INSTALL_INTERNAL_SKILLS=1` is set. Useful for work-in-progress skills or skills meant only for
-  internal tooling.
+### Проектные директории (относительно рабочей папки)
+`skills/`, `skills/.curated/`, `skills/.experimental/`, `skills/.system/`, `.agents/skills/`, `.augment/skills/`, `.claude/skills/`, `.codebuddy/skills/`, `.commandcode/skills/`, `.continue/skills/`, `.cortex/skills/`, `.crush/skills/`, `.factory/skills/`, `.goose/skills/`, `.junie/skills/`, `.iflow/skills/`, `.kilocode/skills/`, `.kiro/skills/`, `.kode/skills/`, `.mcpjam/skills/`, `.vibe/skills/`, `.mux/skills/`, `.openhands/skills/`, `.pi/skills/`, `.qoder/skills/`, `.qwen/skills/`, `.roo/skills/`, `.trae/skills/`, `.windsurf/skills/`, `.zencoder/skills/`, `.neovate/skills/`, `.pochi/skills/`, `.adal/skills/`
 
-```markdown
----
-name: my-internal-skill
-description: An internal skill not shown by default
-metadata:
-  internal: true
----
-```
+### Глобальные директории (относительно домашней папки)
+`.config/agents/skills/`, `.gemini/antigravity/skills/`, `.augment/skills/`, `.claude/skills/`, `.openclaw/skills/`, `.agents/skills/`, `.codebuddy/skills/`, `.codex/skills/`, `.commandcode/skills/`, `.continue/skills/`, `.snowflake/cortex/skills/`, `.config/crush/skills/`, `.cursor/skills/`, `.deepagents/agent/skills/`, `.factory/skills/`, `.firebender/skills/`, `.gemini/skills/`, `.copilot/skills/`, `.config/goose/skills/`, `.junie/skills/`, `.iflow/skills/`, `.kilocode/skills/`, `.kiro/skills/`, `.kode/skills/`, `.mcpjam/skills/`, `.vibe/skills/`, `.mux/skills/`, `.config/opencode/skills/`, `.openhands/skills/`, `.pi/agent/skills/`, `.qoder/skills/`, `.qwen/skills/`, `.roo/skills/`, `.trae/skills/`, `.trae-cn/skills/`, `.codeium/windsurf/skills/`, `.zencoder/skills/`, `.neovate/skills/`, `.pochi/skills/`, `.adal/skills/`
 
-### Skill Discovery
+### Дополнительные папки
+Пользователь может добавить произвольные папки через `/skills-folder add <путь>`.
 
-The CLI searches for skills in these locations within a repository:
+### Корневой SKILL.md
+Файл `SKILL.md` в корне рабочей папки также проверяется.
 
-<!-- skill-discovery:start -->
-- Root directory (if it contains `SKILL.md`)
-- `skills/`
-- `skills/.curated/`
-- `skills/.experimental/`
-- `skills/.system/`
-- `.agents/skills/`
-- `.augment/skills/`
-- `.claude/skills/`
-- `./skills/`
-- `.codebuddy/skills/`
-- `.commandcode/skills/`
-- `.continue/skills/`
-- `.cortex/skills/`
-- `.crush/skills/`
-- `.factory/skills/`
-- `.goose/skills/`
-- `.junie/skills/`
-- `.iflow/skills/`
-- `.kilocode/skills/`
-- `.kiro/skills/`
-- `.kode/skills/`
-- `.mcpjam/skills/`
-- `.vibe/skills/`
-- `.mux/skills/`
-- `.openhands/skills/`
-- `.pi/skills/`
-- `.qoder/skills/`
-- `.qwen/skills/`
-- `.roo/skills/`
-- `.trae/skills/`
-- `.windsurf/skills/`
-- `.zencoder/skills/`
-- `.neovate/skills/`
-- `.pochi/skills/`
-- `.adal/skills/`
-<!-- skill-discovery:end -->
+## SkillManager API
 
-### Plugin Manifest Discovery
+```typescript
+export class SkillManager {
+    // Обнаружение навыков
+    discover(workspaceRoot: string): void
+    rediscover(): void
 
-If `.claude-plugin/marketplace.json` or `.claude-plugin/plugin.json` exists, skills declared in those files are also discovered:
+    // Получение всех обнаруженных навыков
+    getSkills(): SkillMeta[]
 
-```json
-// .claude-plugin/marketplace.json
-{
-  "metadata": { "pluginRoot": "./plugins" },
-  "plugins": [
-    {
-      "name": "my-plugin",
-      "source": "my-plugin",
-      "skills": ["./skills/review", "./skills/test"]
-    }
-  ]
+    // Активация/деактивация
+    activate(name: string): boolean
+    activateAll(): void
+    deactivate(name: string): boolean
+    clearActive(): void
+
+    // Проверка статуса
+    isActive(name: string): boolean
+    getActiveNames(): string[]
+
+    // Получение содержимого активных навыков (для системного промпта)
+    getActiveContent(): string
+
+    // Управление дополнительными папками
+    setExtraFolders(folders: string[]): void
+    addExtraFolder(folder: string): void
+    removeExtraFolder(folder: string): void
+    resetExtraFolders(): void
+    getExtraFolders(): string[]
+
+    // Внешние навыки (например, из MCP-промптов)
+    setExternalSkills(skills: SkillMeta[]): void
 }
 ```
 
-This enables compatibility with the [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) ecosystem.
+## Тип SkillMeta
 
-If no skills are found in standard locations, a recursive search is performed.
+```typescript
+export interface SkillMeta {
+    name: string;
+    description: string;
+    path: string;        // путь к файлу SKILL.md
+    body: string;        // содержимое после frontmatter
+    internal: boolean;   // скрытый навык (metadata.internal: true)
+}
+```
 
-## Compatibility
+## Управление через CLI
 
-Skills are generally compatible across agents since they follow a
-shared [Agent Skills specification](https://agentskills.io). However, some features may be agent-specific:
+- `/skills` — интерактивный список навыков (с активацией/деактивацией)
+- `/skills list [page]` — постраничный список
+- `/skills all` — активировать все
+- `/skills reset` — деактивировать все
+- `/skills use <name>` — активировать конкретный
+- `/skills off <name>` — деактивировать конкретный
+- `/skills clear` — деактивировать все
+- `/skills-folder list` — показать дополнительные папки
+- `/skills-folder add <путь>` — добавить папку
+- `/skills-folder remove` — удалить папку (интерактивно)
+- `/skills-folder reset` — сбросить все дополнительные папки
+- `/maestro` — алиас `/skills all`
+- `/noob` — алиас `/skills reset`
 
-| Feature         | OpenCode | OpenHands | Claude Code | Cline | CodeBuddy | Codex | Command Code | Kiro CLI | Cursor | Antigravity | Roo Code | Github Copilot | Amp | OpenClaw | Neovate | Pi  | Qoder | Zencoder |
-| --------------- | -------- | --------- | ----------- | ----- | --------- | ----- | ------------ | -------- | ------ | ----------- | -------- | -------------- | --- | -------- | ------- | --- | ----- | -------- |
-| Basic skills    | Yes      | Yes       | Yes         | Yes   | Yes       | Yes   | Yes          | Yes      | Yes    | Yes         | Yes      | Yes            | Yes | Yes      | Yes     | Yes | Yes   | Yes      |
-| `allowed-tools` | Yes      | Yes       | Yes         | Yes   | Yes       | Yes   | Yes          | No       | Yes    | Yes         | Yes      | Yes            | Yes | Yes      | Yes     | Yes | Yes   | No       |
-| `context: fork` | No       | No        | Yes         | No    | No        | No    | No           | No       | No     | No          | No       | No             | No  | No       | No      | No  | No    | No       |
-| Hooks           | No       | No        | Yes         | Yes   | No        | No    | No           | No       | No     | No          | No       | No             | No  | No       | No      | No  | No    | No       |
+## Интеграция с контекстом
+
+При активации навыка его `body` добавляется в системный промпт через `ContextManager.setSkillsContent()`. Список доступных навыков передаётся через `setAvailableSkillsHint()`.

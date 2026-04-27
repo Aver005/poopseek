@@ -1,6 +1,6 @@
 import { stdout as output } from "node:process";
 import ContextManager from "@/agent/context-manager";
-import AgentLoop from "@/agent/loop";
+import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { colors, getColorMode, setTheme } from "@/cli/colors";
 import
@@ -274,7 +274,7 @@ export async function runCli(): Promise<void>
         thinkingEnabled,
     });
 
-    const agentLoop = new AgentLoop(() => provider, contextManager, toolExecutor, {
+    const agentLoop = new StreamingAgentLoop(() => provider, contextManager, toolExecutor, {
         getCallOptions,
     });
 

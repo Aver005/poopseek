@@ -10,12 +10,15 @@
 
 Используй bash/powershell для получения изменений. Доступны те же инструменты, что в стандартном режиме. Вот форма вызова:
 
-```yaml
-tool: powershell
-args:
-  command: git diff HEAD
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "powershell",
+  "args": {
+    "command": "git diff HEAD"
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 Другие полезные команды:

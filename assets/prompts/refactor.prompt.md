@@ -7,7 +7,7 @@
 Рабочая папка: {{folder}}
 ОС: {{os}}
 
-Инструменты вызываются в ` ```yaml ``` ` блоках. На Windows используй `powershell` вместо `bash`.
+Инструменты вызываются в ` ```json ``` ` блоках. На Windows используй `powershell` вместо `bash`.
 
 ---
 
@@ -208,25 +208,15 @@
 ## Шаг 1 — Сканирование
 
 Собери контекст:
-```yaml
-tool: powershell
-args:
-  command: |
-    Write-Host "=== Структура ===" 
-    Get-ChildItem -Recurse -Include "*.ts","*.tsx","*.js","*.jsx","*.py","*.go","*.rs" | 
-      Where-Object { $_.FullName -notmatch "node_modules|build|dist|\.git" } | 
-      Measure-Object | Select-Object -ExpandProperty Count
-    Write-Host "=== Крупные файлы ==="
-    Get-ChildItem -Recurse -Include "*.ts","*.tsx" | 
-      Where-Object { $_.FullName -notmatch "node_modules|build|dist" } |
-      ForEach-Object { [PSCustomObject]@{Lines=(Get-Content $_.FullName).Count; File=$_.FullName} } |
-      Sort-Object Lines -Descending | Select-Object -First 10 | Format-Table -AutoSize
-    Write-Host "=== any count ==="
-    (Select-String -Path "src\**\*.ts" -Pattern ": any|as any" -Recurse).Count
-    Write-Host "=== Catch blocks ==="
-    (Select-String -Path "src\**\*.ts" -Pattern "catch" -Recurse).Count
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "powershell",
+  "args": {
+    "command": "Write-Host \"=== Структура ===\"\nGet-ChildItem -Recurse -Include \"*.ts\",\"*.tsx\",\"*.js\",\"*.jsx\",\"*.py\",\"*.go\",\"*.rs\" |\n  Where-Object { $_.FullName -notmatch \"node_modules|build|dist|\\.git\" } |\n  Measure-Object | Select-Object -ExpandProperty Count\nWrite-Host \"=== Крупные файлы ===\"\nGet-ChildItem -Recurse -Include \"*.ts\",\"*.tsx\" |\n  Where-Object { $_.FullName -notmatch \"node_modules|build|dist\" } |\n  ForEach-Object { [PSCustomObject]@{Lines=(Get-Content $_.FullName).Count; File=$_.FullName} } |\n  Sort-Object Lines -Descending | Select-Object -First 10 | Format-Table -AutoSize\nWrite-Host \"=== any count ===\"\n(Select-String -Path \"src\\**\\*.ts\" -Pattern \": any|as any\" -Recurse).Count\nWrite-Host \"=== Catch blocks ===\"\n(Select-String -Path \"src\\**\\*.ts\" -Pattern \"catch\" -Recurse).Count"
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 Дополнительно читай ключевые файлы проекта (index, main, крупнейшие модули).
@@ -261,44 +251,62 @@ onSuccess: continue
 
 ## Начало — план через todo.write
 Сразу после выбора стратегий создай список задач:
-```yaml
-tool: todo.write
-args:
-  items:
-    - id: "scan"
-      content: Сканирование и выбор стратегий
-      status: done
-    - id: "s01"
-      content: "S01 · Мёртвый код"
-      status: in_progress
-    - id: "s04"
-      content: "S04 · Укрепление типов"
-      status: pending
-    - id: "commit"
-      content: Финальный коммит и отчёт
-      status: pending
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "todo.write",
+  "args": {
+    "items": [
+      {
+        "id": "scan",
+        "content": "Сканирование и выбор стратегий",
+        "status": "done"
+      },
+      {
+        "id": "s01",
+        "content": "S01 · Мёртвый код",
+        "status": "in_progress"
+      },
+      {
+        "id": "s04",
+        "content": "S04 · Укрепление типов",
+        "status": "pending"
+      },
+      {
+        "id": "commit",
+        "content": "Финальный коммит и отчёт",
+        "status": "pending"
+      }
+    ]
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 ## Между стратегиями
 
 Проверяй сборку (для medium/hard/ultra):
-```yaml
-tool: powershell
-args:
-  command: bun run build 2>&1 | tail -5
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "powershell",
+  "args": {
+    "command": "bun run build 2>&1 | tail -5"
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 Делай коммит (для medium/hard/ultra):
-```yaml
-tool: powershell
-args:
-  command: git add -A && git commit -m "refactor: <что именно сделано>"
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "powershell",
+  "args": {
+    "command": "git add -A && git commit -m \"refactor: <что именно сделано>\""
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 Обновляй todo после каждого шага.
@@ -351,16 +359,15 @@ onSuccess: continue
 ## Запись больших изменений
 
 Для изменений > 10 строк используй `powershell` с `Set-Content`, а не `file.edit`:
-```yaml
-tool: powershell
-args:
-  command: |
-    $content = @'
-    // новое содержимое файла
-    '@
-    Set-Content -Path "src/foo.ts" -Value $content -Encoding UTF8
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "powershell",
+  "args": {
+    "command": "$content = @'\n// новое содержимое файла\n'@\nSet-Content -Path \"src/foo.ts\" -Value $content -Encoding UTF8"
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 `file.edit` для точечных замен строк. `powershell` для переписывания больших блоков.

@@ -14,7 +14,7 @@ All notable changes to PoopSeek are documented here.
 - **Session reset** — added `markSessionReset()` to `ContextManager`; resets the token counter and schedules a bootstrap message on the next turn.
 - **Batched tool calls** — the agent loop now parses and dispatches multiple tool calls in a single model response step, significantly reducing round-trips for multi-step operations. `maxStepsPerTurn` raised from 10 → 256.
 - **`maxToolsPerStep` limit** — new option on `AgentLoopOptions` caps parallel tool dispatch per step (default 10; refactor mode uses 20) to prevent runaway tool fan-out.
-- **YAML tool-call format** — `parseMessage()` in `tool-call-parser.ts` now accepts both JSON and YAML-encoded tool calls from the model, improving robustness when the model produces non-standard output.
+- **JSON tool-call format** — `parseMessage()` in `tool-call-parser.ts` parses JSON-encoded tool calls from the model, with fenced and bare-object extraction plus light repair for minor JSON formatting issues.
 - **Reasoning commentary** — the loop filters and surfaces DeepSeek reasoning tokens as inline commentary before tool results, making step-by-step thinking visible in the terminal.
 - **Retry on `try-again`** — `executeWithRetry()` added to the loop; tools that return a `try-again` flow action are automatically retried once before propagating failure.
 

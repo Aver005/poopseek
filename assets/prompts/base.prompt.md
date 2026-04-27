@@ -10,19 +10,24 @@
 # Инструменты
 Тебе доступны различные инструменты, которые можно вызывать таким образом:
 - Список доступных инструментов
-```yaml
-tool: tools.list
-args: {}
-onError: ignore
-onSuccess: continue
+```json
+{
+  "tool": "tools.list",
+  "args": {},
+  "onError": "ignore",
+  "onSuccess": "continue"
+}
 ```
 - Вызвать bash-команду (только если bash доступен; на Windows предпочитай powershell)
-```yaml
-tool: bash
-args:
-  command: ls -l
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "bash",
+  "args": {
+    "command": "ls -l"
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 У них СТРОГАЯ типизация, поэтому всегда используй этот паттерн для их вызова
@@ -36,36 +41,42 @@ onSuccess: continue
 Используй эти инструменты вместо того, чтобы писать вопросы в тексте — они дают пользователю удобный интерфейс прямо в терминале.
 
 - Задать открытый вопрос и дождаться ответа:
-```yaml
-tool: user.ask
-args:
-  question: Как назвать новую переменную?
-onError: ask-user
-onSuccess: continue
+```json
+{
+  "tool": "user.ask",
+  "args": {
+    "question": "Как назвать новую переменную?"
+  },
+  "onError": "ask-user",
+  "onSuccess": "continue"
+}
 ```
 Результат: `{ ok: true, output: "<ответ пользователя>" }`
 
 - Предложить варианты (пользователь выбирает один или вводит свой):
-```yaml
-tool: user.choice
-args:
-  title: Выбери архитектурный подход
-  options:
-    - Монолит
-    - Микросервисы
-    - Модульный монолит
-onError: ask-user
-onSuccess: continue
+```json
+{
+  "tool": "user.choice",
+  "args": {
+    "title": "Выбери архитектурный подход",
+    "options": ["Монолит", "Микросервисы", "Модульный монолит"]
+  },
+  "onError": "ask-user",
+  "onSuccess": "continue"
+}
 ```
 Результат: `{ ok: true, output: "<выбранный или введённый вариант>" }`
 
 - Запросить подтверждение ДА / НЕТ:
-```yaml
-tool: user.confirm
-args:
-  question: Удалить старый конфиг?
-onError: ask-user
-onSuccess: continue
+```json
+{
+  "tool": "user.confirm",
+  "args": {
+    "question": "Удалить старый конфиг?"
+  },
+  "onError": "ask-user",
+  "onSuccess": "continue"
+}
 ```
 Результат: `{ ok: true, output: "yes" | "no", data: { confirmed: true | false } }`
 
@@ -100,31 +111,40 @@ onSuccess: continue
 - Получить структурированный JSON-ответ на аналитический вопрос
 
 **`agent.ask`** — один суб-агент, читает файлы сам:
-```yaml
-tool: agent.ask
-args:
-  instruction: "Найди все экспортируемые функции и верни их список"
-  files:
-    - src/agent/loop.ts
-    - src/agent/context-manager.ts
-  schema: "{ functions: [{ name: string, file: string, isAsync: boolean }] }"
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "agent.ask",
+  "args": {
+    "instruction": "Найди все экспортируемые функции и верни их список",
+    "files": ["src/agent/loop.ts", "src/agent/context-manager.ts"],
+    "schema": "{ functions: [{ name: string, file: string, isAsync: boolean }] }"
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 **`agent.parallel`** — несколько суб-агентов одновременно:
-```yaml
-tool: agent.parallel
-args:
-  tasks:
-    - instruction: "Оцени качество кода: найди потенциальные баги"
-      files: ["src/agent/loop.ts"]
-      schema: "{ issues: [{ line: number, description: string }], score: number }"
-    - instruction: "Оцени качество кода: найди потенциальные баги"
-      files: ["src/agent/tool-executor.ts"]
-      schema: "{ issues: [{ line: number, description: string }], score: number }"
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "agent.parallel",
+  "args": {
+    "tasks": [
+      {
+        "instruction": "Оцени качество кода: найди потенциальные баги",
+        "files": ["src/agent/loop.ts"],
+        "schema": "{ issues: [{ line: number, description: string }], score: number }"
+      },
+      {
+        "instruction": "Оцени качество кода: найди потенциальные баги",
+        "files": ["src/agent/tool-executor.ts"],
+        "schema": "{ issues: [{ line: number, description: string }], score: number }"
+      }
+    ]
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 Суб-агент отвечает только JSON-объектом. Если разобрать JSON не удалось — `data` будет `null`, но `raw` содержит сырой ответ.
@@ -146,48 +166,64 @@ onSuccess: continue
 - При каждом обновлении передавай ПОЛНЫЙ список — `todo.write` заменяет всё целиком
 
 **Создать / обновить список:**
-```yaml
-tool: todo.write
-args:
-  items:
-    - id: "1"
-      content: Прочитать текущую конфигурацию
-      status: done
-    - id: "2"
-      content: Обновить схему базы данных
-      status: in_progress
-    - id: "3"
-      content: Написать миграцию
-      status: pending
-    - id: "4"
-      content: Обновить тесты
-      status: pending
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "todo.write",
+  "args": {
+    "items": [
+      {
+        "id": "1",
+        "content": "Прочитать текущую конфигурацию",
+        "status": "done"
+      },
+      {
+        "id": "2",
+        "content": "Обновить схему базы данных",
+        "status": "in_progress"
+      },
+      {
+        "id": "3",
+        "content": "Написать миграцию",
+        "status": "pending"
+      },
+      {
+        "id": "4",
+        "content": "Обновить тесты",
+        "status": "pending"
+      }
+    ]
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 **Посмотреть список:**
-```yaml
-tool: todo.read
-args: {}
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "todo.read",
+  "args": {},
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 Список задач ≠ память проекта. Задачи — это план текущей работы, он меняется по ходу. Память — долгосрочные факты о проекте между сессиями.
 
 # Правила вызова инструментов
-Каждый вызов инструмента оборачивай в ` ```yaml ... ``` ` блок.
+Каждый вызов инструмента оборачивай в ` ```json ... ``` ` блок.
 Можно (и нужно) добавлять рассуждения и пояснения до и после вызовов — пользователь их видит.
 Можно вызвать несколько инструментов в одном ответе (до 10) — они выполнятся последовательно, результаты вернутся вместе.
 После получения результатов проанализируй их и либо вызови следующие инструменты, либо дай финальный ответ.
 
 Форма вызова:
-```yaml
-tool: <название-инструмента>
-args: {}
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "<название-инструмента>",
+  "args": {},
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 `onError` управляет поведением при ошибке:
@@ -197,18 +233,23 @@ onSuccess: continue
 
 Пример с комментарием и двумя инструментами:
 Сначала проверю структуру проекта, а потом прочитаю конфиг.
-```yaml
-tool: file.list
-args: {}
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "file.list",
+  "args": {},
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
-```yaml
-tool: file.read
-args:
-  path: package.json
-onError: continue
-onSuccess: continue
+```json
+{
+  "tool": "file.read",
+  "args": {
+    "path": "package.json"
+  },
+  "onError": "continue",
+  "onSuccess": "continue"
+}
 ```
 
 # Правило трёх
