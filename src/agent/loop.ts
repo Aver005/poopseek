@@ -1,7 +1,4 @@
-import type ChatSession from "@/deepseek-client/client/ChatSession";
-import type DeepseekClient from "@/deepseek-client/client/DeepseekClient";
-import { collectDeepseekOutput } from "@/bridge/deepseek-stream";
-import type { ModelType } from "@/deepseek-client/types";
+import type { ILLMProvider, ProviderCallOptions } from "@/providers";
 import ContextManager from "./context-manager";
 import { parseMessage } from "./tool-call-parser";
 import ToolExecutor from "./tool-executor";
@@ -16,9 +13,7 @@ export interface AgentLoopOptions
 {
     maxStepsPerTurn: number;
     maxToolsPerStep: number;
-    getModelType?: () => ModelType;
-    getSearchEnabled?: () => boolean;
-    getThinkingEnabled?: () => boolean;
+    getCallOptions?: () => ProviderCallOptions;
 }
 
 export interface AgentTurnCallbacks
@@ -84,22 +79,19 @@ async function executeWithRetry(
 
 export default class AgentLoop
 {
-    private readonly getDeepseekClient: () => DeepseekClient;
-    private readonly getSession: () => ChatSession;
+    private readonly getProvider: () => ILLMProvider;
     private readonly contextManager: ContextManager;
     private readonly toolExecutor: ToolExecutor;
     private readonly options: AgentLoopOptions;
 
     constructor(
-        getDeepseekClient: () => DeepseekClient,
-        getSession: () => ChatSession,
+        getProvider: () => ILLMProvider,
         contextManager: ContextManager,
         toolExecutor: ToolExecutor,
         options: Partial<AgentLoopOptions> = {},
     )
     {
-        this.getDeepseekClient = getDeepseekClient;
-        this.getSession = getSession;
+        this.getProvider = getProvider;
         this.contextManager = contextManager;
         this.toolExecutor = toolExecutor;
         this.options = {
@@ -119,29 +111,25 @@ export default class AgentLoop
 
         for (let step = 0; step < this.options.maxStepsPerTurn; step += 1)
         {
-            const session = this.getSession();
             callbacks.onModelRequestStart?.();
-            let collected: Awaited<ReturnType<typeof collectDeepseekOutput>>;
+            let assistantText: string;
             try
             {
-                const response = await this.getDeepseekClient().sendMessage(nextPrompt, session, {
-                    model_type: this.options.getModelType?.(),
-                    search_enabled: this.options.getSearchEnabled?.(),
-                    thinking_enabled: this.options.getThinkingEnabled?.(),
-                });
-                collected = await collectDeepseekOutput(response);
+                const chunks: string[] = [];
+                for await (const chunk of this.getProvider().complete(
+                    nextPrompt,
+                    this.options.getCallOptions?.(),
+                ))
+                {
+                    chunks.push(chunk);
+                }
+                assistantText = chunks.join("").trim();
             }
             finally
             {
                 callbacks.onModelRequestDone?.();
             }
 
-            if (collected.parentMessageId !== null)
-            {
-                session.setParentMessageId(collected.parentMessageId);
-            }
-
-            const assistantText = collected.text.trim();
             this.contextManager.addAssistant(assistantText);
             lastAssistantText = assistantText;
 
@@ -164,7 +152,6 @@ export default class AgentLoop
 
             for (const segment of parsed.toolCalls)
             {
-                // Show any commentary/reasoning the model wrote before this tool call
                 if (segment.preText.length > 0)
                 {
                     callbacks.onAssistantChunk?.(segment.preText);
@@ -195,7 +182,6 @@ export default class AgentLoop
                 }
             }
 
-            // Show text that appeared after all tool calls (if we didn't bail early)
             if (!shouldStop && !shouldAskUser && parsed.postText.length > 0)
             {
                 callbacks.onAssistantChunk?.(parsed.postText);

@@ -63,6 +63,9 @@ export interface CommandsContext
     setThinkingEnabled?: (enabled: boolean) => void;
     runReview?: (scope: import("@/cli/review").ReviewScope) => Promise<void>;
     runRefactor?: (level: import("@/cli/refactor").RefactorLevel, focus?: string) => Promise<void>;
+    getCurrentProvider?: () => import("@/providers").ILLMProvider;
+    setProvider?: (provider: import("@/providers").ILLMProvider, config: import("@/providers").ProviderConfig) => Promise<void>;
+    waitForInput?: () => Promise<string>;
 }
 
 export interface CommandModule

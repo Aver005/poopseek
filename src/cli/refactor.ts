@@ -5,8 +5,7 @@ import ToolExecutor from "@/agent/tool-executor";
 import { colors } from "@/cli/colors";
 import { renderMarkdown } from "@/cli/markdown";
 import { getToolDetail, getToolProgressMessage } from "@/cli/tool-progress-messages";
-import type DeepseekClient from "@/deepseek-client/client/DeepseekClient";
-import type { ModelType } from "@/deepseek-client/types";
+import type { ILLMProvider, ProviderCallOptions } from "@/providers";
 import type { AskUserFn } from "@/tools/types";
 import type { VariableProcessor } from "@/variables";
 
@@ -45,8 +44,8 @@ const LEVEL_CONFIG: Record<RefactorLevel, {
 };
 
 export type RefactorDeps = {
-    getClient: () => DeepseekClient;
-    getModelType: () => ModelType;
+    getProvider: () => ILLMProvider;
+    getCallOptions: () => ProviderCallOptions;
     getWorkspaceRoot: () => string;
     refactorPrompt: string;
     toolsPrompt: string;
@@ -127,7 +126,7 @@ export async function executeRefactor(
 {
     const cfg = LEVEL_CONFIG[level];
 
-    const refactorSession = await deps.getClient().createSession();
+    const refactorProvider = await deps.getProvider().clone();
     const refactorContext = new ContextManager(
         deps.refactorPrompt,
         deps.toolsPrompt,
@@ -138,15 +137,15 @@ export async function executeRefactor(
         deps.getWorkspaceRoot(),
         (req) => deps.getAskUser()(req),
     );
+    const callOptions = deps.getCallOptions();
     const refactorLoop = new AgentLoop(
-        () => deps.getClient(),
-        () => refactorSession,
+        () => refactorProvider,
         refactorContext,
         refactorTool,
         {
             maxStepsPerTurn: cfg.maxSteps,
             maxToolsPerStep: 20,
-            getModelType: deps.getModelType,
+            getCallOptions: () => ({ modelVariant: callOptions.modelVariant }),
         },
     );
 

@@ -5,8 +5,7 @@ import ToolExecutor from "@/agent/tool-executor";
 import { colors } from "@/cli/colors";
 import { renderMarkdown } from "@/cli/markdown";
 import { getToolDetail, getToolProgressMessage } from "@/cli/tool-progress-messages";
-import type DeepseekClient from "@/deepseek-client/client/DeepseekClient";
-import type { ModelType } from "@/deepseek-client/types";
+import type { ILLMProvider, ProviderCallOptions } from "@/providers";
 import type { AskUserFn } from "@/tools/types";
 import type { VariableProcessor } from "@/variables";
 
@@ -18,8 +17,8 @@ export type ReviewScope =
     | { kind: "commit"; ref: string };
 
 export type ReviewDeps = {
-    getClient: () => DeepseekClient;
-    getModelType: () => ModelType;
+    getProvider: () => ILLMProvider;
+    getCallOptions: () => ProviderCallOptions;
     getWorkspaceRoot: () => string;
     reviewPrompt: string;
     toolsPrompt: string;
@@ -89,7 +88,7 @@ function scopeLabel(scope: ReviewScope): string
 
 export async function executeReview(scope: ReviewScope, deps: ReviewDeps): Promise<void>
 {
-    const reviewSession = await deps.getClient().createSession();
+    const reviewProvider = await deps.getProvider().clone();
     const reviewContext = new ContextManager(
         deps.reviewPrompt,
         deps.toolsPrompt,
@@ -97,14 +96,14 @@ export async function executeReview(scope: ReviewScope, deps: ReviewDeps): Promi
         deps.variableProcessor,
     );
     const reviewTool = new ToolExecutor(deps.getWorkspaceRoot(), (req) => deps.getAskUser()(req));
+    const callOptions = deps.getCallOptions();
     const reviewLoop = new AgentLoop(
-        () => deps.getClient(),
-        () => reviewSession,
+        () => reviewProvider,
         reviewContext,
         reviewTool,
         {
             maxStepsPerTurn: 16,
-            getModelType: deps.getModelType,
+            getCallOptions: () => ({ modelVariant: callOptions.modelVariant }),
         },
     );
 

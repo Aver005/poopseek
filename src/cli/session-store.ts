@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ContextManagerState } from "@/agent/context-manager";
-import type { ModelType } from "@/deepseek-client/types";
 import { writeTextFile } from "@/tools/utils/write-text-file";
 
 export interface StoredSessionSnapshot
@@ -12,7 +11,7 @@ export interface StoredSessionSnapshot
     createdAt: string;
     updatedAt: string;
     workspaceRoot: string;
-    modelType: ModelType;
+    modelType: string;
     context: ContextManagerState;
 }
 
@@ -22,7 +21,7 @@ export interface StoredSessionSummary
     createdAt: string;
     updatedAt: string;
     workspaceRoot: string;
-    modelType: ModelType;
+    modelType: string;
     messageCount: number;
     title: string;
 }
@@ -43,9 +42,9 @@ function normalizeString(value: unknown): string | null
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function normalizeModelType(value: unknown): ModelType
+function normalizeModelType(value: unknown): string
 {
-    return value === "expert" ? "expert" : "default";
+    return typeof value === "string" && value.length > 0 ? value : "default";
 }
 
 export function deriveSessionTitle(context: ContextManagerState): string

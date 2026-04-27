@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { collectDeepseekOutput } from "@/bridge/deepseek-stream";
-import type DeepseekClient from "@/deepseek-client/client/DeepseekClient";
-import type { ModelType } from "@/deepseek-client/types";
+import type { ILLMProvider } from "@/providers";
 
 export interface SubAgentTask
 {
@@ -67,8 +65,7 @@ function extractJson(text: string): unknown
 export class SubAgentRunner
 {
     constructor(
-        private readonly getClient: () => DeepseekClient,
-        private readonly getModelType: () => ModelType,
+        private readonly getProvider: () => ILLMProvider,
         private readonly workspaceRoot: string,
     ) {}
 
@@ -94,12 +91,13 @@ export class SubAgentRunner
             const fileContents = task.files?.length ? await this.readFiles(task.files) : {};
             const prompt = buildPrompt(task, fileContents);
 
-            const client = this.getClient();
-            const session = await client.createSession();
-            const response = await client.sendMessage(prompt, session, {
-                model_type: this.getModelType(),
-            });
-            const { text } = await collectDeepseekOutput(response);
+            const subProvider = await this.getProvider().clone();
+            const chunks: string[] = [];
+            for await (const chunk of subProvider.complete(prompt))
+            {
+                chunks.push(chunk);
+            }
+            const text = chunks.join("");
 
             try
             {

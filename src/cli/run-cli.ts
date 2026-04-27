@@ -1,5 +1,4 @@
 import { stdout as output } from "node:process";
-import { collectDeepseekOutput } from "@/bridge/deepseek-stream";
 import ContextManager from "@/agent/context-manager";
 import AgentLoop from "@/agent/loop";
 import ToolExecutor from "@/agent/tool-executor";
@@ -24,6 +23,7 @@ import {
     getRuntimeConfigPath,
     loadRuntimeConfig,
     promptForToken,
+    saveRuntimeConfig,
 } from "@/cli/runtime-config";
 import {
     adaptTextToTerminal,
@@ -36,8 +36,6 @@ import {
     handleCommand,
 } from "@/commands";
 import type { Command } from "@/commands/types";
-import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
-import type { ModelType } from "@/deepseek-client/types";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
 import { SkillManager } from "@/skills";
@@ -51,6 +49,11 @@ import { SubAgentRunner } from "@/agent/sub-agent";
 import { createReviewRunner } from "@/cli/review";
 import { createRefactorRunner } from "@/cli/refactor";
 import { LoadingView } from "@/cli/views/loading";
+import {
+    createProvider,
+    DeepseekWebProvider,
+    type ILLMProvider,
+} from "@/providers";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -64,20 +67,37 @@ export async function runCli(): Promise<void>
         ? __APP_VERSION__.trim()
         : "";
     const appVersion = embeddedVersion || envVersion || "dev";
-    const initialToken = envToken ?? loadedRuntimeConfig.config.token ?? await promptForToken();
-    const token = await ensureValidToken({
-        initialToken,
-        envToken,
-        savedToken: loadedRuntimeConfig.config.token,
-        runtimeConfigPath,
-    });
+
+    // --- Provider initialization ---
+
+    let provider: ILLMProvider;
+    let token: string = "";
+
+    const savedProviderConfig = loadedRuntimeConfig.config.provider;
+
+    if (savedProviderConfig && savedProviderConfig.id !== "deepseek-web")
+    {
+        // Non-deepseek-web provider: create directly from config (no token needed)
+        provider = await createProvider(savedProviderConfig, "");
+    }
+    else
+    {
+        // deepseek-web (default) or no saved provider: need token
+        const initialToken = envToken ?? loadedRuntimeConfig.config.token ?? await promptForToken();
+        token = await ensureValidToken({
+            initialToken,
+            envToken,
+            savedToken: loadedRuntimeConfig.config.token,
+            runtimeConfigPath,
+        });
+        provider = await DeepseekWebProvider.create(token);
+    }
 
     const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
     const generationIndicator = createGenerationIndicator(output);
     const colorMode = getColorMode();
     const terminalCapabilities = getTerminalCapabilities();
 
-    // Show loading view during startup processes
     const loadingView = new LoadingView([
         "Воруем ваш токен",
         "Сливаем кодовую базу",
@@ -103,13 +123,7 @@ export async function runCli(): Promise<void>
     await terminalInput.viewManager.push(loadingView);
     terminalInput.viewManager.renderNow();
     const reportProgress = loadingView.getProgressReporter();
-
-    let deepseekClient = new DeepseekClient(token);
-    await deepseekClient.initialize();
     reportProgress?.(20);
-
-    let session = await deepseekClient.createSession();
-    reportProgress?.(30);
 
     const prompts = await readPromptFiles();
     const variableProcessor = createVariableProcessor({ workspaceRoot: process.cwd() });
@@ -131,7 +145,7 @@ export async function runCli(): Promise<void>
             id: currentLocalSession.id,
             createdAt: currentLocalSession.createdAt,
             workspaceRoot: process.cwd(),
-            modelType,
+            modelType: modelVariant,
             context: contextManager.exportState(),
         });
     };
@@ -142,9 +156,9 @@ export async function runCli(): Promise<void>
             createdAt: new Date().toISOString(),
         };
     };
-    const resetMainSession = async (): Promise<void> =>
+    const resetMainProvider = async (): Promise<void> =>
     {
-        session = await deepseekClient.createSession();
+        await provider.reset();
         contextManager.markSessionReset();
     };
     const skillManager = new SkillManager();
@@ -202,8 +216,7 @@ export async function runCli(): Promise<void>
 
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
     const subAgentRunner = new SubAgentRunner(
-        () => deepseekClient,
-        () => modelType,
+        () => provider,
         process.cwd(),
     );
     const toolExecutor = new ToolExecutor(
@@ -220,23 +233,30 @@ export async function runCli(): Promise<void>
         (message) => generationIndicator.activate(message),
     );
     reportProgress?.(95);
-    let modelType: ModelType = "default";
+
+    let modelVariant = "default";
     let searchEnabled = false;
     let thinkingEnabled = false;
-    const agentLoop = new AgentLoop(() => deepseekClient, () => session, contextManager, toolExecutor, {
-        getModelType: () => modelType,
-        getSearchEnabled: () => searchEnabled,
-        getThinkingEnabled: () => thinkingEnabled,
+
+    const getCallOptions = () => ({
+        modelVariant,
+        searchEnabled,
+        thinkingEnabled,
+    });
+
+    const agentLoop = new AgentLoop(() => provider, contextManager, toolExecutor, {
+        getCallOptions,
     });
 
     // Pop loading view
     reportProgress?.(100);
     await terminalInput.viewManager.pop();
 
-    // Set status line now that startup is complete
     terminalInput.setStatusLine(() =>
     {
-        const parts: string[] = [colors.magenta(modelType)];
+        const isDeepseekWeb = provider.info.id === "deepseek-web";
+        const label = isDeepseekWeb ? `${provider.info.label} · ${modelVariant}` : provider.info.label;
+        const parts: string[] = [colors.magenta(label)];
         if (searchEnabled) parts.push(colors.green("web"));
         if (thinkingEnabled) parts.push(colors.cyan("think"));
         const activeSkillsCount = skillManager.getActiveNames().length;
@@ -337,7 +357,7 @@ export async function runCli(): Promise<void>
         }
     };
 
-    // --- Auth actions ---
+    // --- Auth actions (deepseek-web specific) ---
 
     const { relogin, logout } = createAuthActions({
         runtimeConfigPath,
@@ -345,18 +365,17 @@ export async function runCli(): Promise<void>
         waitForInput: () => inputQueue.waitForNext(),
         writeOutput: writeDetachedOutput,
         startNewLocalSession,
-        onReloggedIn: (newClient, newSession) =>
+        onReloggedIn: (newProvider) =>
         {
-            deepseekClient = newClient;
-            session = newSession;
+            provider = newProvider;
         },
     });
 
     // --- Sidechat ---
 
     const { runSidechat, startQueuedSidechat, pendingTasks: pendingSidechatTasks } = createSidechatRunner({
-        getClient: () => deepseekClient,
-        getModelType: () => modelType,
+        getProvider: () => provider,
+        getCallOptions,
         getWorkspaceRoot: () => process.cwd(),
         prompts,
         variableProcessor,
@@ -367,8 +386,8 @@ export async function runCli(): Promise<void>
     });
 
     const { runReview } = createReviewRunner({
-        getClient: () => deepseekClient,
-        getModelType: () => modelType,
+        getProvider: () => provider,
+        getCallOptions,
         getWorkspaceRoot: () => process.cwd(),
         reviewPrompt: prompts.reviewPrompt,
         toolsPrompt: prompts.toolsPrompt,
@@ -379,8 +398,8 @@ export async function runCli(): Promise<void>
     });
 
     const { runRefactor } = createRefactorRunner({
-        getClient: () => deepseekClient,
-        getModelType: () => modelType,
+        getProvider: () => provider,
+        getCallOptions,
         getWorkspaceRoot: () => process.cwd(),
         refactorPrompt: prompts.refactorPrompt,
         toolsPrompt: prompts.toolsPrompt,
@@ -395,10 +414,17 @@ export async function runCli(): Promise<void>
     let commands = new Map<string, Command>();
     commands = createCommandHandlers(terminalInput, {
         viewManager: terminalInput.viewManager,
-        getSessionInfo: () => [
-            `Remote session ID: ${session.getId()}`,
-            `Local session ID: ${currentLocalSession.id}`,
-        ].join(" | "),
+        getSessionInfo: () =>
+        {
+            const remoteId = provider instanceof DeepseekWebProvider
+                ? provider.getSessionId() ?? "—"
+                : "—";
+            return [
+                `Provider: ${provider.info.label}`,
+                `Remote session ID: ${remoteId}`,
+                `Local session ID: ${currentLocalSession.id}`,
+            ].join(" | ");
+        },
         getContextStats: () => [
             `Messages in local context: ${contextManager.getMessageCount()}`,
             `Approx tokens since refresh: ${contextManager.getApproxTokensSinceRefresh()}/${contextManager.getRefreshEveryApproxTokens()}`,
@@ -408,7 +434,7 @@ export async function runCli(): Promise<void>
         {
             contextManager.clearHistory();
             startNewLocalSession();
-            await resetMainSession();
+            await resetMainProvider();
             await saveCurrentLocalSession();
         },
         openSessions: async () =>
@@ -436,9 +462,9 @@ export async function runCli(): Promise<void>
                 id: snapshot.id,
                 createdAt: snapshot.createdAt,
             };
-            modelType = snapshot.modelType;
+            modelVariant = snapshot.modelType;
             contextManager.restoreState(snapshot.context);
-            await resetMainSession();
+            await resetMainProvider();
             await saveCurrentLocalSession();
 
             const title = sessions.find((item) => item.id === snapshot.id)?.title ?? "без названия";
@@ -446,8 +472,11 @@ export async function runCli(): Promise<void>
         },
         getTheme: () => getColorMode().theme,
         setTheme: (theme) => setTheme(theme),
-        getModelType: () => modelType,
-        setModelType: (nextModelType) => modelType = nextModelType,
+        getModelType: () => modelVariant as "default" | "expert",
+        setModelType: (nextModelType) =>
+        {
+            modelVariant = nextModelType;
+        },
         getSearchEnabled: () => searchEnabled,
         setSearchEnabled: (enabled) => searchEnabled = enabled,
         getThinkingEnabled: () => thinkingEnabled,
@@ -472,19 +501,22 @@ export async function runCli(): Promise<void>
                             id: localSnapshot.id,
                             createdAt: localSnapshot.createdAt,
                         };
-                        modelType = localSnapshot.modelType;
+                        modelVariant = localSnapshot.modelType;
                         contextManager.restoreState(localSnapshot.context);
-                        await resetMainSession();
+                        await resetMainProvider();
                         await saveCurrentLocalSession();
                         return {};
                     },
                 };
             }
 
-            // 2. Try as a DeepSeek (global) session
+            // 2. Try as a DeepSeek remote session (only when using deepseek-web)
+            if (!(provider instanceof DeepseekWebProvider)) return null;
+            const deepseekProvider = provider;
+
             try
             {
-                const historyData = await deepseekClient.fetchHistory(id);
+                const historyData = await deepseekProvider.fetchHistory(id);
                 const { chat_session, chat_messages } = historyData;
 
                 const messageMap = new Map(
@@ -529,7 +561,7 @@ export async function runCli(): Promise<void>
                             return { error: "история пуста или не содержит завершённых сообщений" };
                         }
                         contextManager.restoreState({ messages: localMessages });
-                        session = deepseekClient.loadExistingSession(id, parentMessageId);
+                        deepseekProvider.loadRemoteSession(id, parentMessageId);
                         startNewLocalSession();
                         await saveCurrentLocalSession();
                         return {};
@@ -554,16 +586,17 @@ export async function runCli(): Promise<void>
                 dialogue,
             ].join("\n");
 
-            const compactSession = await deepseekClient.createSession();
-            const response = await deepseekClient.sendMessage(compactPrompt, compactSession, {
-                model_type: modelType,
-            });
-            const compacted = await collectDeepseekOutput(response);
-            const summary = compacted.text.trim();
+            const compactProvider = await provider.clone();
+            const chunks: string[] = [];
+            for await (const chunk of compactProvider.complete(compactPrompt, { modelVariant }))
+            {
+                chunks.push(chunk);
+            }
+            const summary = chunks.join("").trim();
             if (summary.length === 0) throw new Error("Модель вернула пустую сводку");
 
             contextManager.replaceWithCompactSummary(summary);
-            await resetMainSession();
+            await resetMainProvider();
             await saveCurrentLocalSession();
             return {
                 before,
@@ -664,6 +697,20 @@ export async function runCli(): Promise<void>
         mcpGetPrompt: (serverName, promptName) => mcpManager.getMCPPrompt(serverName, promptName),
         runReview,
         runRefactor,
+        getCurrentProvider: () => provider,
+        setProvider: async (newProvider, config) =>
+        {
+            provider = newProvider;
+            contextManager.clearHistory();
+            startNewLocalSession();
+            contextManager.markSessionReset();
+            await saveRuntimeConfig(runtimeConfigPath, {
+                token: config.id === "deepseek-web" ? token : null,
+                provider: config,
+            });
+            await saveCurrentLocalSession();
+        },
+        waitForInput: () => inputQueue.waitForNext(),
     });
 
     // --- Terminal input callbacks ---
@@ -725,7 +772,7 @@ export async function runCli(): Promise<void>
     output.write(`\n${colors.green(adaptTextToTerminal("PoopSeek CLI 💩"))} | v${appVersion}\n\n`);
     output.write(`${colors.yellow("/help")} для списка команд\n`);
     output.write(`${colors.yellow("/tools")} для списка инструментов\n\n`);
-    output.write(`Модель: ${colors.magenta(modelType)}\n`);
+    output.write(`Провайдер: ${colors.magenta(provider.info.label)}\n`);
     output.write(`Цвета ${colorMode.enabled ? colors.green("включены") : colors.red("отключены")}\n`);
     output.write(`Профиль терминала: ${colors.cyan(`${terminalCapabilities.shell}/${terminalCapabilities.terminal}`)}\n`);
     output.write(`Рендер: ${colors.cyan(colorMode.support)} | emoji ${terminalCapabilities.emoji ? colors.green("on") : colors.red("off")}\n`);

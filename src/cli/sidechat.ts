@@ -5,8 +5,7 @@ import ToolExecutor from "@/agent/tool-executor";
 import { colors } from "@/cli/colors";
 import { renderMarkdown } from "@/cli/markdown";
 import { getToolDetail, getToolProgressMessage } from "@/cli/tool-progress-messages";
-import type DeepseekClient from "@/deepseek-client/client/DeepseekClient";
-import type { ModelType } from "@/deepseek-client/types";
+import type { ILLMProvider, ProviderCallOptions } from "@/providers";
 import type { AskUserFn } from "@/tools/types";
 import type { VariableProcessor } from "@/variables";
 
@@ -21,8 +20,8 @@ type GenerationIndicatorRef = {
 };
 
 export type SidechatDeps = {
-    getClient: () => DeepseekClient;
-    getModelType: () => ModelType;
+    getProvider: () => ILLMProvider;
+    getCallOptions: () => ProviderCallOptions;
     getWorkspaceRoot: () => string;
     prompts: SidechatPrompts;
     variableProcessor: VariableProcessor;
@@ -52,7 +51,7 @@ async function executeSidechat(
         else output.write(value);
     };
 
-    const sideSession = await deps.getClient().createSession();
+    const sideProvider = await deps.getProvider().clone();
     const sideContext = new ContextManager(
         deps.prompts.basePrompt,
         deps.prompts.toolsPrompt,
@@ -60,9 +59,10 @@ async function executeSidechat(
         deps.variableProcessor,
     );
     const sideTool = new ToolExecutor(deps.getWorkspaceRoot(), (req) => deps.getAskUser()(req));
-    const sideLoop = new AgentLoop(() => deps.getClient(), () => sideSession, sideContext, sideTool, {
+    const callOptions = deps.getCallOptions();
+    const sideLoop = new AgentLoop(() => sideProvider, sideContext, sideTool, {
         maxStepsPerTurn: 6,
-        getModelType: deps.getModelType,
+        getCallOptions: () => ({ modelVariant: callOptions.modelVariant }),
     });
 
     if (showHeader)

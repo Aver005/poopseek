@@ -3,9 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import type { ProviderConfig } from "@/providers";
 
 export type RuntimeConfig = {
     token: string | null;
+    provider: ProviderConfig | null;
 };
 
 type RuntimeConfigLoadResult = {
@@ -38,17 +40,61 @@ export function getRuntimeConfigPath(): string
     return path.join(basePath, "poopseek", "config.json");
 }
 
+function parseProviderConfig(raw: unknown): ProviderConfig | null
+{
+    if (typeof raw !== "object" || raw === null) return null;
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.id !== "string") return null;
+
+    switch (obj.id)
+    {
+        case "deepseek-web":
+            return { id: "deepseek-web" };
+        case "openai":
+            if (typeof obj.apiKey === "string" && typeof obj.model === "string")
+                return { id: "openai", apiKey: obj.apiKey, model: obj.model, baseUrl: typeof obj.baseUrl === "string" ? obj.baseUrl : undefined };
+            return null;
+        case "openrouter":
+            if (typeof obj.apiKey === "string" && typeof obj.model === "string")
+                return { id: "openrouter", apiKey: obj.apiKey, model: obj.model };
+            return null;
+        case "hugging-face":
+            if (typeof obj.apiKey === "string" && typeof obj.model === "string")
+                return { id: "hugging-face", apiKey: obj.apiKey, model: obj.model };
+            return null;
+        case "claude":
+            if (typeof obj.apiKey === "string" && typeof obj.model === "string")
+                return { id: "claude", apiKey: obj.apiKey, model: obj.model };
+            return null;
+        case "gemini":
+            if (typeof obj.apiKey === "string" && typeof obj.model === "string")
+                return { id: "gemini", apiKey: obj.apiKey, model: obj.model };
+            return null;
+        case "ollama":
+            if (typeof obj.baseUrl === "string" && typeof obj.model === "string")
+                return { id: "ollama", baseUrl: obj.baseUrl, model: obj.model };
+            return null;
+        case "lm-studio":
+            if (typeof obj.baseUrl === "string" && typeof obj.model === "string")
+                return { id: "lm-studio", baseUrl: obj.baseUrl, model: obj.model };
+            return null;
+        default:
+            return null;
+    }
+}
+
 function parseRuntimeConfig(raw: unknown): RuntimeConfig
 {
     if (typeof raw !== "object" || raw === null)
-        return { token: null };
+        return { token: null, provider: null };
 
     const maybeConfig = raw as Record<string, unknown>;
     const token = typeof maybeConfig.token === "string"
         ? normalizeOptionalString(maybeConfig.token)
         : null;
+    const provider = parseProviderConfig(maybeConfig.provider);
 
-    return { token };
+    return { token, provider };
 }
 
 export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConfigLoadResult>
@@ -68,7 +114,7 @@ export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConf
         if (nodeError.code === "ENOENT")
         {
             return {
-                config: { token: null },
+                config: { token: null, provider: null },
                 exists: false,
             };
         }
@@ -76,7 +122,7 @@ export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConf
         if (error instanceof SyntaxError)
         {
             return {
-                config: { token: null },
+                config: { token: null, provider: null },
                 exists: true,
             };
         }
@@ -93,6 +139,7 @@ export async function saveRuntimeConfig(configPath: string, config: RuntimeConfi
     const payload = JSON.stringify(
         {
             token: config.token,
+            provider: config.provider,
         },
         null,
         4,
@@ -115,7 +162,7 @@ export async function promptForToken(): Promise<string>
             const providedToken = normalizeOptionalString(
                 await promptInterface.question("Введите DEEPSEEK_TOKEN: "),
             );
-            
+
             if (providedToken !== null)
                 return providedToken;
         }

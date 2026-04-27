@@ -3,7 +3,8 @@ import type ContextManager from "@/agent/context-manager";
 import { colors } from "@/cli/colors";
 import { promptForToken, saveRuntimeConfig } from "@/cli/runtime-config";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
-import type ChatSession from "@/deepseek-client/client/ChatSession";
+import { DeepseekWebProvider } from "@/providers";
+import type { ILLMProvider } from "@/providers";
 
 export async function ensureValidToken(params: {
     initialToken: string;
@@ -23,7 +24,7 @@ export async function ensureValidToken(params: {
         {
             if (savedToken !== token && !envToken)
             {
-                await saveRuntimeConfig(runtimeConfigPath, { token });
+                await saveRuntimeConfig(runtimeConfigPath, { token, provider: null });
             }
             return token;
         }
@@ -45,7 +46,7 @@ export type AuthActionDeps = {
     waitForInput: () => Promise<string>;
     writeOutput: (value: string) => void;
     startNewLocalSession: () => void;
-    onReloggedIn: (client: DeepseekClient, session: ChatSession) => void;
+    onReloggedIn: (provider: ILLMProvider) => void;
 };
 
 export function createAuthActions(deps: AuthActionDeps): {
@@ -68,13 +69,11 @@ export function createAuthActions(deps: AuthActionDeps): {
 
             if (validation.valid)
             {
-                await saveRuntimeConfig(deps.runtimeConfigPath, { token: trimmed });
-                const newClient = new DeepseekClient(trimmed);
-                await newClient.initialize();
-                const newSession = await newClient.createSession();
+                await saveRuntimeConfig(deps.runtimeConfigPath, { token: trimmed, provider: null });
+                const newProvider = await DeepseekWebProvider.create(trimmed);
                 deps.contextManager.markSessionReset();
                 deps.startNewLocalSession();
-                deps.onReloggedIn(newClient, newSession);
+                deps.onReloggedIn(newProvider);
                 const who = validation.email ? `: ${validation.email}` : "";
                 deps.writeOutput(`${colors.green("✓")} Авторизован${who}\n\n`);
                 return;
@@ -86,7 +85,7 @@ export function createAuthActions(deps: AuthActionDeps): {
 
     const logout = async (): Promise<void> =>
     {
-        await saveRuntimeConfig(deps.runtimeConfigPath, { token: null });
+        await saveRuntimeConfig(deps.runtimeConfigPath, { token: null, provider: null });
         deps.writeOutput(`\n${colors.yellow("Токен сброшен.")} Перезапустите приложение.\n\n`);
         process.exit(0);
     };
