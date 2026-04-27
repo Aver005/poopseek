@@ -1,7 +1,7 @@
 import { writeLine } from "../io";
 import type { Command, CommandsContext } from "../types";
 import { createProvider, PROVIDER_IDS, type ILLMProvider, type ProviderConfig } from "@/providers";
-import { buildConfig, PROVIDER_LABELS, type ProviderId } from "./provider";
+import { buildConfig, PROVIDER_LABELS, sanitizeConfiguredProviders, type ProviderId } from "./provider";
 
 function parseProviderSelection(input: string): ProviderId[]
 {
@@ -50,7 +50,7 @@ export function createAuthCommand(context: CommandsContext): Command
             });
             writeLine("");
 
-            const existing = getConfiguredProviders?.() ?? [];
+            const existing = sanitizeConfiguredProviders(getConfiguredProviders?.() ?? []);
             const defaultNums = existing.length > 0
                 ? existing
                     .map((p) => PROVIDER_IDS.indexOf(p.id as ProviderId) + 1)
@@ -66,7 +66,11 @@ export function createAuthCommand(context: CommandsContext): Command
                 : parseProviderSelection(selRaw || defaultNums);
 
             // Step 3: Collect credentials
-            const configuredProviders: ProviderConfig[] = [];
+            const existingById = new Map<ProviderId, ProviderConfig>(
+                existing.map((provider) => [provider.id as ProviderId, provider]),
+            );
+            const configuredById = new Map<ProviderId, ProviderConfig>(existingById);
+            const selectedConfigured: ProviderConfig[] = [];
             let activeProvider: ILLMProvider | null = null;
             let activeConfig: ProviderConfig | null = null;
 
@@ -75,14 +79,25 @@ export function createAuthCommand(context: CommandsContext): Command
                 writeLine("");
                 writeLine(`── ${PROVIDER_LABELS[id]} ──`);
                 const config = await buildConfig(id, waitForInput);
-                if (!config) { writeLine("Пропущено."); continue; }
-                configuredProviders.push(config);
+                if (!config)
+                {
+                    writeLine("Пропущено.");
+                    const prev = existingById.get(id);
+                    if (prev) selectedConfigured.push(prev);
+                    continue;
+                }
+                configuredById.set(id, config);
+                selectedConfigured.push(config);
             }
 
+            const configuredProviders = selRaw === "0"
+                ? []
+                : Array.from(configuredById.values());
+
             // Create active provider from first config
-            if (configuredProviders.length > 0)
+            if (selectedConfigured.length > 0)
             {
-                const firstConfig = configuredProviders[0]!;
+                const firstConfig = selectedConfigured[0]!;
                 try
                 {
                     writeLine("");

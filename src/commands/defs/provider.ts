@@ -20,6 +20,20 @@ function isProviderId(value: string): value is ProviderId
     return (PROVIDER_IDS as readonly string[]).includes(value);
 }
 
+export function sanitizeConfiguredProviders(
+    providers: Array<ProviderConfig | null | undefined>,
+): ProviderConfig[]
+{
+    return providers.filter((provider): provider is ProviderConfig =>
+        provider !== null &&
+        provider !== undefined &&
+        typeof provider === "object" &&
+        "id" in provider &&
+        typeof provider.id === "string" &&
+        isProviderId(provider.id),
+    );
+}
+
 export async function promptLine(
     waitForInput: () => Promise<string>,
     prompt: string,
@@ -107,7 +121,14 @@ export function createProviderCommand(context: CommandsContext): Command
         description: "Показать или сменить провайдера LLM (/provider [id])",
         execute: async (args) =>
         {
-            const { getCurrentProvider, setProvider, waitForInput, getConfiguredProviders, getToken } = context;
+            const {
+                getCurrentProvider,
+                setProvider,
+                waitForInput,
+                getConfiguredProviders,
+                getToken,
+                saveUserConfig,
+            } = context;
 
             if (!getCurrentProvider || !setProvider || !waitForInput)
             {
@@ -122,7 +143,7 @@ export function createProviderCommand(context: CommandsContext): Command
             if (!rawId)
             {
                 const current = getCurrentProvider();
-                const configured = getConfiguredProviders?.() ?? [];
+                const configured = sanitizeConfiguredProviders(getConfiguredProviders?.() ?? []);
 
                 writeLine("");
                 writeLine(`Текущий провайдер: ${current.info.label}`);
@@ -201,7 +222,9 @@ export function createProviderCommand(context: CommandsContext): Command
             writeLine(`Переключение на ${PROVIDER_LABELS[rawId]}...`);
             writeLine("");
 
-            const config = await buildConfig(rawId, waitForInput);
+            const configured = sanitizeConfiguredProviders(getConfiguredProviders?.() ?? []);
+            const existingConfig = configured.find((item) => item.id === rawId);
+            const config = existingConfig ?? await buildConfig(rawId, waitForInput);
             if (!config)
             {
                 writeLine("Отменено.");
@@ -213,6 +236,10 @@ export function createProviderCommand(context: CommandsContext): Command
             {
                 writeLine("Подключение...");
                 const newProvider = await createProvider(config, getToken?.() ?? "");
+                if (!existingConfig && saveUserConfig)
+                {
+                    await saveUserConfig({ configuredProviders: [...configured, config] });
+                }
                 await setProvider(newProvider, config);
                 writeLine(`Провайдер переключён: ${newProvider.info.label}`);
                 writeLine("История очищена, новая сессия начата.");

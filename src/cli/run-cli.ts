@@ -786,11 +786,12 @@ export async function runCli(): Promise<void>
 
     terminalInput.onSubmit((value) =>
     {
-        if (!value) return;
         if (inputQueue.hasPendingWaiter())
         {
             inputQueue.resolveWaiter(value);
+            return;
         }
+        if (!value) return;
         else
         {
             const btwQuestion = parseBtwQuestion(value);
