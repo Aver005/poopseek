@@ -17,9 +17,7 @@ export async function ensureValidToken(params: {
 
     while (true)
     {
-        output.write("Проверяю токен...\r");
         const validation = await DeepseekClient.validateToken(token);
-        output.write("                 \r");
 
         if (validation.valid)
         {

@@ -49,6 +49,7 @@ import { createInputQueue } from "@/cli/input-queue";
 import { createSidechatRunner } from "@/cli/sidechat";
 import { createReviewRunner } from "@/cli/review";
 import { createRefactorRunner } from "@/cli/refactor";
+import { LoadingView } from "@/cli/views/loading";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -69,6 +70,37 @@ export async function runCli(): Promise<void>
         savedToken: loadedRuntimeConfig.config.token,
         runtimeConfigPath,
     });
+
+    const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
+    const generationIndicator = createGenerationIndicator(output);
+    const colorMode = getColorMode();
+    const terminalCapabilities = getTerminalCapabilities();
+
+    // Show loading view during startup processes
+    const loadingView = new LoadingView([
+        "Воруем ваш токен",
+        "Сливаем кодовую базу",
+        "Сканируем окружение",
+        "Ищем куда ещё залезть",
+        "Подключаем троян",
+        "Инициализируем сеть",
+        "Подготовка к запуску",
+        "Загружаем плагины",
+        "Запуск модулей",
+        "Готово!",
+        "Обнуляем переменные",
+        "Стираем логи",
+        "Оптимизируем память",
+        "Растягиваем процессор",
+        "Собираем мусор",
+        "Перепрыгиваем через баги",
+        "Обновляем тайм-ауты",
+        "Насаждаем эвенты",
+        "Укладываем в кэш",
+        "Готово к работе",
+    ]);
+    await terminalInput.viewManager.push(loadingView);
+    terminalInput.viewManager.renderNow();
 
     let deepseekClient = new DeepseekClient(token);
     await deepseekClient.initialize();
@@ -180,7 +212,10 @@ export async function runCli(): Promise<void>
         getThinkingEnabled: () => thinkingEnabled,
     });
 
-    const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
+    // Pop loading view
+    await terminalInput.viewManager.pop();
+
+    // Set status line now that startup is complete
     terminalInput.setStatusLine(() =>
     {
         const parts: string[] = [colors.magenta(modelType)];
@@ -190,9 +225,6 @@ export async function runCli(): Promise<void>
         if (activeSkillsCount > 0) parts.push(colors.yellow(`${activeSkillsCount} skills`));
         return colors.dim("◆ ") + parts.join(colors.dim(" · "));
     });
-    const generationIndicator = createGenerationIndicator(output);
-    const colorMode = getColorMode();
-    const terminalCapabilities = getTerminalCapabilities();
 
     // --- Input queue ---
 

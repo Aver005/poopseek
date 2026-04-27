@@ -91,6 +91,12 @@ export class ViewManager {
         });
     }
 
+    renderNow(): void {
+        if (this._suspended) return;
+        this._renderScheduled = false;
+        this._doRender();
+    }
+
     suspend(): void {
         if (this._suspended) return;
         this._suspended = true;
