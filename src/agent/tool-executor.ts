@@ -1,6 +1,7 @@
 import path from "node:path";
 import { getToolNames, toolsRegistry } from "@/tools";
 import { toStringValue } from "@/tools/args";
+import { checkRateLimit } from "@/utils/rate-limiter";
 import type { AskUserFn, CommandResult, ToolContext } from "@/tools/types";
 import type { ToolCallEnvelope, ToolExecutionResult } from "./types";
 import type { SubAgentRunner } from "./sub-agent";
@@ -141,6 +142,16 @@ export default class ToolExecutor
 
     async execute(toolCall: ToolCallEnvelope): Promise<ToolExecutionResult>
     {
+        const rateCheck = checkRateLimit(toolCall.tool);
+        if (!rateCheck.allowed)
+        {
+            return {
+                ok: false,
+                output: rateCheck.error ?? "Rate limit exceeded",
+                error: rateCheck.error,
+            };
+        }
+
         const args = isRecord(toolCall.args) ? toolCall.args : {};
 
         try

@@ -1,4 +1,3 @@
-import type { ToolCallEnvelope } from "@/agent/types";
 import { StreamingToolParser, type ParsedToolEvent } from "@/agent/streaming-tool-parser";
 
 export interface CollectDeepseekOutputOptions {

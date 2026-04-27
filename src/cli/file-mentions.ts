@@ -255,26 +255,6 @@ function getFileSuggestions(query: string, workspaceRoot: string): FileSuggestio
         .sort(sortSuggestions);
 }
 
-function getCommonPrefix(values: string[]): string
-{
-    const [firstValue] = values;
-    if (!firstValue) return "";
-
-    let prefixLength = firstValue.length;
-    for (const value of values)
-    {
-        let index = 0;
-        while (index < prefixLength && index < value.length && firstValue[index] === value[index])
-        {
-            index += 1;
-        }
-
-        prefixLength = index;
-        if (prefixLength === 0) return "";
-    }
-
-    return firstValue.slice(0, prefixLength);
-}
 
 function getCodeFenceLanguage(filePath: string): string
 {
@@ -425,7 +405,7 @@ export function applyFileCompletion(
 
 export function formatInputLineWithMentions(line: string, workspaceRoot: string): string
 {
-    return line.replace(/(^|\s)(@\S+)/g, (match, prefix: string, token: string) =>
+    return line.replace(/(^|\s)(@\S+)/g, (_match, prefix: string, token: string) =>
     {
         const selection = resolveExactPath(token.slice(1), workspaceRoot);
         if (selection === null) return `${prefix}${colors.yellow(token)}`;

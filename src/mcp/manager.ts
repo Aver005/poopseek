@@ -595,7 +595,6 @@ export class MCPManager
 
         for (const tool of tools)
         {
-            const label = tool.title ?? tool.name;
             const desc = tool.description ?? "";
             const schema = tool.inputSchema;
             const props = (schema?.["properties"] as Record<string, Record<string, unknown>> | undefined) ?? {};

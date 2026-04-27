@@ -9,11 +9,16 @@
     "build": "bun build src/index.ts --target bun --outdir build && bun run copy:assets",
     "build:exe": "bun run scripts/build-exe.ts",
     "compile": "bun run build:exe",
-    "check": "tsc -b"
+    "check": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/terminal-kit": "^2.5.7"
+    "@types/terminal-kit": "^2.5.7",
+    "@vitest/coverage-v8": "^4.1.5",
+    "vitest": "^4.1.5"
   },
   "peerDependencies": {
     "typescript": "^5"

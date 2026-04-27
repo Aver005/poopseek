@@ -1,6 +1,6 @@
 import type { ILLMProvider, ProviderCallOptions } from "@/providers";
 import ContextManager from "./context-manager";
-import { StreamingToolParser, type ParsedToolEvent } from "./streaming-tool-parser";
+import { StreamingToolParser } from "./streaming-tool-parser";
 import ToolExecutor from "./tool-executor";
 import type {
     AgentTurnResult,

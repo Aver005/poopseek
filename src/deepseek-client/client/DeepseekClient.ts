@@ -104,8 +104,8 @@ export default class DeepseekClient
                 headers,
                 signal: controller.signal,
             })
-                .then((response) => ({ kind: "response", response }))
-                .catch((error: unknown) => ({ kind: "error", error }));
+                .then((response) => ({ kind: "response" as const, response }))
+                .catch((error: unknown) => ({ kind: "error" as const, error }));
 
             const timeoutPromise = new Promise<RaceResult>((resolve) =>
             {
@@ -177,7 +177,7 @@ export default class DeepseekClient
         finally
         {
             if (timeoutId) clearTimeout(timeoutId);
-            removeExternalAbortListener?.();
+            (removeExternalAbortListener as (() => void) | null)?.();
         }
     }
 

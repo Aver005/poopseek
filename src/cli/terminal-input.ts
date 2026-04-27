@@ -309,7 +309,7 @@ async function createTerminalDriver(): Promise<TerminalDriver>
 
 function buildRenderedBlock(
     value: string,
-    cursor: number,
+    _cursor: number,
     mode: TerminalInputMode,
     queueSize: number,
     commands: Map<string, Command>,

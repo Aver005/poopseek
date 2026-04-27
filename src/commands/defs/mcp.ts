@@ -155,7 +155,6 @@ export function createMCPCommand(context: CommandsContext): Command
 
                 for (const tool of filtered)
                 {
-                    const title = tool.title ?? tool.name;
                     writeLine(`  ${colors.yellow(tool.fullName)}`);
                     writeLine(`    ${colors.dim(`сервер: ${tool.serverName} | mcp: ${tool.name}`)}`);
                     if (tool.description) writeLine(`    ${tool.description}`);

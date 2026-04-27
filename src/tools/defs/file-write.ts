@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { toStringValue } from "../args";
 import type { ToolHandler } from "../types";
 import { writeTextFile } from "../utils/write-text-file";

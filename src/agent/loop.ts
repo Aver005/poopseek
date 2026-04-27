@@ -1,4 +1,5 @@
 import type { ILLMProvider, ProviderCallOptions } from "@/providers";
+import { withRetry } from "@/utils/retry";
 import ContextManager from "./context-manager";
 import { parseMessage } from "./tool-call-parser";
 import ToolExecutor from "./tool-executor";
@@ -94,15 +95,18 @@ export default class AgentLoop
             let assistantText: string;
             try
             {
-                const chunks: string[] = [];
-                for await (const chunk of this.getProvider().complete(
-                    nextPrompt,
-                    this.options.getCallOptions?.(),
-                ))
+                assistantText = await withRetry(async () =>
                 {
-                    chunks.push(chunk);
-                }
-                assistantText = chunks.join("").trim();
+                    const chunks: string[] = [];
+                    for await (const chunk of this.getProvider().complete(
+                        nextPrompt,
+                        this.options.getCallOptions?.(),
+                    ))
+                    {
+                        chunks.push(chunk);
+                    }
+                    return chunks.join("").trim();
+                });
             }
             finally
             {
