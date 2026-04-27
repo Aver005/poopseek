@@ -613,8 +613,18 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         {
             case "ENTER":
             case "KP_ENTER":
+            {
+                const prevChar = state.cursor > 0 ? state.value.at(state.cursor - 1) : undefined;
+                if (prevChar === "\\")
+                {
+                    state.value = state.value.slice(0, state.cursor - 1) + "\n" + state.value.slice(state.cursor);
+                    vm.invalidate();
+                    notifyValueChange();
+                    return;
+                }
                 submit(state.value);
                 return;
+            }
             case "BACKSPACE":
             {
                 if (state.cursor === 0) return;
