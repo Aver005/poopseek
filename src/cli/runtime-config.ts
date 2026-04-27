@@ -148,7 +148,7 @@ export async function saveRuntimeConfig(configPath: string, config: RuntimeConfi
 
 export async function promptForToken(): Promise<string>
 {
-    const promptInterface = readline.createInterface({ input, output });
+    const promptInterface = readline.createInterface({ input, output, terminal: true });
     try
     {
         while (true)

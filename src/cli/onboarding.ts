@@ -28,7 +28,7 @@ function yellow(text: string): string { return `\x1b[33m${text}\x1b[0m`; }
 
 function makeReadLine(): { readLine: InputFn; close: () => void }
 {
-    const rl = readline.createInterface({ input: stdin, output: stdout, terminal: false });
+    const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
     const readLine: InputFn = (prompt) =>
     {
         stdout.write(prompt);
