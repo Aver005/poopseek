@@ -26,42 +26,36 @@ export class StreamingToolParser {
    */
   feed(chunk: string): ParsedToolEvent[] {
     this.buffer += chunk;
-    
-    // Пытаемся найти завершённые JSON-блоки
+
     const completedTools: ParsedToolEvent[] = [];
-    
-    // Ищем все ```json ... ``` блоки
+
     const fencedRegex = /```([A-Za-z0-9_-]*)\s*\r?\n?([\s\S]*?)\s*```/g;
+    fencedRegex.lastIndex = this.lastProcessedLength;
+
     let match;
-    let lastMatchEnd = 0;
-    
     while ((match = fencedRegex.exec(this.buffer)) !== null) {
       if (completedTools.length >= this.maxTools) break;
-      
+
       const language = match[1]?.trim().toLowerCase() ?? "";
       if (language === "yaml" || language === "yml") continue;
-      
+
       const content = match[2]?.trim();
       if (!content) continue;
-      
-      // Проверяем, что JSON валидный (полный)
+
       const envelope = this.tryParseCompleteJson(content);
       if (!envelope) continue;
-      
-      // Блок завершён — можно отдавать
+
       const start = match.index ?? 0;
       const preText = this.buffer.slice(this.lastProcessedLength, start).trim();
-      
+
       completedTools.push({ type: "tool", preText, envelope });
-      lastMatchEnd = start + match[0].length;
+      this.lastProcessedLength = start + match[0].length;
     }
-    
-    // Обновляем последнюю обработанную позицию
-    if (lastMatchEnd > 0) {
-      this.lastProcessedLength = lastMatchEnd;
+
+    if (completedTools.length > 0) {
       this.pendingTools.push(...completedTools);
     }
-    
+
     return completedTools;
   }
 
