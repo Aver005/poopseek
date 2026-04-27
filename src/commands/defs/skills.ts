@@ -1,6 +1,7 @@
 import { writeLine } from "../io";
 import { colors } from "@/cli/colors";
 import type { Command, CommandsContext } from "../types";
+import { SkillsView } from "@/cli/views/skills";
 
 const PAGE_SIZE = 10;
 
@@ -71,7 +72,16 @@ export function createSkillsCommand(context: CommandsContext): Command
                     return true;
                 }
 
-                // Без аргументов — интерактивный режим (toggle через choose)
+                // Без аргументов — интерактивный режим
+                const vm = context.viewManager;
+                if (!vm)
+                {
+                    writeLine("");
+                    writeLine("Интерактивный режим недоступен.");
+                    writeLine("");
+                    return true;
+                }
+
                 if (skills.length === 0)
                 {
                     writeLine("");
@@ -80,34 +90,16 @@ export function createSkillsCommand(context: CommandsContext): Command
                     return true;
                 }
 
-                while (true)
+                await new Promise<void>((resolve) =>
                 {
-                    const currentSkills = context.getSkills?.() ?? [];
-                    const items = currentSkills.map((skill) =>
-                    {
-                        const active = isActive(skill.name);
-                        return {
-                            value: skill.name,
-                            label: `${active ? colors.green("●") : colors.dim("○")} ${active ? colors.green(skill.name) : skill.name}`,
-                            hint: skill.description || undefined,
-                        };
-                    });
-
-                    const selected = await context.choose?.(
-                        "Навыки  (Enter — вкл/выкл, Esc — выйти)",
-                        items,
-                    );
-                    if (!selected) break;
-
-                    if (isActive(selected))
-                    {
-                        context.deactivateSkill?.(selected);
-                    }
-                    else
-                    {
-                        context.activateSkill?.(selected);
-                    }
-                }
+                    vm.push(new SkillsView({
+                        getSkills: () => context.getSkills?.() ?? [],
+                        isActive: (name) => context.isSkillActive?.(name) ?? false,
+                        activate: (name) => { context.activateSkill?.(name); },
+                        deactivate: (name) => { context.deactivateSkill?.(name); },
+                        onClose: resolve,
+                    }));
+                });
 
                 writeLine("");
                 const activeNames = (context.getSkills?.() ?? [])

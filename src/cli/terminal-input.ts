@@ -10,6 +10,15 @@ import {
     formatInputLineWithMentions,
     getFileHintLines,
 } from "@/cli/file-mentions";
+import {
+    type TerminalDriver,
+    type TerminalKeyData,
+    type TerminalKeyHandler,
+    type ViewRenderResult,
+    ViewManager,
+} from "@/cli/view-manager";
+import { ConfirmView } from "@/cli/views/confirm";
+import { ChoiceView } from "@/cli/views/choice";
 
 export type TerminalInputMode = "active" | "queue";
 
@@ -29,32 +38,17 @@ type TerminalInputController = {
     choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
     confirm: (message: string) => Promise<boolean>;
     close: () => void;
+    viewManager: ViewManager;
 };
 
 type TerminalInputOptions = {
     getWorkspaceRoot?: () => string;
 };
 
-type TerminalKeyData = {
-    code?: string;
-    isCharacter?: boolean;
-};
-
-type TerminalKeyHandler = (name: string, matches: string[], data: TerminalKeyData) => void;
-
 export type TerminalChoiceItem = {
     value: string;
     label: string;
     hint?: string;
-};
-
-type TerminalDriver = {
-    grabInput: () => void;
-    releaseInput: () => void;
-    hideCursor: () => void;
-    showCursor: () => void;
-    onKey: (listener: TerminalKeyHandler) => void;
-    offKey: (listener: TerminalKeyHandler) => void;
 };
 
 const PROMPT_PREFIX = `${colors.magenta(">")} `;
@@ -334,79 +328,16 @@ function buildRenderedBlock(
     })()).join("\n");
 }
 
-function buildChoiceBlock(
-    title: string,
-    items: TerminalChoiceItem[],
-    selectedIndex: number,
-): string
-{
-    const visibleLimit = 12;
-    const startIndex = items.length <= visibleLimit
-        ? 0
-        : Math.min(
-            Math.max(0, selectedIndex - Math.floor(visibleLimit / 2)),
-            items.length - visibleLimit,
-        );
-    const visibleItems = items.slice(startIndex, startIndex + visibleLimit);
-    const lines = [
-        colors.cyan(title),
-        colors.dim("Enter - загрузить, Esc - отмена"),
-    ];
-
-    for (let index = 0; index < visibleItems.length; index += 1)
-    {
-        const item = visibleItems[index]!;
-        const absoluteIndex = startIndex + index;
-        const selected = absoluteIndex === selectedIndex;
-        const marker = selected ? colors.green("›") : colors.dim(" ");
-        const label = selected ? colors.green(item.label) : item.label;
-        lines.push(`${marker} ${label}`);
-        if (item.hint)
-        {
-            lines.push(`  ${colors.dim(item.hint)}`);
-        }
-    }
-
-    if (startIndex > 0 || startIndex + visibleItems.length < items.length)
-    {
-        lines.push(colors.dim(`Показано ${startIndex + 1}-${startIndex + visibleItems.length} из ${items.length}`));
-    }
-
-    return lines.join("\n");
-}
-
-function buildConfirmBlock(message: string): string
-{
-    return [
-        message,
-        colors.dim("Enter — продолжить  Esc — отмена"),
-    ].join("\n");
-}
-
 export function createTerminalInput(options: TerminalInputOptions = {}): TerminalInputController
 {
     let driverPromise: Promise<TerminalDriver> | null = null;
-    let activeDriver: TerminalDriver | null = null;
-    let lastRenderLineCount = 0;
-    let lastCursorRow = 0;
     let fileSelectionKey: string | null = null;
     let fileSelectionIndex = 0;
     let mode: TerminalInputMode = "active";
     let queueSize = 0;
     let activeCommands: Map<string, Command> = new Map();
-    let choiceState: {
-        title: string;
-        items: TerminalChoiceItem[];
-        selectedIndex: number;
-        resolve: (value: string | null) => void;
-    } | null = null;
-    let confirmState: {
-        message: string;
-        resolve: (confirmed: boolean) => void;
-    } | null = null;
 
     const submitHandlers = new Set<(value: string) => void>();
-
     const pasteBlocks = new Map<string, string>();
     let pasteIdCounter = 0;
     let isPasting = false;
@@ -414,6 +345,93 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
     const charBatch: string[] = [];
     let charBatchScheduled = false;
+
+    const state = {
+        value: "",
+        cursor: 0,
+    };
+
+    const history: string[] = [];
+    let historyIndex = -1;
+    let historyDraft = "";
+
+    let cmdTabIndex = -1;
+    let cmdTabQuery = "";
+
+    const getWorkspaceRoot = options.getWorkspaceRoot ?? (() => process.cwd());
+
+    const vm = new ViewManager();
+
+    const getDriver = async (): Promise<TerminalDriver> =>
+    {
+        driverPromise ??= createTerminalDriver();
+        return driverPromise;
+    };
+
+    const getActiveFileCompletionState = (): FileCompletionState =>
+    {
+        const completionState = getFileCompletionState(state.value, state.cursor, getWorkspaceRoot());
+        if (completionState.key === null || completionState.options.length === 0)
+        {
+            fileSelectionKey = null;
+            fileSelectionIndex = 0;
+            return completionState;
+        }
+        if (fileSelectionKey !== completionState.key)
+        {
+            fileSelectionKey = completionState.key;
+            fileSelectionIndex = 0;
+        }
+        if (fileSelectionIndex >= completionState.options.length) fileSelectionIndex = 0;
+        return completionState;
+    };
+
+    let queueCallbacks: QueueCallbacks = {};
+    let getStatusLine: () => string = () => "";
+
+    const notifyValueChange = (): void =>
+    {
+        if (vm.suspended) queueCallbacks.onValueChange?.(state.value);
+    };
+
+    const submit = (rawValue: string): void =>
+    {
+        const wasSuspended = vm.suspended;
+        if (!wasSuspended)
+        {
+            vm.suspend();
+            output.write("\n");
+        }
+        state.value = "";
+        state.cursor = 0;
+
+        const expandedValue = expandPasteSentinels(rawValue, pasteBlocks);
+        pasteBlocks.clear();
+        const trimmedValue = expandedValue.trim();
+        if (trimmedValue.length > 0)
+        {
+            if (history.at(-1) !== trimmedValue) history.push(trimmedValue);
+        }
+        historyIndex = -1;
+        historyDraft = "";
+        cmdTabIndex = -1;
+        cmdTabQuery = "";
+
+        for (const handler of submitHandlers)
+        {
+            handler(trimmedValue);
+        }
+
+        if (!wasSuspended)
+        {
+            vm.resume();
+        }
+        else
+        {
+            queueCallbacks.onValueChange?.("");
+            queueCallbacks.onStop?.();
+        }
+    };
 
     const flushCharBatch = (): void =>
     {
@@ -453,8 +471,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
             state.value = state.value.slice(0, state.cursor) + text + state.value.slice(state.cursor);
             state.cursor += text.length;
         }
-        render();
-        if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+        vm.invalidate();
+        notifyValueChange();
     };
 
     const scheduleCharBatchFlush = (): void =>
@@ -464,142 +482,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         process.nextTick(flushCharBatch);
     };
 
-    const state = {
-        value: "",
-        cursor: 0,
-    };
-
-    const history: string[] = [];
-    let historyIndex = -1;
-    let historyDraft = "";
-
-    let cmdTabIndex = -1;
-    let cmdTabQuery = "";
-
-    const getWorkspaceRoot = options.getWorkspaceRoot ?? (() => process.cwd());
-
-    const getDriver = async (): Promise<TerminalDriver> =>
-    {
-        driverPromise ??= createTerminalDriver();
-        activeDriver = await driverPromise;
-        return activeDriver;
-    };
-
-    const getActiveFileCompletionState = (): FileCompletionState =>
-    {
-        const completionState = getFileCompletionState(state.value, state.cursor, getWorkspaceRoot());
-        if (completionState.key === null || completionState.options.length === 0)
-        {
-            fileSelectionKey = null;
-            fileSelectionIndex = 0;
-            return completionState;
-        }
-        if (fileSelectionKey !== completionState.key)
-        {
-            fileSelectionKey = completionState.key;
-            fileSelectionIndex = 0;
-        }
-        if (fileSelectionIndex >= completionState.options.length) fileSelectionIndex = 0;
-        return completionState;
-    };
-
-    const clearPreviousRender = (): void =>
-    {
-        if (lastRenderLineCount === 0) return;
-        output.write("\r");
-        if (lastCursorRow > 0) output.write(`\x1b[${lastCursorRow}A`);
-        for (let index = 0; index < lastRenderLineCount; index += 1)
-        {
-            output.write("\x1b[2K");
-            if (index < lastRenderLineCount - 1) output.write("\x1b[1B\r");
-        }
-        if (lastRenderLineCount > 1) output.write(`\x1b[${lastRenderLineCount - 1}A`);
-        output.write("\r");
-    };
-
-    const render = (): void =>
-    {
-        if (!renderEnabled) return;
-        const sentBefore = getSentinelBefore(state.value, state.cursor);
-        const sentAfter = getSentinelAfter(state.value, state.cursor);
-        const showPasteHint = sentBefore !== null || sentAfter !== null;
-        const renderedBlock = confirmState
-            ? buildConfirmBlock(confirmState.message)
-            : choiceState
-            ? buildChoiceBlock(choiceState.title, choiceState.items, choiceState.selectedIndex)
-            : buildRenderedBlock(
-                state.value,
-                state.cursor,
-                mode,
-                queueSize,
-                activeCommands,
-                getWorkspaceRoot(),
-                getActiveFileCompletionState(),
-                fileSelectionIndex,
-                getStatusLine(),
-                pasteBlocks,
-                showPasteHint,
-            );
-        const renderedLines = renderedBlock.split("\n");
-        const renderedLineCount = renderedLines.length;
-        const cursorMetrics = getCursorMetrics(state.value, state.cursor);
-        const visualCol = getVisualColumn(state.value, state.cursor, pasteBlocks);
-        const horizontalOffset = choiceState
-            ? 0
-            : (cursorMetrics.row === 0
-                ? PROMPT_WIDTH + visualCol
-                : CONTINUATION_WIDTH + visualCol);
-        const linesUpFromBottom = choiceState
-            ? 0
-            : renderedLineCount - 1 - cursorMetrics.row;
-
-        clearPreviousRender();
-        output.write(renderedBlock);
-        if (linesUpFromBottom > 0) output.write(`\x1b[${linesUpFromBottom}A`);
-        output.write("\r");
-        if (horizontalOffset > 0) output.write(`\x1b[${horizontalOffset}C`);
-
-        lastRenderLineCount = renderedLineCount;
-        // choiceState forces linesUpFromBottom=0, so after writing the block the
-        // cursor sits at the bottom line. Record how far up clearPreviousRender must
-        // travel to reach the first line of the block. For all other states the
-        // cursor has already been repositioned to cursorMetrics.row from the top.
-        lastCursorRow = choiceState ? renderedLineCount - 1 : cursorMetrics.row;
-    };
-
-    const submit = (rawValue: string): void =>
-    {
-        clearPreviousRender();
-        if (renderEnabled) output.write("\n");
-        lastRenderLineCount = 0;
-        lastCursorRow = 0;
-        state.value = "";
-        state.cursor = 0;
-
-        const expandedValue = expandPasteSentinels(rawValue, pasteBlocks);
-        pasteBlocks.clear();
-        const trimmedValue = expandedValue.trim();
-        if (trimmedValue.length > 0)
-        {
-            if (history.at(-1) !== trimmedValue) history.push(trimmedValue);
-        }
-        historyIndex = -1;
-        historyDraft = "";
-        cmdTabIndex = -1;
-        cmdTabQuery = "";
-
-        if (!renderEnabled) queueCallbacks.onValueChange?.("");
-
-        for (const handler of submitHandlers)
-        {
-            handler(trimmedValue);
-        }
-
-        render();
-        if (!renderEnabled) queueCallbacks.onStop?.();
-    };
-
-    const onKey = (name: string, _matches: string[], data: TerminalKeyData): void =>
+    const onKey = (name: string, data: TerminalKeyData): void =>
     {
         if (name === "PASTE_START")
         {
@@ -630,8 +513,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                         state.cursor += pasteBuffer.length;
                     }
                     pasteBuffer = "";
-                    render();
-                    if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+                    vm.invalidate();
+                    notifyValueChange();
                 }
                 return;
             }
@@ -639,62 +522,6 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
             if (name === "TAB") { pasteBuffer += "\t"; return; }
             if (data.isCharacter) { pasteBuffer += name; return; }
             return;
-        }
-
-        if (confirmState)
-        {
-            if (name === "ENTER" || name === "KP_ENTER")
-            {
-                const resolve = confirmState.resolve;
-                confirmState = null;
-                resolve(true);
-                render();
-            }
-            else if (name === "ESCAPE")
-            {
-                const resolve = confirmState.resolve;
-                confirmState = null;
-                resolve(false);
-                render();
-            }
-            return;
-        }
-
-        if (choiceState)
-        {
-            switch (name)
-            {
-                case "UP":
-                    choiceState.selectedIndex = choiceState.selectedIndex === 0
-                        ? choiceState.items.length - 1
-                        : choiceState.selectedIndex - 1;
-                    render();
-                    return;
-                case "DOWN":
-                    choiceState.selectedIndex = (choiceState.selectedIndex + 1) % choiceState.items.length;
-                    render();
-                    return;
-                case "ENTER":
-                case "KP_ENTER":
-                {
-                    const selectedItem = choiceState.items[choiceState.selectedIndex] ?? null;
-                    const resolve = choiceState.resolve;
-                    choiceState = null;
-                    resolve(selectedItem?.value ?? null);
-                    render();
-                    return;
-                }
-                case "ESCAPE":
-                {
-                    const resolve = choiceState.resolve;
-                    choiceState = null;
-                    resolve(null);
-                    render();
-                    return;
-                }
-                default:
-                    return;
-            }
         }
 
         if (name === "CTRL_C")
@@ -712,7 +539,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 pasteBlocks.delete(String(sent.id));
                 state.value = state.value.slice(0, sent.start) + content + state.value.slice(sent.end);
                 state.cursor = sent.start + content.length;
-                render();
+                vm.invalidate();
             }
             return;
         }
@@ -721,8 +548,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         {
             state.value = `${state.value.slice(0, state.cursor)}\n${state.value.slice(state.cursor)}`;
             state.cursor += 1;
-            render();
-            if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+            vm.invalidate();
+            notifyValueChange();
             return;
         }
 
@@ -763,8 +590,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                     state.value = state.value.slice(0, state.cursor - 1) + state.value.slice(state.cursor);
                     state.cursor -= 1;
                 }
-                render();
-                if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+                vm.invalidate();
+                notifyValueChange();
                 return;
             }
             case "DELETE":
@@ -780,35 +607,35 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 {
                     state.value = state.value.slice(0, state.cursor) + state.value.slice(state.cursor + 1);
                 }
-                render();
-                if (!renderEnabled) queueCallbacks.onValueChange?.(state.value);
+                vm.invalidate();
+                notifyValueChange();
                 return;
             }
             case "LEFT":
             {
                 if (state.cursor === 0) return;
                 const sentL = getSentinelBefore(state.value, state.cursor);
-                if (sentL) { state.cursor = sentL.start; render(); return; }
+                if (sentL) { state.cursor = sentL.start; vm.invalidate(); return; }
                 state.cursor -= 1;
-                render();
+                vm.invalidate();
                 return;
             }
             case "RIGHT":
             {
                 if (state.cursor >= state.value.length) return;
                 const sentR = getSentinelAfter(state.value, state.cursor);
-                if (sentR) { state.cursor = sentR.end; render(); return; }
+                if (sentR) { state.cursor = sentR.end; vm.invalidate(); return; }
                 state.cursor += 1;
-                render();
+                vm.invalidate();
                 return;
             }
             case "HOME":
                 state.cursor = getLineStart(state.value, state.cursor);
-                render();
+                vm.invalidate();
                 return;
             case "END":
                 state.cursor = getLineEnd(state.value, state.cursor);
-                render();
+                vm.invalidate();
                 return;
             case "TAB":
             {
@@ -825,10 +652,9 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                     if (!completionResult.completed) return;
                     state.value = completionResult.value;
                     state.cursor = completionResult.cursor;
-                    render();
+                    vm.invalidate();
                     return;
                 }
-                // Command autocomplete: cycle through matching commands when input starts with /
                 {
                     const trimmed = state.value.trimStart();
                     if (trimmed.startsWith("/") && !trimmed.includes(" "))
@@ -846,7 +672,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                             cmdTabIndex = (cmdTabIndex + 1) % matches.length;
                             state.value = matches[cmdTabIndex] ?? state.value;
                             state.cursor = state.value.length;
-                            render();
+                            vm.invalidate();
                             return;
                         }
                     }
@@ -863,10 +689,9 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                         fileSelectionIndex = fileSelectionIndex === 0
                             ? completionState.options.length - 1
                             : fileSelectionIndex - 1;
-                        render();
+                        vm.invalidate();
                         return;
                     }
-                    // History navigation: only on single-line input or when cursor is on the first row
                     const { row } = getCursorMetrics(state.value, state.cursor);
                     if (row === 0 && history.length > 0)
                     {
@@ -874,12 +699,12 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                         historyIndex = Math.min(historyIndex + 1, history.length - 1);
                         state.value = history[history.length - 1 - historyIndex] ?? "";
                         state.cursor = state.value.length;
-                        render();
+                        vm.invalidate();
                         return;
                     }
                 }
                 state.cursor = getPreviousLineCursor(state.value, state.cursor);
-                render();
+                vm.invalidate();
                 return;
             }
             case "DOWN":
@@ -890,10 +715,9 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                     if (completionState.options.length > 0)
                     {
                         fileSelectionIndex = (fileSelectionIndex + 1) % completionState.options.length;
-                        render();
+                        vm.invalidate();
                         return;
                     }
-                    // History navigation: navigate forward or restore draft
                     const { row } = getCursorMetrics(state.value, state.cursor);
                     const lineCount = splitLines(state.value).length;
                     if (historyIndex >= 0 && row === lineCount - 1)
@@ -903,12 +727,12 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                             ? historyDraft
                             : (history[history.length - 1 - historyIndex] ?? "");
                         state.cursor = state.value.length;
-                        render();
+                        vm.invalidate();
                         return;
                     }
                 }
                 state.cursor = getNextLineCursor(state.value, state.cursor);
-                render();
+                vm.invalidate();
                 return;
             }
             default:
@@ -916,22 +740,48 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         }
     };
 
-    const close = (): void =>
-    {
-        activeDriver?.offKey(onKey);
-        activeDriver?.showCursor();
-        activeDriver?.releaseInput();
+    const chatInputView = {
+        id: "chat-input",
+        onKey,
+        render(): ViewRenderResult
+        {
+            const sentBefore = getSentinelBefore(state.value, state.cursor);
+            const sentAfter = getSentinelAfter(state.value, state.cursor);
+            const showPasteHint = sentBefore !== null || sentAfter !== null;
+            const block = buildRenderedBlock(
+                state.value,
+                state.cursor,
+                mode,
+                queueSize,
+                activeCommands,
+                getWorkspaceRoot(),
+                getActiveFileCompletionState(),
+                fileSelectionIndex,
+                getStatusLine(),
+                pasteBlocks,
+                showPasteHint,
+            );
+            const lines = block.split("\n");
+            const cursorMetrics = getCursorMetrics(state.value, state.cursor);
+            const visualCol = getVisualColumn(state.value, state.cursor, pasteBlocks);
+            const cursorCol = cursorMetrics.row === 0
+                ? PROMPT_WIDTH + visualCol
+                : CONTINUATION_WIDTH + visualCol;
+            return { lines, cursorRow: cursorMetrics.row, cursorCol };
+        },
     };
+
+    vm.initBaseView(chatInputView);
 
     const start = (commands: Map<string, Command>): void =>
     {
         activeCommands = commands;
         getDriver().then((driver) =>
         {
+            vm.setDriver(driver);
             driver.grabInput();
             driver.hideCursor();
-            driver.onKey(onKey);
-            render();
+            vm.invalidate();
         });
     };
 
@@ -945,42 +795,26 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     {
         if (mode === nextMode) return;
         mode = nextMode;
-        render();
+        vm.invalidate();
     };
 
     const setQueueSize = (size: number): void =>
     {
         if (queueSize === size) return;
         queueSize = size;
-        if (renderEnabled) render();
+        vm.invalidate();
     };
-
-    let renderEnabled = true;
 
     const setRenderEnabled = (enabled: boolean): void =>
     {
-        if (renderEnabled === enabled) return;
-        renderEnabled = enabled;
-        if (!enabled)
-        {
-            clearPreviousRender();
-            lastRenderLineCount = 0;
-            lastCursorRow = 0;
-        }
-        else
-        {
-            render();
-        }
+        if (enabled) vm.resume();
+        else vm.suspend();
     };
-
-    let queueCallbacks: QueueCallbacks = {};
 
     const setQueueCallbacks = (callbacks: QueueCallbacks): void =>
     {
         queueCallbacks = callbacks;
     };
-
-    let getStatusLine: () => string = () => "";
 
     const setStatusLine = (getter: () => string): void =>
     {
@@ -990,49 +824,24 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     const choose = (title: string, items: TerminalChoiceItem[]): Promise<string | null> =>
     {
         if (items.length === 0) return Promise.resolve(null);
-        if (choiceState)
+        return new Promise<string | null>((resolve) =>
         {
-            choiceState.resolve(null);
-        }
-
-        choiceState = {
-            title,
-            items,
-            selectedIndex: 0,
-            resolve: () => undefined,
-        };
-
-        const promise = new Promise<string | null>((resolve) =>
-        {
-            if (!choiceState) return resolve(null);
-            choiceState.resolve = resolve;
+            vm.push(new ChoiceView(title, items, resolve));
         });
-
-        render();
-        return promise;
     };
 
     const confirm = (message: string): Promise<boolean> =>
     {
-        if (confirmState)
+        return new Promise<boolean>((resolve) =>
         {
-            confirmState.resolve(false);
-        }
-
-        confirmState = {
-            message,
-            resolve: () => undefined,
-        };
-
-        const promise = new Promise<boolean>((resolve) =>
-        {
-            if (!confirmState) return resolve(false);
-            confirmState.resolve = resolve;
+            vm.push(new ConfirmView(message, resolve));
         });
-
-        render();
-        return promise;
     };
 
-    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, setStatusLine, choose, confirm, close };
+    const close = (): void =>
+    {
+        vm.destroy();
+    };
+
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, setStatusLine, choose, confirm, close, viewManager: vm };
 }

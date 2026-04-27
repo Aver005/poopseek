@@ -344,6 +344,7 @@ export async function runCli(): Promise<void>
 
     let commands = new Map<string, Command>();
     commands = createCommandHandlers(terminalInput, {
+        viewManager: terminalInput.viewManager,
         getSessionInfo: () => [
             `Remote session ID: ${session.getId()}`,
             `Local session ID: ${currentLocalSession.id}`,

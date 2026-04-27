@@ -7,6 +7,7 @@ export interface Command
 
 export interface CommandsContext
 {
+    viewManager?: import("@/cli/view-manager").ViewManager;
     getSessionInfo?: () => string;
     getContextStats?: () => string;
     clearHistory?: () => Promise<void> | void;
