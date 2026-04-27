@@ -1005,6 +1005,13 @@ export async function runCli(): Promise<void>
                         output.write("\n");
                         generationIndicator.activate("Продолжаю...");
                     },
+                    onToolParseError: (content) =>
+                    {
+                        generationIndicator.stop();
+                        output.write(`\n${colors.red("[tool parse error]")} Не удалось распарсить вызов инструмента\n`);
+                        const preview = content.slice(0, 300);
+                        output.write(`${colors.dim(preview)}\n\n`);
+                    },
                 });
                 await saveCurrentLocalSession();
             }

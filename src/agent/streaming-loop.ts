@@ -20,6 +20,7 @@ export interface StreamingAgentTurnCallbacks {
     onToolDone?: (toolName: string, result: ToolExecutionResult) => void;
     onModelRequestStart?: () => void;
     onModelRequestDone?: () => void;
+    onToolParseError?: (content: string) => void;
 }
 
 const DEFAULT_OPTIONS: StreamingAgentLoopOptions = {
@@ -128,6 +129,10 @@ export default class StreamingAgentLoop {
                         name: toolEvent.envelope.tool,
                         content: buildToolResultPayload(toolEvent.envelope.tool, result),
                     });
+                }
+
+                for (const warning of toolParser.getWarnings()) {
+                    callbacks.onToolParseError?.(warning.content);
                 }
 
                 if (!hasDetectedTools && finalTools.length === 0) {

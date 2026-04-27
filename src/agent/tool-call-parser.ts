@@ -77,7 +77,7 @@ function extractJsonLikeBlocks(text: string): string[]
     return result;
 }
 
-function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
+export function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
 {
     try
     {
@@ -99,12 +99,57 @@ function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
     }
 }
 
+function repairLiteralControlChars(input: string): string
+{
+    let result = "";
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < input.length; i += 1)
+    {
+        const c = input[i]!;
+
+        if (escaped)
+        {
+            escaped = false;
+            result += c;
+            continue;
+        }
+
+        if (c === "\\" && inString)
+        {
+            escaped = true;
+            result += c;
+            continue;
+        }
+
+        if (c === '"')
+        {
+            inString = !inString;
+            result += c;
+            continue;
+        }
+
+        if (inString)
+        {
+            if (c === "\n") { result += "\\n"; continue; }
+            if (c === "\r") { result += "\\r"; continue; }
+            if (c === "\t") { result += "\\t"; continue; }
+        }
+
+        result += c;
+    }
+
+    return result;
+}
+
 function repairJsonCandidate(input: string): string | null
 {
     const trimmed = input.trim();
     if (trimmed.length === 0) return null;
 
-    let repaired = trimmed;
+    let repaired = repairLiteralControlChars(trimmed);
+
     for (let pass = 0; pass < 3; pass += 1)
     {
         const next = repaired.replace(/,\s*([}\]])/g, "$1");
