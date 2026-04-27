@@ -22,9 +22,16 @@ export function getCommandHintLines(
         .slice(0, MAX_HINTS);
     if (candidates.length === 0) return [];
 
+    const maxLineWidth = (process.stdout.columns ?? 80) - 2;
+
     return candidates.map((command) =>
-        `${colors.cyan(command.name)} ${colors.dim("-")} ${colors.dim(command.description)}`,
-    );
+    {
+        const maxDescLen = maxLineWidth - command.name.length - 4; // " - " + safety
+        const desc = maxDescLen > 0 && command.description.length > maxDescLen
+            ? command.description.slice(0, maxDescLen - 1) + "…"
+            : command.description;
+        return `${colors.cyan(command.name)} ${colors.dim("-")} ${colors.dim(desc)}`;
+    });
 }
 
 export function createHintsRenderer(
