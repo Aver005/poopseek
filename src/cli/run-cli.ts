@@ -2,51 +2,40 @@ import { stdout as output } from "node:process";
 import ContextManager from "@/agent/context-manager";
 import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
-import { colors, getColorMode, setTheme } from "@/cli/colors";
-import
-    {
-        getFileAttachmentPreviewLines,
-        prepareInputWithFileMentions,
-    } from "@/cli/file-mentions";
+import { colors, getColorMode } from "@/cli/colors";
+import {
+    getFileAttachmentPreviewLines,
+    prepareInputWithFileMentions,
+} from "@/cli/file-mentions";
 import { createGenerationIndicator } from "@/cli/generation-indicator";
 import { renderMarkdown } from "@/cli/markdown";
 import { readPromptFiles } from "@/cli/prompt-files";
-import
-    {
-        createStoredSessionId,
-        deriveSessionTitle,
-        getSessionsDirectory,
-        listStoredSessions,
-        loadStoredSession,
-        saveStoredSession,
-    } from "@/cli/session-store";
-import
-    {
-        getFirstEnvValue,
-        getRuntimeConfigPath,
-        loadRuntimeConfig,
-        promptForToken,
-        saveRuntimeConfig,
-    } from "@/cli/runtime-config";
-import
-    {
-        adaptTextToTerminal,
-        getTerminalCapabilities,
-    } from "@/cli/terminal-capabilities";
+import {
+    createStoredSessionId,
+    getSessionsDirectory,
+    saveStoredSession,
+} from "@/cli/session-store";
+import {
+    getFirstEnvValue,
+    getRuntimeConfigPath,
+    loadRuntimeConfig,
+    promptForToken,
+    saveRuntimeConfig,
+} from "@/cli/runtime-config";
+import {
+    adaptTextToTerminal,
+    getTerminalCapabilities,
+} from "@/cli/terminal-capabilities";
 import { createTerminalInput } from "@/cli/terminal-input";
 import { getToolDetail, getToolProgressMessage, renderToolResultExtra } from "@/cli/tool-progress-messages";
-import
-    {
-        createCommandHandlers,
-        handleCommand,
-    } from "@/commands";
-import type { Command } from "@/commands/types";
+import { handleCommand } from "@/commands";
+import { buildCommandHandlers } from "@/commands/handlers";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
 import { SkillManager } from "@/skills";
-import { listRoles, loadRoleContent, deleteRole } from "@/roles";
+import { loadRoleContent } from "@/roles";
 import { MCPManager, loadMCPConfig } from "@/mcp";
-import { loadSkillFolders, saveSkillFolders } from "@/skills/skill-folders-store";
+import { loadSkillFolders } from "@/skills/skill-folders-store";
 import { ensureValidToken } from "@/cli/auth-flow";
 import { createAuthActions } from "@/cli/auth-flow";
 import { createInputQueue } from "@/cli/input-queue";
@@ -56,12 +45,13 @@ import { createReviewRunner } from "@/cli/review";
 import { createRefactorRunner } from "@/cli/refactor";
 import { LoadingView } from "@/cli/views/loading";
 import { runOnboarding } from "@/cli/onboarding";
-import
-    {
-        createProvider,
-        DeepseekWebProvider,
-        type ILLMProvider,
-    } from "@/providers";
+import {
+    createProvider,
+    DeepseekWebProvider,
+    type ILLMProvider,
+} from "@/providers";
+import { runRoleCreation, type ActiveOperation } from "@/roles/creation";
+import { createDeepseekHistoryImporter } from "@/deepseek-client/history-import";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -165,6 +155,7 @@ export async function runCli(): Promise<void>
         variableProcessor,
     );
     reportProgress?.(40);
+
     const sessionsDir = getSessionsDirectory();
     let currentLocalSession = {
         id: createStoredSessionId(),
@@ -192,6 +183,7 @@ export async function runCli(): Promise<void>
         await provider.reset();
         contextManager.markSessionReset();
     };
+
     const skillManager = new SkillManager();
     const savedSkillFolders = await loadSkillFolders();
     skillManager.setExtraFolders(savedSkillFolders);
@@ -297,14 +289,19 @@ export async function runCli(): Promise<void>
     reportProgress?.(100);
     await terminalInput.viewManager.pop();
 
-    let isRoleCreationActive = false;
+    // --- Shared mutable refs (accessed from role creation and command handlers) ---
+
+    const isRoleCreationActiveRef = { current: false };
+    const isMainTurnActiveRef = { current: false };
+    const activeOperationRef = { current: null as ActiveOperation | null };
+    const activeInterruptControllerRef = { current: null as AbortController | null };
 
     terminalInput.setStatusLine(() =>
     {
         const isDeepseekWeb = provider.info.id === "deepseek-web";
         const label = isDeepseekWeb ? `${provider.info.label} · ${modelVariant}` : provider.info.label;
         const parts: string[] = [colors.magenta(label)];
-        if (isRoleCreationActive)
+        if (isRoleCreationActiveRef.current)
         {
             parts.push(colors.yellow("сценарий: Создание роли"));
             return colors.dim("◆ ") + parts.join(colors.dim(" · "));
@@ -336,11 +333,9 @@ export async function runCli(): Promise<void>
 
     // --- Output helpers ---
 
-    let isMainTurnActive = false;
-
     const writeDetachedOutput = (value: string): void =>
     {
-        const shouldRestoreRender = !isMainTurnActive;
+        const shouldRestoreRender = !isMainTurnActiveRef.current;
         if (shouldRestoreRender) terminalInput.setRenderEnabled(false);
         output.write(value);
         if (shouldRestoreRender) terminalInput.setRenderEnabled(true);
@@ -356,31 +351,6 @@ export async function runCli(): Promise<void>
             const prefix = i === 0 ? colors.magenta(">") : colors.dim("|");
             output.write(`${prefix} ${line}\n`);
         }
-    };
-
-    const writeRoleUserMessage = (value: string): void =>
-    {
-        const lines = value.split("\n");
-        output.write("\n");
-        for (let i = 0; i < lines.length; i += 1)
-        {
-            const line = lines[i] ?? "";
-            const prefix = i === 0 ? colors.cyan("role>") : colors.dim("....");
-            output.write(`${prefix} ${line}\n`);
-        }
-    };
-
-    const formatSessionDate = (value: string): string =>
-    {
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) return value;
-        return parsed.toLocaleString("ru-RU", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-        });
     };
 
     // --- Interactive user prompts ---
@@ -431,7 +401,7 @@ export async function runCli(): Promise<void>
         }
     };
 
-    // --- Auth actions (deepseek-web specific) ---
+    // --- Auth actions ---
 
     const { relogin, logout } = createAuthActions({
         runtimeConfigPath,
@@ -484,20 +454,13 @@ export async function runCli(): Promise<void>
         setRenderEnabled: (enabled) => terminalInput.setRenderEnabled(enabled),
     });
 
-    // --- Command handlers ---
-
-    type ActiveOperation = {
-        kind: "role-creation";
-        abortController: AbortController;
-    };
-
-    let activeOperation: ActiveOperation | null = null;
+    // --- Active operation cancel ---
 
     const cancelActiveOperation = (): boolean =>
     {
-        if (!activeOperation) return false;
-        const currentOperation = activeOperation;
-        activeOperation = null;
+        if (!activeOperationRef.current) return false;
+        const currentOperation = activeOperationRef.current;
+        activeOperationRef.current = null;
         if (!currentOperation.abortController.signal.aborted)
         {
             currentOperation.abortController.abort(new Error("Создание роли прервано."));
@@ -510,612 +473,73 @@ export async function runCli(): Promise<void>
         return true;
     };
 
-    const runRoleCreation = async (): Promise<void> =>
-    {
-        const roleProvider = await provider.clone();
-        const abortController = new AbortController();
-        let roleSaved = false;
-        let confirmationGiven = false;
-        activeOperation = {
-            kind: "role-creation",
-            abortController,
-        };
+    // --- Command handlers ---
 
-        const showRoleInput = (): void =>
-        {
-            terminalInput.setMode("active");
-            terminalInput.setRenderEnabled(true);
-        };
+    let activeInterruptCommand: ((error: Error) => void) | null = null;
 
-        const waitForRoleInput = async (): Promise<string | null> =>
-        {
-            showRoleInput();
-            if (abortController.signal.aborted) return null;
-            const value = await inputQueue.waitForNext();
-            if (abortController.signal.aborted) return null;
-            if (value.trim().toLowerCase() === "/back")
-            {
-                cancelActiveOperation();
-                return null;
-            }
-            writeRoleUserMessage(value);
-            return value;
-        };
-
-        const roleAskUser: AskUserFn = async (request) =>
-        {
-            generationIndicator.stop();
-
-            if (request.type === "text")
-            {
-                output.write(`\n${colors.cyan("?")} ${request.prompt}\n`);
-                return await waitForRoleInput();
-            }
-
-            if (request.type === "confirm")
-            {
-                output.write(`\n${colors.cyan("?")} ${request.question}\n`);
-                output.write(`${colors.dim("Введите yes/no или /back")}\n`);
-                while (!abortController.signal.aborted)
-                {
-                    const answer = await waitForRoleInput();
-                    if (answer === null) return null;
-                    const normalized = answer.trim().toLowerCase();
-                    if (normalized === "yes" || normalized === "y" || normalized === "да" || normalized === "д")
-                    {
-                        confirmationGiven = true;
-                        return "yes";
-                    }
-                    if (normalized === "no" || normalized === "n" || normalized === "нет" || normalized === "н")
-                    {
-                        return "no";
-                    }
-                    output.write(`${colors.dim("Нужно ввести yes или no. Для отмены: /back")}\n`);
-                }
-                return null;
-            }
-
-            output.write(`\n${colors.cyan("?")} ${request.title}\n`);
-            request.options.forEach((option, index) =>
-            {
-                output.write(`${colors.dim(String(index + 1) + ".")} ${option}\n`);
-            });
-            output.write(`${colors.dim("Введите номер, точное значение или /back")}\n`);
-            while (!abortController.signal.aborted)
-            {
-                const answer = await waitForRoleInput();
-                if (answer === null) return null;
-                const trimmedAnswer = answer.trim();
-                const selectedIndex = Number(trimmedAnswer);
-                if (Number.isInteger(selectedIndex) && selectedIndex >= 1 && selectedIndex <= request.options.length)
-                {
-                    return request.options[selectedIndex - 1] ?? null;
-                }
-                const matchedOption = request.options.find((option) => option === trimmedAnswer);
-                if (matchedOption) return matchedOption;
-                return trimmedAnswer;
-            }
-
-            return null;
-        };
-
-        terminalInput.setRenderEnabled(false);
-        isRoleCreationActive = true;
-        terminalInput.setPromptPrefix(`${colors.cyan(">")} `);
-        output.write(`\n${colors.cyan("Создание новой роли")}\n`);
-        output.write(`${colors.dim("────────────────────────────────────────")}\n`);
-        output.write(`${colors.dim("Отдельная сессия. Отмена: /back или Ctrl+C")}\n`);
-        output.write(`${colors.dim("Команды внутри мастера отключены, кроме /back")}\n\n`);
-
-        const roleContextManager = new ContextManager(
-            prompts.roleCreatorPrompt,
-            prompts.toolsPrompt,
-            { maxMessages: 40 },
-            variableProcessor,
-        );
-        const roleToolExecutor = new ToolExecutor(
-            process.cwd(),
-            roleAskUser,
-            (skillName) =>
-            {
-                const skill = skillManager.getSkills().find((s) => s.name === skillName);
-                return skill ? skill.body : null;
-            },
-            mcpManager.createDynamicToolResolver(),
-            () => mcpManager.getDynamicToolNames(),
-            subAgentRunner,
-            (message) => generationIndicator.activate(message),
-        );
-        const roleLoop = new StreamingAgentLoop(() => roleProvider, roleContextManager, roleToolExecutor, {
-            getCallOptions,
-        });
-
-        const savedIsMainTurnActive = isMainTurnActive;
-        isMainTurnActive = true;
-        try
-        {
-            let nextRoleInput = "Привет! Я хочу создать новую роль. Помоги мне с этим.";
-            while (!abortController.signal.aborted && !roleSaved)
-            {
-                await roleLoop.runTurn(nextRoleInput, {
-                    signal: abortController.signal,
-                    onModelRequestStart: () =>
-                    {
-                        generationIndicator.start();
-                    },
-                    onModelRequestDone: () =>
-                    {
-                        generationIndicator.stop();
-                    },
-                    onAssistantChunk: (chunk) =>
-                    {
-                        generationIndicator.stop();
-                        output.write(renderMarkdown(chunk));
-                    },
-                    onToolStart: (toolName, toolArgs) =>
-                    {
-                        generationIndicator.stop();
-                        const detail = getToolDetail(toolName, toolArgs);
-                        const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
-                        output.write(`${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
-                    },
-                    onToolDone: (toolName, toolResult) =>
-                    {
-                        generationIndicator.stop();
-                        const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
-                        output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
-                        if (toolResult.ok)
-                        {
-                            const extra = renderToolResultExtra(toolName, toolResult.data);
-                            if (extra) output.write(extra);
-                            if (toolName === "role.save")
-                            {
-                                roleSaved = true;
-                            }
-                        }
-                        output.write("\n");
-                        generationIndicator.activate("Продолжаю...");
-                    },
-                    onToolParseError: (content) =>
-                    {
-                        generationIndicator.stop();
-                        output.write(`\n${colors.red("[tool parse error]")} Не удалось распарсить вызов инструмента\n`);
-                        const preview = content.slice(0, 300);
-                        output.write(`${colors.dim(preview)}\n\n`);
-                    },
-                });
-
-                if (abortController.signal.aborted || roleSaved) break;
-
-                if (confirmationGiven && !roleSaved)
-                {
-                    confirmationGiven = false;
-                    output.write(`\n${colors.yellow("⚠")} ${colors.dim("Роль была подтверждена, но role.save не был вызван. Отправляю напоминание...")}\n\n`);
-                    nextRoleInput = "СИСТЕМНОЕ НАПОМИНАНИЕ: пользователь уже подтвердил создание роли (ответил 'yes' на user.confirm), но ты не вызвал инструмент role.save. Вызови role.save ПРЯМО СЕЙЧАС — без лишнего текста, без повторных вопросов. Просто вызови инструмент с готовыми данными роли.";
-                    continue;
-                }
-
-                const followUp = await waitForRoleInput();
-                if (followUp === null) break;
-                nextRoleInput = followUp;
-            }
-        }
-        catch (error)
-        {
-            const message = error instanceof Error ? error.message : String(error);
-            if (!abortController.signal.aborted && message !== "Создание роли прервано.")
-            {
-                throw error;
-            }
-        }
-        finally
-        {
-            isMainTurnActive = savedIsMainTurnActive;
-            isRoleCreationActive = false;
-            generationIndicator.stop();
-            if (activeOperation?.abortController === abortController)
-            {
-                activeOperation = null;
-            }
-            terminalInput.setPromptPrefix(`${colors.magenta(">")} `);
-            terminalInput.setMode("active");
-            terminalInput.setRenderEnabled(true);
-        }
-    };
-
-    let commands = new Map<string, Command>();
-    let activeInterruptController: AbortController | null = null;
-    let interruptActiveCommand: ((error: Error) => void) | null = null;
-    commands = createCommandHandlers(terminalInput, {
-        viewManager: terminalInput.viewManager,
-        getSessionInfo: () =>
-        {
-            const remoteId = provider instanceof DeepseekWebProvider
-                ? provider.getSessionId() ?? "—"
-                : "—";
-            return [
-                `Provider: ${provider.info.label}`,
-                `Remote session ID: ${remoteId}`,
-                `Local session ID: ${currentLocalSession.id}`,
-            ].join(" | ");
-        },
-        getContextStats: () => [
-            `Messages in local context: ${contextManager.getMessageCount()}`,
-            `Approx tokens since refresh: ${contextManager.getApproxTokensSinceRefresh()}/${contextManager.getRefreshEveryApproxTokens()}`,
-            `Bootstrap pending: ${contextManager.isBootstrapPending() ? "yes" : "no"}`,
-        ].join(" | "),
-        clearHistory: async () =>
-        {
-            contextManager.clearHistory();
-            startNewLocalSession();
-            await resetMainProvider();
-            await saveCurrentLocalSession();
-        },
-        resetSession: async () =>
-          {
-              contextManager.clearHistory();
-              startNewLocalSession();
-              await resetMainProvider();
-              await saveCurrentLocalSession();
-          },
-          openSessions: async () =>
-        {
-            const sessions = await listStoredSessions(sessionsDir);
-            if (sessions.length === 0)
-            {
-                return { loaded: false };
-            }
-
-            const selectedId = await terminalInput.choose(
-                "Сохраненные сессии",
-                sessions.map((item) => ({
-                    value: item.id,
-                    label: `${formatSessionDate(item.updatedAt)} | ${item.title}`,
-                    hint: `${item.messageCount} сообщений | ${item.modelType} | ${item.workspaceRoot}`,
-                })),
-            );
-
-            if (!selectedId) return { loaded: false, cancelled: true };
-            const snapshot = await loadStoredSession(sessionsDir, selectedId);
-            if (!snapshot) return { loaded: false };
-
-            currentLocalSession = {
-                id: snapshot.id,
-                createdAt: snapshot.createdAt,
-            };
-            modelVariant = snapshot.modelType;
-            contextManager.restoreState(snapshot.context);
-            await resetMainProvider();
-            await saveCurrentLocalSession();
-
-            const title = sessions.find((item) => item.id === snapshot.id)?.title ?? "без названия";
-            return { loaded: true, title };
-        },
-        getTheme: () => getColorMode().theme,
-        setTheme: (theme) => setTheme(theme),
-        getModelType: () => modelVariant as "default" | "expert",
-        setModelType: (nextModelType) =>
-        {
-            modelVariant = nextModelType;
-        },
-        getSearchEnabled: () => searchEnabled,
-        setSearchEnabled: (enabled) => searchEnabled = enabled,
-        getThinkingEnabled: () => thinkingEnabled,
-        setThinkingEnabled: (enabled) => thinkingEnabled = enabled,
-        runSidechat,
-        confirm: (message) => terminalInput.confirm(message),
-        resolveSessionForLoad: async (id) =>
-        {
-            // 1. Check local sessions first
-            const localSnapshot = await loadStoredSession(sessionsDir, id);
-            if (localSnapshot)
-            {
-                const title = deriveSessionTitle(localSnapshot.context);
-                const messageCount = localSnapshot.context.messages.length;
-                return {
-                    type: "local" as const,
-                    title,
-                    messageCount,
-                    load: async () =>
-                    {
-                        currentLocalSession = {
-                            id: localSnapshot.id,
-                            createdAt: localSnapshot.createdAt,
-                        };
-                        modelVariant = localSnapshot.modelType;
-                        contextManager.restoreState(localSnapshot.context);
-                        await resetMainProvider();
-                        await saveCurrentLocalSession();
-                        return {};
-                    },
-                };
-            }
-
-            // 2. Try as a DeepSeek remote session (only when using deepseek-web)
-            if (!(provider instanceof DeepseekWebProvider)) return null;
-            const deepseekProvider = provider;
-
-            activeInterruptController = new AbortController();
-            const signal = activeInterruptController.signal;
-            const assertNotAborted = (): void =>
-            {
-                if (signal.aborted) throw new Error("Загрузка сессии прервана (Ctrl+C)");
-            };
-            const yieldControl = async (): Promise<void> =>
-            {
-                await new Promise<void>((resolve) => setTimeout(resolve, 0));
-            };
-            let historyData: Awaited<ReturnType<typeof deepseekProvider.fetchHistory>>;
-            try
-            {
-                historyData = await deepseekProvider.fetchHistory(id, signal);
-                assertNotAborted();
-
-                const { chat_session, chat_messages } = historyData;
-
-                const messageMap = new Map(
-                    chat_messages.map((msg) => [msg.message_id, msg]),
-                );
-                const chain: typeof chat_messages = [];
-                let currentId: number | null = chat_session.current_message_id;
-                const visited = new Set<number>();
-                let guard = 0;
-                while (currentId !== null)
-                {
-                    if ((guard & 255) === 0)
-                    {
-                        await yieldControl();
-                        assertNotAborted();
-                    }
-                    if (visited.has(currentId))
-                    {
-                        throw new Error(`cycle detected in message chain at id=${currentId}`);
-                    }
-                    visited.add(currentId);
-                    guard += 1;
-                    if (guard > chat_messages.length + 1)
-                    {
-                        throw new Error("message chain traversal overflow");
-                    }
-                    const msg = messageMap.get(currentId);
-                    if (!msg) break;
-                    chain.unshift(msg);
-                    currentId = msg.parent_id;
-                }
-
-                const localMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
-                const MAX_MESSAGE_CONTENT = 12000;
-                const MAX_LOCAL_MESSAGES = 300;
-                for (let index = 0; index < chain.length; index += 1)
-                {
-                    if ((index & 63) === 0)
-                    {
-                        await yieldControl();
-                        assertNotAborted();
-                    }
-                    const msg = chain[index];
-                    if (!msg || msg.status !== "FINISHED") continue;
-                    const role = msg.role === "USER" ? "user" : msg.role === "ASSISTANT" ? "assistant" : null;
-                    if (!role) continue;
-                    const contentType = role === "user" ? "REQUEST" : "RESPONSE";
-                    const content = msg.fragments
-                        .filter((f) => f.type === contentType)
-                        .map((f) => f.content)
-                        .join("\n")
-                        .trim();
-                    if (content.length === 0) continue;
-                    if (content.startsWith("### TOOL RESULT:") || content.startsWith("### SYSTEM SNAPSHOT")) continue;
-                    const capped = content.length > MAX_MESSAGE_CONTENT
-                        ? content.slice(0, MAX_MESSAGE_CONTENT)
-                        : content;
-                    localMessages.push({ role, content: capped });
-                }
-
-                const trimmedLocalMessages = localMessages.length > MAX_LOCAL_MESSAGES
-                    ? localMessages.slice(localMessages.length - MAX_LOCAL_MESSAGES)
-                    : localMessages;
-
-                const lastMsg = chain[chain.length - 1];
-                const parentMessageId = lastMsg?.message_id ?? null;
-
-                return {
-                    type: "global" as const,
-                    title: chat_session.title || id,
-                    messageCount: localMessages.length,
-                    load: async () =>
-                    {
-                        if (trimmedLocalMessages.length === 0)
-                        {
-                            return { error: "история пуста или не содержит завершённых сообщений" };
-                        }
-                        contextManager.restoreState(
-                            { messages: trimmedLocalMessages },
-                            { includeLocalMemoryOnBootstrap: false },
-                        );
-                        deepseekProvider.loadRemoteSession(id, parentMessageId);
-                        startNewLocalSession();
-                        await saveCurrentLocalSession();
-                        return {};
-                    },
-                };
-            }
-            finally
-            {
-                activeInterruptController = null;
-            }
-        },
-        compactContext: async () =>
-        {
-            const before = contextManager.getMessageCount();
-            if (before === 0) return null;
-
-            const dialogue = contextManager.getDialogueSnapshot();
-            const compactPrompt = [
-                prompts.compactPrompt.trim(),
-                "",
-                "## Диалог",
-                dialogue,
-            ].join("\n");
-
-            const compactProvider = await provider.clone();
-            const chunks: string[] = [];
-            for await (const chunk of compactProvider.complete(compactPrompt, { modelVariant }))
-            {
-                chunks.push(chunk);
-            }
-            const summary = chunks.join("").trim();
-            if (summary.length === 0) throw new Error("Модель вернула пустую сводку");
-
-            contextManager.replaceWithCompactSummary(summary);
-            await resetMainProvider();
-            await saveCurrentLocalSession();
-            return {
-                before,
-                after: contextManager.getMessageCount(),
-                summaryChars: summary.length,
-            };
-        },
-        logout,
-        relogin,
-        choose: (title, items) => terminalInput.choose(title, items),
-        getSkills: () => skillManager.getSkills(),
-        isSkillActive: (name) => skillManager.isActive(name),
-        activateSkill: (name) =>
-        {
-            const ok = skillManager.activate(name);
-            if (ok) syncSkills();
-            return ok;
-        },
-        activateAllSkills: () =>
-        {
-            skillManager.activateAll();
-            syncSkills();
-        },
-        deactivateSkill: (name) =>
-        {
-            const ok = skillManager.deactivate(name);
-            syncSkills();
-            return ok;
-        },
-        clearSkills: () =>
-        {
-            skillManager.clearActive();
-            syncSkills();
-        },
-        getSkillFolders: () => skillManager.getExtraFolders(),
-        addSkillFolder: async (folder) =>
-        {
-            skillManager.addExtraFolder(folder);
-            skillManager.rediscover();
-            syncAvailableSkills();
-            await saveSkillFolders(skillManager.getExtraFolders());
-        },
-        removeSkillFolder: async (folder) =>
-        {
-            skillManager.removeExtraFolder(folder);
-            skillManager.rediscover();
-            syncAvailableSkills();
-            await saveSkillFolders(skillManager.getExtraFolders());
-        },
-        resetSkillFolders: async () =>
-        {
-            skillManager.resetExtraFolders();
-            skillManager.rediscover();
-            syncAvailableSkills();
-            await saveSkillFolders([]);
-        },
-        getMCPServerStatuses: () => mcpManager.getServerStatuses(),
-        getMCPTools: () => mcpManager.getAllTools(),
-        getMCPResources: () => mcpManager.getAllResources(),
-        getMCPPrompts: () => mcpManager.getAllPrompts(),
-        mcpConnect: async (name) =>
-        {
-            await mcpManager.connectServer(name);
-            await syncMCP();
-            syncSkills();
-            syncAvailableSkills();
-        },
-        mcpDisconnect: async (name) =>
-        {
-            await mcpManager.disconnectServer(name);
-            await syncMCP();
-            syncSkills();
-            syncAvailableSkills();
-        },
-        mcpEnable: async (name) =>
-        {
-            await mcpManager.enableServer(name);
-            await syncMCP();
-            syncSkills();
-            syncAvailableSkills();
-        },
-        mcpDisable: async (name) =>
-        {
-            await mcpManager.disableServer(name);
-            await syncMCP();
-            syncSkills();
-            syncAvailableSkills();
-        },
-        mcpReload: async () =>
-        {
-            const freshConfig = loadMCPConfig(process.cwd());
-            await mcpManager.reloadAll(freshConfig.servers, freshConfig.disabled);
-            await syncMCP();
-            syncSkills();
-            syncAvailableSkills();
-        },
-        mcpReadResource: (serverName, uri) => mcpManager.readMCPResource(serverName, uri),
-        mcpGetPrompt: (serverName, promptName) => mcpManager.getMCPPrompt(serverName, promptName),
-        runReview,
-        runRefactor,
-        getCurrentProvider: () => provider,
-        setProvider: async (newProvider, config) =>
-        {
-            provider = newProvider;
-            contextManager.clearHistory();
-            startNewLocalSession();
-            contextManager.markSessionReset();
-            runtimeConfig = {
-                ...runtimeConfig,
-                provider: config,
-                token: config.id === "deepseek-web" ? token : runtimeConfig.token,
-            };
-            await saveRuntimeConfig(runtimeConfigPath, runtimeConfig);
-            await saveCurrentLocalSession();
-        },
-        waitForInput: waitForVisibleInput,
+    const commands = buildCommandHandlers(terminalInput, {
+        getProvider: () => provider,
+        setProvider: (p) => { provider = p; },
+        contextManager,
+        sessionsDir,
+        getCurrentLocalSession: () => currentLocalSession,
+        setCurrentLocalSession: (s) => { currentLocalSession = s; },
+        getModelVariant: () => modelVariant,
+        setModelVariant: (v) => { modelVariant = v; },
+        startNewLocalSession,
+        resetMainProvider,
+        saveCurrentLocalSession,
+        runtimeConfigPath,
+        getRuntimeConfig: () => runtimeConfig,
+        setRuntimeConfig: (c) => { runtimeConfig = c; },
         getToken: () => token,
         getUserName: () => userNameForContext,
+        setUserName: (n) => { userNameForContext = n; },
         getConfiguredProviders: () => configuredProviders,
-        listRoles: () => listRoles().map((r) => ({ name: r.name })),
-        getActiveRole: () => activeRoleName,
-        setActiveRole: (roleName: string) =>
-        {
-            if (roleName === "")
-            {
-                activeRoleName = null;
-                syncRole();
-                return true;
-            }
-            const content = loadRoleContent(roleName);
-            if (content === null) return false;
-            activeRoleName = roleName;
-            syncRole();
-            return true;
-        },
-        deleteRole: (roleName: string) => deleteRole(roleName),
-        createRole: () =>
-        {
-            return runRoleCreation();
-        },
+        setConfiguredProviders: (ps) => { configuredProviders = ps; },
+        activeInterruptControllerRef,
+        skillManager,
+        mcpManager,
+        syncMCP,
+        syncSkills,
+        syncAvailableSkills,
+        getActiveRoleName: () => activeRoleName,
+        setActiveRoleName: (name) => { activeRoleName = name; },
+        syncRole,
+        viewManager: terminalInput.viewManager,
+        choose: (title, items) => terminalInput.choose(title, items),
+        confirm: (message) => terminalInput.confirm(message),
+        waitForInput: waitForVisibleInput,
+        runSidechat,
+        runReview,
+        runRefactor,
+        logout,
+        relogin,
+        getSearchEnabled: () => searchEnabled,
+        setSearchEnabled: (enabled) => { searchEnabled = enabled; },
+        getThinkingEnabled: () => thinkingEnabled,
+        setThinkingEnabled: (enabled) => { thinkingEnabled = enabled; },
+        createRole: () => runRoleCreation({
+            getProvider: () => provider,
+            prompts,
+            variableProcessor,
+            skillManager,
+            mcpManager,
+            subAgentRunner,
+            inputQueue,
+            generationIndicator,
+            terminalInput,
+            getCallOptions,
+            isRoleCreationActiveRef,
+            isMainTurnActiveRef,
+            activeOperationRef,
+        }),
         cancelActiveOperation,
-        saveUserConfig: async (update) =>
-        {
-            if (update.userName !== undefined) userNameForContext = update.userName ?? null;
-            if (update.configuredProviders !== undefined) configuredProviders = update.configuredProviders;
-            runtimeConfig = { ...runtimeConfig, ...update };
-            await saveRuntimeConfig(runtimeConfigPath, runtimeConfig);
-        },
+        prompts,
+        variableProcessor,
+        getRemoteSessionImporter: () => provider instanceof DeepseekWebProvider
+            ? createDeepseekHistoryImporter(provider)
+            : undefined,
     });
 
     // --- Terminal input callbacks ---
@@ -1140,10 +564,10 @@ export async function runCli(): Promise<void>
             {
                 output.write(`\n${colors.yellow("Создание роли прервано.")}\n\n`);
             }
-            activeInterruptController?.abort("user-interrupt");
-            activeInterruptController = null;
-            interruptActiveCommand?.(new Error("Операция прервана (Ctrl+C)"));
-            interruptActiveCommand = null;
+            activeInterruptControllerRef.current?.abort("user-interrupt");
+            activeInterruptControllerRef.current = null;
+            activeInterruptCommand?.(new Error("Операция прервана (Ctrl+C)"));
+            activeInterruptCommand = null;
         },
     });
 
@@ -1158,7 +582,7 @@ export async function runCli(): Promise<void>
 
     terminalInput.onSubmit((value) =>
     {
-        if (activeOperation?.kind === "role-creation")
+        if (activeOperationRef.current?.kind === "role-creation")
         {
             const trimmed = value.trim().toLowerCase();
             if (trimmed === "/back")
@@ -1237,7 +661,7 @@ export async function runCli(): Promise<void>
                 let settled = false;
                 const interruptPromise = new Promise<never>((_, reject) =>
                 {
-                    interruptActiveCommand = (error: Error) =>
+                    activeInterruptCommand = (error: Error) =>
                     {
                         if (settled) return;
                         settled = true;
@@ -1261,7 +685,7 @@ export async function runCli(): Promise<void>
                 }
                 finally
                 {
-                    interruptActiveCommand = null;
+                    activeInterruptCommand = null;
                 }
             })();
             if (!shouldContinue) break;
@@ -1283,7 +707,7 @@ export async function runCli(): Promise<void>
 
             let wroteAnyChunk = false;
             let hadToolInThisTurn = false;
-            isMainTurnActive = true;
+            isMainTurnActiveRef.current = true;
             try
             {
                 await agentLoop.runTurn(preparedInput.content, {
@@ -1346,7 +770,7 @@ export async function runCli(): Promise<void>
             }
             finally
             {
-                isMainTurnActive = false;
+                isMainTurnActiveRef.current = false;
             }
 
             output.write("\n\n");
