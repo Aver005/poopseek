@@ -41,6 +41,10 @@ import { printWelcome } from "@/cli/welcome";
 import { createAskUser } from "@/cli/ask-user";
 import { createSubmitHandler } from "@/cli/submit-handler";
 import { runMainLoop } from "@/cli/turn-runner";
+import { createProviderStore } from "@/stores/provider";
+import { createSessionStore } from "@/stores/session";
+import { createConfigStore } from "@/stores/config";
+import { createCallOptionsStore } from "@/stores/call-options";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -95,8 +99,17 @@ export async function runCli(): Promise<void>
         provider = await DeepseekWebProvider.create(token);
     }
 
-    let userNameForContext = runtimeConfig.userName;
-    let configuredProviders = runtimeConfig.configuredProviders;
+    // --- Stores ---
+
+    const providerStore = createProviderStore({ provider, token });
+    const configStore = createConfigStore({
+        runtimeConfig,
+        runtimeConfigPath,
+        configuredProviders: runtimeConfig.configuredProviders,
+    });
+    const callOptionsStore = createCallOptionsStore();
+
+    // --- Terminal / Loading ---
 
     const terminalInput = createTerminalInput({ getWorkspaceRoot: () => process.cwd() });
     const generationIndicator = createGenerationIndicator(output);
@@ -109,10 +122,12 @@ export async function runCli(): Promise<void>
     const reportProgress = loadingView.getProgressReporter();
     reportProgress?.(20);
 
+    // --- Context ---
+
     const prompts = await readPromptFiles();
     const variableProcessor = createVariableProcessor({
         workspaceRoot: process.cwd(),
-        get userName() { return userNameForContext; },
+        get userName() { return configStore.getUserName(); },
     });
     const contextManager = new ContextManager(
         prompts.basePrompt,
@@ -122,33 +137,40 @@ export async function runCli(): Promise<void>
     );
     reportProgress?.(40);
 
+    // --- Session ---
+
     const sessionsDir = getSessionsDirectory();
-    let currentLocalSession = {
-        id: createStoredSessionId(),
-        createdAt: new Date().toISOString(),
-    };
+    const sessionStore = createSessionStore({
+        session: { id: createStoredSessionId(), createdAt: new Date().toISOString() },
+        sessionsDir,
+        modelVariant: "default",
+    });
+
     const saveCurrentLocalSession = async (): Promise<void> =>
     {
+        const sess = sessionStore.getSession();
         await saveStoredSession(sessionsDir, {
-            id: currentLocalSession.id,
-            createdAt: currentLocalSession.createdAt,
+            id: sess.id,
+            createdAt: sess.createdAt,
             workspaceRoot: process.cwd(),
-            modelType: modelVariant,
+            modelType: sessionStore.getModelVariant(),
             context: contextManager.exportState(),
         });
     };
     const startNewLocalSession = (): void =>
     {
-        currentLocalSession = {
+        sessionStore.setSession({
             id: createStoredSessionId(),
             createdAt: new Date().toISOString(),
-        };
+        });
     };
     const resetMainProvider = async (): Promise<void> =>
     {
-        await provider.reset();
+        await providerStore.getProvider().reset();
         contextManager.markSessionReset();
     };
+
+    // --- Skills ---
 
     const skillManager = new SkillManager();
     const savedSkillFolders = await loadSkillFolders();
@@ -182,12 +204,12 @@ export async function runCli(): Promise<void>
 
     const syncSkills = (): void => contextManager.setSkillsContent(skillManager.getActiveContent());
 
-    let activeRoleName: string | null = null;
     const syncRole = (): void =>
     {
-        if (activeRoleName)
+        const roleName = callOptionsStore.getActiveRoleName();
+        if (roleName)
         {
-            const content = loadRoleContent(activeRoleName);
+            const content = loadRoleContent(roleName);
             contextManager.setRoleContent(content ?? "");
         }
         else
@@ -217,8 +239,10 @@ export async function runCli(): Promise<void>
 
     syncAvailableSkills();
 
+    // --- Agent ---
+
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
-    const subAgentRunner = new SubAgentRunner(() => provider, process.cwd());
+    const subAgentRunner = new SubAgentRunner(() => providerStore.getProvider(), process.cwd());
     const toolExecutor = new ToolExecutor(
         process.cwd(),
         (req) => askUserImpl(req),
@@ -234,13 +258,13 @@ export async function runCli(): Promise<void>
     );
     reportProgress?.(95);
 
-    let modelVariant = "default";
-    let searchEnabled = false;
-    let thinkingEnabled = false;
+    const getCallOptions = () => ({
+        modelVariant: sessionStore.getModelVariant(),
+        searchEnabled: callOptionsStore.getSearchEnabled(),
+        thinkingEnabled: callOptionsStore.getThinkingEnabled(),
+    });
 
-    const getCallOptions = () => ({ modelVariant, searchEnabled, thinkingEnabled });
-
-    const agentLoop = new StreamingAgentLoop(() => provider, contextManager, toolExecutor, {
+    const agentLoop = new StreamingAgentLoop(() => providerStore.getProvider(), contextManager, toolExecutor, {
         getCallOptions,
     });
 
@@ -257,20 +281,22 @@ export async function runCli(): Promise<void>
 
     terminalInput.setStatusLine(() =>
     {
-        const isDeepseekWeb = provider.info.id === "deepseek-web";
-        const label = isDeepseekWeb ? `${provider.info.label} · ${modelVariant}` : provider.info.label;
+        const p = providerStore.getProvider();
+        const modelVariant = sessionStore.getModelVariant();
+        const isDeepseekWeb = p.info.id === "deepseek-web";
+        const label = isDeepseekWeb ? `${p.info.label} · ${modelVariant}` : p.info.label;
         const parts: string[] = [colors.magenta(label)];
         if (isRoleCreationActiveRef.current)
         {
             parts.push(colors.yellow("сценарий: Создание роли"));
             return colors.dim("◆ ") + parts.join(colors.dim(" · "));
         }
-        const messageCount = contextManager.getMessageCount();
-        parts.push(colors.dim(`${messageCount} msg`));
-        if (searchEnabled) parts.push(colors.green("web"));
-        if (thinkingEnabled) parts.push(colors.cyan("think"));
+        parts.push(colors.dim(`${contextManager.getMessageCount()} msg`));
+        if (callOptionsStore.getSearchEnabled()) parts.push(colors.green("web"));
+        if (callOptionsStore.getThinkingEnabled()) parts.push(colors.cyan("think"));
         const activeSkillsCount = skillManager.getActiveNames().length;
         if (activeSkillsCount > 0) parts.push(colors.yellow(`${activeSkillsCount} skills`));
+        const activeRoleName = callOptionsStore.getActiveRoleName();
         if (activeRoleName) parts.push(colors.cyan(`role:${activeRoleName}`));
         return colors.dim("◆ ") + parts.join(colors.dim(" · "));
     });
@@ -317,19 +343,19 @@ export async function runCli(): Promise<void>
     // --- Auth actions ---
 
     const { relogin, logout } = createAuthActions({
-        runtimeConfigPath,
+        runtimeConfigPath: configStore.getRuntimeConfigPath(),
         contextManager,
         waitForInput: waitForVisibleInput,
         writeOutput: writeDetachedOutput,
         startNewLocalSession,
-        onReloggedIn: (newProvider) => { provider = newProvider; },
-        getRuntimeConfig: () => runtimeConfig,
+        onReloggedIn: (newProvider) => { providerStore.setProvider(newProvider); },
+        getRuntimeConfig: () => configStore.getRuntimeConfig(),
     });
 
     // --- Sidechat / Review / Refactor ---
 
     const { runSidechat, startQueuedSidechat, pendingTasks: pendingSidechatTasks } = createSidechatRunner({
-        getProvider: () => provider,
+        getProvider: () => providerStore.getProvider(),
         getCallOptions,
         getWorkspaceRoot: () => process.cwd(),
         prompts,
@@ -341,7 +367,7 @@ export async function runCli(): Promise<void>
     });
 
     const { runReview } = createReviewRunner({
-        getProvider: () => provider,
+        getProvider: () => providerStore.getProvider(),
         getCallOptions,
         getWorkspaceRoot: () => process.cwd(),
         reviewPrompt: prompts.reviewPrompt,
@@ -353,7 +379,7 @@ export async function runCli(): Promise<void>
     });
 
     const { runRefactor } = createRefactorRunner({
-        getProvider: () => provider,
+        getProvider: () => providerStore.getProvider(),
         getCallOptions,
         getWorkspaceRoot: () => process.cwd(),
         refactorPrompt: prompts.refactorPrompt,
@@ -386,33 +412,20 @@ export async function runCli(): Promise<void>
     // --- Command handlers ---
 
     const commands = buildCommandHandlers(terminalInput, {
-        getProvider: () => provider,
-        setProvider: (p) => { provider = p; },
+        providerStore,
+        sessionStore,
+        configStore,
+        callOptionsStore,
         contextManager,
-        sessionsDir,
-        getCurrentLocalSession: () => currentLocalSession,
-        setCurrentLocalSession: (s) => { currentLocalSession = s; },
-        getModelVariant: () => modelVariant,
-        setModelVariant: (v) => { modelVariant = v; },
         startNewLocalSession,
         resetMainProvider,
         saveCurrentLocalSession,
-        runtimeConfigPath,
-        getRuntimeConfig: () => runtimeConfig,
-        setRuntimeConfig: (c) => { runtimeConfig = c; },
-        getToken: () => token,
-        getUserName: () => userNameForContext,
-        setUserName: (n) => { userNameForContext = n; },
-        getConfiguredProviders: () => configuredProviders,
-        setConfiguredProviders: (ps) => { configuredProviders = ps; },
         activeInterruptControllerRef,
         skillManager,
         mcpManager,
         syncMCP,
         syncSkills,
         syncAvailableSkills,
-        getActiveRoleName: () => activeRoleName,
-        setActiveRoleName: (name) => { activeRoleName = name; },
         syncRole,
         viewManager: terminalInput.viewManager,
         choose: (title, items) => terminalInput.choose(title, items),
@@ -423,12 +436,8 @@ export async function runCli(): Promise<void>
         runRefactor,
         logout,
         relogin,
-        getSearchEnabled: () => searchEnabled,
-        setSearchEnabled: (enabled) => { searchEnabled = enabled; },
-        getThinkingEnabled: () => thinkingEnabled,
-        setThinkingEnabled: (enabled) => { thinkingEnabled = enabled; },
         createRole: () => runRoleCreation({
-            getProvider: () => provider,
+            getProvider: () => providerStore.getProvider(),
             prompts,
             variableProcessor,
             skillManager,
@@ -445,9 +454,11 @@ export async function runCli(): Promise<void>
         cancelActiveOperation,
         prompts,
         variableProcessor,
-        getRemoteSessionImporter: () => provider instanceof DeepseekWebProvider
-            ? createDeepseekHistoryImporter(provider)
-            : undefined,
+        getRemoteSessionImporter: () =>
+        {
+            const p = providerStore.getProvider();
+            return p instanceof DeepseekWebProvider ? createDeepseekHistoryImporter(p) : undefined;
+        },
     });
 
     // --- Terminal input callbacks ---
@@ -455,14 +466,8 @@ export async function runCli(): Promise<void>
     terminalInput.setQueueCallbacks({
         onValueChange: (value) =>
         {
-            if (value.length > 0)
-            {
-                generationIndicator.pause();
-            }
-            else
-            {
-                generationIndicator.resume();
-            }
+            if (value.length > 0) generationIndicator.pause();
+            else generationIndicator.resume();
             generationIndicator.setTypingText(value);
         },
         onStop: () => generationIndicator.resume(),
@@ -487,7 +492,7 @@ export async function runCli(): Promise<void>
         writeDetachedOutput,
     }));
 
-    printWelcome(appVersion, provider, colorMode, terminalCapabilities);
+    printWelcome(appVersion, providerStore.getProvider(), colorMode, terminalCapabilities);
 
     terminalInput.start(commands);
 

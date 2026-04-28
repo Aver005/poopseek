@@ -3,13 +3,11 @@ import { getColorMode, setTheme } from "@/cli/colors";
 import { listStoredSessions, loadStoredSession } from "@/cli/session-store";
 import { saveRuntimeConfig } from "@/cli/runtime-config";
 import type { PromptFiles } from "@/cli/prompt-files";
-import type { RuntimeConfig } from "@/cli/runtime-config";
 import type { TerminalChoiceItem } from "@/cli/terminal-input";
 import type { VariableProcessor } from "@/variables";
 import type { MCPManager } from "@/mcp";
 import { loadMCPConfig } from "@/mcp";
 import type { SkillManager } from "@/skills";
-import type { ILLMProvider, ProviderConfig } from "@/providers";
 import type { ReviewScope } from "@/cli/review";
 import type { RefactorLevel } from "@/cli/refactor";
 import type { ViewManager } from "@/cli/view-manager";
@@ -17,34 +15,25 @@ import type { Command } from "./types";
 import { createCommandHandlers } from "./index";
 import { listRoles, loadRoleContent, deleteRole } from "@/roles";
 import { createSessionResolver, type RemoteSessionImporter } from "@/sessions";
+import type { ProviderStore } from "@/stores/provider";
+import type { SessionStore } from "@/stores/session";
+import type { ConfigStore } from "@/stores/config";
+import type { CallOptionsStore } from "@/stores/call-options";
 
 export type CommandHandlerDeps = {
-    // Provider
-    getProvider: () => ILLMProvider;
-    setProvider: (p: ILLMProvider) => void;
+    // Stores
+    providerStore: ProviderStore;
+    sessionStore: SessionStore;
+    configStore: ConfigStore;
+    callOptionsStore: CallOptionsStore;
 
     // Context manager
     contextManager: ContextManager;
 
-    // Sessions (local)
-    sessionsDir: string;
-    getCurrentLocalSession: () => { id: string; createdAt: string };
-    setCurrentLocalSession: (s: { id: string; createdAt: string }) => void;
-    getModelVariant: () => string;
-    setModelVariant: (v: string) => void;
+    // Sessions (functions)
     startNewLocalSession: () => void;
     resetMainProvider: () => Promise<void>;
     saveCurrentLocalSession: () => Promise<void>;
-
-    // Config
-    runtimeConfigPath: string;
-    getRuntimeConfig: () => RuntimeConfig;
-    setRuntimeConfig: (c: RuntimeConfig) => void;
-    getToken: () => string;
-    getUserName: () => string | null;
-    setUserName: (n: string | null) => void;
-    getConfiguredProviders: () => ProviderConfig[];
-    setConfiguredProviders: (ps: ProviderConfig[]) => void;
 
     // Interrupt
     activeInterruptControllerRef: { current: AbortController | null };
@@ -57,8 +46,6 @@ export type CommandHandlerDeps = {
     syncAvailableSkills: () => void;
 
     // Roles
-    getActiveRoleName: () => string | null;
-    setActiveRoleName: (name: string | null) => void;
     syncRole: () => void;
 
     // Terminal UI
@@ -66,12 +53,6 @@ export type CommandHandlerDeps = {
     choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
     confirm: (message: string) => Promise<boolean>;
     waitForInput: () => Promise<string>;
-
-    // Search / thinking toggles
-    getSearchEnabled: () => boolean;
-    setSearchEnabled: (enabled: boolean) => void;
-    getThinkingEnabled: () => boolean;
-    setThinkingEnabled: (enabled: boolean) => void;
 
     // Runners
     runSidechat: (question: string) => Promise<void>;
@@ -112,13 +93,15 @@ export function buildCommandHandlers(
     deps: CommandHandlerDeps,
 ): Map<string, Command>
 {
+    const { providerStore, sessionStore, configStore, callOptionsStore } = deps;
+
     const resolveSessionForLoad = createSessionResolver({
-        sessionsDir: deps.sessionsDir,
+        sessionsDir: sessionStore.getSessionsDir(),
         contextManager: deps.contextManager,
-        getCurrentLocalSession: deps.getCurrentLocalSession,
-        setCurrentLocalSession: deps.setCurrentLocalSession,
-        getModelVariant: deps.getModelVariant,
-        setModelVariant: deps.setModelVariant,
+        getCurrentLocalSession: () => sessionStore.getSession(),
+        setCurrentLocalSession: (s) => sessionStore.setSession(s),
+        getModelVariant: () => sessionStore.getModelVariant(),
+        setModelVariant: (v) => sessionStore.setModelVariant(v),
         resetMainProvider: deps.resetMainProvider,
         saveCurrentLocalSession: deps.saveCurrentLocalSession,
         startNewLocalSession: deps.startNewLocalSession,
@@ -131,21 +114,20 @@ export function buildCommandHandlers(
 
         getSessionInfo: () =>
         {
-            const provider = deps.getProvider();
+            const provider = providerStore.getProvider();
             const remoteId = "getSessionId" in provider && typeof (provider as { getSessionId?: () => string | null }).getSessionId === "function"
                 ? ((provider as { getSessionId: () => string | null }).getSessionId() ?? "—")
                 : "—";
             return [
                 `Provider: ${provider.info.label}`,
                 `Remote session ID: ${remoteId}`,
-                `Local session ID: ${deps.getCurrentLocalSession().id}`,
+                `Local session ID: ${sessionStore.getSession().id}`,
             ].join(" | ");
         },
 
         getContextStats: () =>
         {
-            const cm = deps.contextManager;
-            return `Messages in local context: ${cm.getMessageCount()}`;
+            return `Messages in local context: ${deps.contextManager.getMessageCount()}`;
         },
 
         clearHistory: async () =>
@@ -166,7 +148,7 @@ export function buildCommandHandlers(
 
         openSessions: async () =>
         {
-            const sessions = await listStoredSessions(deps.sessionsDir);
+            const sessions = await listStoredSessions(sessionStore.getSessionsDir());
             if (sessions.length === 0)
             {
                 return { loaded: false };
@@ -182,11 +164,11 @@ export function buildCommandHandlers(
             );
 
             if (!selectedId) return { loaded: false, cancelled: true };
-            const snapshot = await loadStoredSession(deps.sessionsDir, selectedId);
+            const snapshot = await loadStoredSession(sessionStore.getSessionsDir(), selectedId);
             if (!snapshot) return { loaded: false };
 
-            deps.setCurrentLocalSession({ id: snapshot.id, createdAt: snapshot.createdAt });
-            deps.setModelVariant(snapshot.modelType);
+            sessionStore.setSession({ id: snapshot.id, createdAt: snapshot.createdAt });
+            sessionStore.setModelVariant(snapshot.modelType);
             deps.contextManager.restoreState(snapshot.context);
             await deps.resetMainProvider();
             await deps.saveCurrentLocalSession();
@@ -198,13 +180,13 @@ export function buildCommandHandlers(
         getTheme: () => getColorMode().theme,
         setTheme: (theme) => setTheme(theme),
 
-        getModelType: () => deps.getModelVariant() as "default" | "expert",
-        setModelType: (nextModelType) => deps.setModelVariant(nextModelType),
+        getModelType: () => sessionStore.getModelVariant() as "default" | "expert",
+        setModelType: (nextModelType) => sessionStore.setModelVariant(nextModelType),
 
-        getSearchEnabled: deps.getSearchEnabled,
-        setSearchEnabled: deps.setSearchEnabled,
-        getThinkingEnabled: deps.getThinkingEnabled,
-        setThinkingEnabled: deps.setThinkingEnabled,
+        getSearchEnabled: () => callOptionsStore.getSearchEnabled(),
+        setSearchEnabled: (enabled) => callOptionsStore.setSearchEnabled(enabled),
+        getThinkingEnabled: () => callOptionsStore.getThinkingEnabled(),
+        setThinkingEnabled: (enabled) => callOptionsStore.setThinkingEnabled(enabled),
 
         runSidechat: deps.runSidechat,
         confirm: deps.confirm,
@@ -223,12 +205,12 @@ export function buildCommandHandlers(
                 dialogue,
             ].join("\n");
 
-            const compactProvider = await deps.getProvider().clone();
+            const compactProvider = await providerStore.getProvider().clone();
             const chunks: string[] = [];
             for await (const chunk of compactProvider.complete(
-                [{ role: "user", content: compactPrompt }],
+                [{ role: "user" as const, content: compactPrompt }],
                 "",
-                { modelVariant: deps.getModelVariant() },
+                { modelVariant: sessionStore.getModelVariant() },
             ))
             {
                 chunks.push(chunk);
@@ -346,41 +328,42 @@ export function buildCommandHandlers(
         runReview: deps.runReview,
         runRefactor: deps.runRefactor,
 
-        getCurrentProvider: deps.getProvider,
+        getCurrentProvider: () => providerStore.getProvider(),
         setProvider: async (newProvider, config) =>
         {
-            deps.setProvider(newProvider);
+            providerStore.setProvider(newProvider);
             deps.contextManager.clearHistory();
             deps.startNewLocalSession();
             deps.contextManager.markSessionReset();
-            const updated: RuntimeConfig = {
-                ...deps.getRuntimeConfig(),
+            const runtimeConfig = configStore.getRuntimeConfig();
+            const updated = {
+                ...runtimeConfig,
                 provider: config,
-                token: config.id === "deepseek-web" ? deps.getToken() : deps.getRuntimeConfig().token,
+                token: config.id === "deepseek-web" ? providerStore.getToken() : runtimeConfig.token,
             };
-            deps.setRuntimeConfig(updated);
-            await saveRuntimeConfig(deps.runtimeConfigPath, updated);
+            configStore.setRuntimeConfig(updated);
+            await saveRuntimeConfig(configStore.getRuntimeConfigPath(), updated);
             await deps.saveCurrentLocalSession();
         },
 
         waitForInput: deps.waitForInput,
-        getToken: deps.getToken,
-        getUserName: deps.getUserName,
-        getConfiguredProviders: deps.getConfiguredProviders,
+        getToken: () => providerStore.getToken(),
+        getUserName: () => configStore.getUserName(),
+        getConfiguredProviders: () => configStore.getConfiguredProviders(),
 
         listRoles: () => listRoles().map((r) => ({ name: r.name })),
-        getActiveRole: deps.getActiveRoleName,
+        getActiveRole: () => callOptionsStore.getActiveRoleName(),
         setActiveRole: (roleName) =>
         {
             if (roleName === "")
             {
-                deps.setActiveRoleName(null);
+                callOptionsStore.setActiveRoleName(null);
                 deps.syncRole();
                 return true;
             }
             const content = loadRoleContent(roleName);
             if (content === null) return false;
-            deps.setActiveRoleName(roleName);
+            callOptionsStore.setActiveRoleName(roleName);
             deps.syncRole();
             return true;
         },
@@ -390,11 +373,11 @@ export function buildCommandHandlers(
 
         saveUserConfig: async (update) =>
         {
-            if (update.userName !== undefined) deps.setUserName(update.userName ?? null);
-            if (update.configuredProviders !== undefined) deps.setConfiguredProviders(update.configuredProviders);
-            const updated: RuntimeConfig = { ...deps.getRuntimeConfig(), ...update };
-            deps.setRuntimeConfig(updated);
-            await saveRuntimeConfig(deps.runtimeConfigPath, updated);
+            if (update.userName !== undefined) configStore.setUserName(update.userName ?? null);
+            if (update.configuredProviders !== undefined) configStore.setConfiguredProviders(update.configuredProviders);
+            const updated = { ...configStore.getRuntimeConfig(), ...update };
+            configStore.setRuntimeConfig(updated);
+            await saveRuntimeConfig(configStore.getRuntimeConfigPath(), updated);
         },
     });
 }
