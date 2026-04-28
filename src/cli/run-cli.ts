@@ -3,12 +3,7 @@ import ContextManager from "@/agent/context-manager";
 import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { colors, getColorMode } from "@/cli/colors";
-import {
-    getFileAttachmentPreviewLines,
-    prepareInputWithFileMentions,
-} from "@/cli/file-mentions";
 import { createGenerationIndicator } from "@/cli/generation-indicator";
-import { renderMarkdown } from "@/cli/markdown";
 import { readPromptFiles } from "@/cli/prompt-files";
 import {
     createStoredSessionId,
@@ -22,13 +17,8 @@ import {
     promptForToken,
     saveRuntimeConfig,
 } from "@/cli/runtime-config";
-import {
-    adaptTextToTerminal,
-    getTerminalCapabilities,
-} from "@/cli/terminal-capabilities";
+import { getTerminalCapabilities } from "@/cli/terminal-capabilities";
 import { createTerminalInput } from "@/cli/terminal-input";
-import { getToolDetail, getToolProgressMessage, renderToolResultExtra } from "@/cli/tool-progress-messages";
-import { handleCommand } from "@/commands";
 import { buildCommandHandlers } from "@/commands/handlers";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
@@ -36,8 +26,7 @@ import { SkillManager } from "@/skills";
 import { loadRoleContent } from "@/roles";
 import { MCPManager, loadMCPConfig } from "@/mcp";
 import { loadSkillFolders } from "@/skills/skill-folders-store";
-import { ensureValidToken } from "@/cli/auth-flow";
-import { createAuthActions } from "@/cli/auth-flow";
+import { ensureValidToken, createAuthActions } from "@/cli/auth-flow";
 import { createInputQueue } from "@/cli/input-queue";
 import { createSidechatRunner } from "@/cli/sidechat";
 import { SubAgentRunner } from "@/agent/sub-agent";
@@ -45,13 +34,13 @@ import { createReviewRunner } from "@/cli/review";
 import { createRefactorRunner } from "@/cli/refactor";
 import { LoadingView } from "@/cli/views/loading";
 import { runOnboarding } from "@/cli/onboarding";
-import {
-    createProvider,
-    DeepseekWebProvider,
-    type ILLMProvider,
-} from "@/providers";
+import { createProvider, DeepseekWebProvider, type ILLMProvider } from "@/providers";
 import { runRoleCreation, type ActiveOperation } from "@/roles/creation";
 import { createDeepseekHistoryImporter } from "@/deepseek-client/history-import";
+import { printWelcome } from "@/cli/welcome";
+import { createAskUser } from "@/cli/ask-user";
+import { createSubmitHandler } from "@/cli/submit-handler";
+import { runMainLoop } from "@/cli/turn-runner";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -61,9 +50,7 @@ export async function runCli(): Promise<void>
     const loadedRuntimeConfig = await loadRuntimeConfig(runtimeConfigPath);
     const envToken = getFirstEnvValue(["DEEPSEEK_TOKEN"]);
     const envVersion = getFirstEnvValue(["POOPSEEK_VERSION", "APP_VERSION"]);
-    const embeddedVersion = typeof __APP_VERSION__ === "string"
-        ? __APP_VERSION__.trim()
-        : "";
+    const embeddedVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__.trim() : "";
     const appVersion = embeddedVersion || envVersion || "dev";
 
     // --- Onboarding (first launch) ---
@@ -116,28 +103,7 @@ export async function runCli(): Promise<void>
     const colorMode = getColorMode();
     const terminalCapabilities = getTerminalCapabilities();
 
-    const loadingView = new LoadingView([
-        "Воруем ваш токен",
-        "Сливаем кодовую базу",
-        "Сканируем окружение",
-        "Ищем куда ещё залезть",
-        "Подключаем троян",
-        "Инициализируем сеть",
-        "Подготовка к запуску",
-        "Загружаем плагины",
-        "Запуск модулей",
-        "Готово!",
-        "Обнуляем переменные",
-        "Стираем логи",
-        "Оптимизируем память",
-        "Растягиваем процессор",
-        "Собираем мусор",
-        "Перепрыгиваем через баги",
-        "Обновляем тайм-ауты",
-        "Насаждаем эвенты",
-        "Укладываем в кэш",
-        "Готово к работе",
-    ]);
+    const loadingView = new LoadingView();
     await terminalInput.viewManager.push(loadingView);
     terminalInput.viewManager.renderNow();
     const reportProgress = loadingView.getProgressReporter();
@@ -252,10 +218,7 @@ export async function runCli(): Promise<void>
     syncAvailableSkills();
 
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
-    const subAgentRunner = new SubAgentRunner(
-        () => provider,
-        process.cwd(),
-    );
+    const subAgentRunner = new SubAgentRunner(() => provider, process.cwd());
     const toolExecutor = new ToolExecutor(
         process.cwd(),
         (req) => askUserImpl(req),
@@ -275,26 +238,22 @@ export async function runCli(): Promise<void>
     let searchEnabled = false;
     let thinkingEnabled = false;
 
-    const getCallOptions = () => ({
-        modelVariant,
-        searchEnabled,
-        thinkingEnabled,
-    });
+    const getCallOptions = () => ({ modelVariant, searchEnabled, thinkingEnabled });
 
     const agentLoop = new StreamingAgentLoop(() => provider, contextManager, toolExecutor, {
         getCallOptions,
     });
 
-    // Pop loading view
     reportProgress?.(100);
     await terminalInput.viewManager.pop();
 
-    // --- Shared mutable refs (accessed from role creation and command handlers) ---
+    // --- Shared mutable refs ---
 
     const isRoleCreationActiveRef = { current: false };
     const isMainTurnActiveRef = { current: false };
     const activeOperationRef = { current: null as ActiveOperation | null };
     const activeInterruptControllerRef = { current: null as AbortController | null };
+    const activeInterruptCommandRef = { current: null as ((error: Error) => void) | null };
 
     terminalInput.setStatusLine(() =>
     {
@@ -353,53 +312,7 @@ export async function runCli(): Promise<void>
         }
     };
 
-    // --- Interactive user prompts ---
-
-    askUserImpl = async (request) =>
-    {
-        generationIndicator.stop();
-        terminalInput.setRenderEnabled(true);
-        terminalInput.setMode("active");
-
-        try
-        {
-            if (request.type === "text")
-            {
-                output.write(`\n${colors.cyan("?")} ${request.prompt}\n`);
-                return await inputQueue.waitForNext();
-            }
-
-            if (request.type === "confirm")
-            {
-                return await terminalInput.choose(request.question, [
-                    { value: "yes", label: "Да" },
-                    { value: "no", label: "Нет" },
-                ]);
-            }
-
-            if (request.type === "choice")
-            {
-                const items = [
-                    ...request.options.map((o) => ({ value: o, label: o })),
-                    { value: "__custom__", label: colors.dim("Свой вариант...") },
-                ];
-                const selected = await terminalInput.choose(request.title, items);
-                if (selected === "__custom__")
-                {
-                    output.write(`\n${colors.cyan("?")} Введите свой вариант:\n`);
-                    return await inputQueue.waitForNext();
-                }
-                return selected;
-            }
-
-            return null;
-        }
-        finally
-        {
-            terminalInput.setMode("queue");
-            terminalInput.setRenderEnabled(false);
-        }
-    };
+    askUserImpl = createAskUser({ inputQueue, terminalInput, generationIndicator });
 
     // --- Auth actions ---
 
@@ -409,14 +322,11 @@ export async function runCli(): Promise<void>
         waitForInput: waitForVisibleInput,
         writeOutput: writeDetachedOutput,
         startNewLocalSession,
-        onReloggedIn: (newProvider) =>
-        {
-            provider = newProvider;
-        },
+        onReloggedIn: (newProvider) => { provider = newProvider; },
         getRuntimeConfig: () => runtimeConfig,
     });
 
-    // --- Sidechat ---
+    // --- Sidechat / Review / Refactor ---
 
     const { runSidechat, startQueuedSidechat, pendingTasks: pendingSidechatTasks } = createSidechatRunner({
         getProvider: () => provider,
@@ -474,8 +384,6 @@ export async function runCli(): Promise<void>
     };
 
     // --- Command handlers ---
-
-    let activeInterruptCommand: ((error: Error) => void) | null = null;
 
     const commands = buildCommandHandlers(terminalInput, {
         getProvider: () => provider,
@@ -566,240 +474,33 @@ export async function runCli(): Promise<void>
             }
             activeInterruptControllerRef.current?.abort("user-interrupt");
             activeInterruptControllerRef.current = null;
-            activeInterruptCommand?.(new Error("Операция прервана (Ctrl+C)"));
-            activeInterruptCommand = null;
+            activeInterruptCommandRef.current?.(new Error("Операция прервана (Ctrl+C)"));
+            activeInterruptCommandRef.current = null;
         },
     });
 
-    const parseBtwQuestion = (value: string): string | null =>
-    {
-        const trimmed = value.trim();
-        const match = trimmed.match(/^\/btw(?:\s+([\s\S]+))?$/i);
-        if (!match) return null;
-        const question = match[1]?.trim() ?? "";
-        return question.length > 0 ? question : "";
-    };
+    terminalInput.onSubmit(createSubmitHandler({
+        activeOperationRef,
+        cancelActiveOperation,
+        inputQueue,
+        startQueuedSidechat,
+        writeDetachedOutput,
+    }));
 
-    terminalInput.onSubmit((value) =>
-    {
-        if (activeOperationRef.current?.kind === "role-creation")
-        {
-            const trimmed = value.trim().toLowerCase();
-            if (trimmed === "/back")
-            {
-                cancelActiveOperation();
-                writeDetachedOutput(`\n${colors.yellow("Создание роли прервано.")}\n\n`);
-                return;
-            }
-            if (trimmed.startsWith("/"))
-            {
-                writeDetachedOutput(`\n${colors.dim("Во время создания роли доступна только команда /back.")}\n\n`);
-                return;
-            }
-        }
-        if (inputQueue.hasPendingWaiter())
-        {
-            inputQueue.resolveWaiter(value);
-            return;
-        }
-        if (!value) return;
-        else
-        {
-            const btwQuestion = parseBtwQuestion(value);
-            if (btwQuestion !== null)
-            {
-                if (btwQuestion.length === 0)
-                {
-                    writeDetachedOutput("\nИспользование: /btw <вопрос>\n\n");
-                }
-                else
-                {
-                    startQueuedSidechat(btwQuestion);
-                }
-                return;
-            }
-
-            inputQueue.enqueue(value);
-        }
-    });
-
-    // --- Welcome message ---
-
-    output.write(`\n${colors.green(adaptTextToTerminal("PoopSeek CLI 💩"))} | v${appVersion}\n\n`);
-    output.write(`${colors.yellow("/help")} для списка команд\n`);
-    output.write(`${colors.yellow("/tools")} для списка инструментов\n\n`);
-    output.write(`Провайдер: ${colors.magenta(provider.info.label)}\n`);
-    output.write(`Цвета ${colorMode.enabled ? colors.green("включены") : colors.red("отключены")}\n`);
-    output.write(`Профиль терминала: ${colors.cyan(`${terminalCapabilities.shell}/${terminalCapabilities.terminal}`)}\n`);
-    output.write(`Рендер: ${colors.cyan(colorMode.support)} | emoji ${terminalCapabilities.emoji ? colors.green("on") : colors.red("off")}\n`);
-    output.write(`Тема: ${colors.cyan(colorMode.theme)}\n\n`);
-    output.write(`${colors.dim("Многострочный ввод: ") + colors.blue("Shift+Enter") + colors.dim(" или ") + colors.blue("\\n") + colors.dim(" в тексте")}\n`);
-    output.write(`${colors.dim("Файлы: ") + colors.blue("@path") + colors.dim(" и ") + colors.blue("Tab") + colors.dim(" для автокомплита")}\n`);
-    output.write(`${colors.dim("Очередь: ввод во время генерации добавляется в очередь")}\n\n`);
+    printWelcome(appVersion, provider, colorMode, terminalCapabilities);
 
     terminalInput.start(commands);
 
-    // --- Main loop ---
-
-    try
-    {
-        while (true)
-        {
-            terminalInput.setMode("active");
-
-            const userInput = await inputQueue.waitForNext();
-            if (!userInput) continue;
-
-            if (userInput.startsWith("/"))
-            {
-                terminalInput.setMode("active");
-                terminalInput.setRenderEnabled(true);
-            }
-
-            const shouldContinue = await (async (): Promise<boolean> =>
-            {
-                let settled = false;
-                const interruptPromise = new Promise<never>((_, reject) =>
-                {
-                    activeInterruptCommand = (error: Error) =>
-                    {
-                        if (settled) return;
-                        settled = true;
-                        reject(error);
-                    };
-                });
-                try
-                {
-                    const commandPromise = handleCommand(userInput, commands).then((value) =>
-                    {
-                        settled = true;
-                        return value;
-                    });
-                    return await Promise.race([commandPromise, interruptPromise]);
-                }
-                catch (error)
-                {
-                    const message = error instanceof Error ? error.message : String(error);
-                    output.write(`\n${colors.red(message)}\n\n`);
-                    return true;
-                }
-                finally
-                {
-                    activeInterruptCommand = null;
-                }
-            })();
-            if (!shouldContinue) break;
-            if (userInput.startsWith("/"))
-            {
-                terminalInput.setRenderEnabled(true);
-                continue;
-            }
-
-            const preparedInput = await prepareInputWithFileMentions(userInput, process.cwd());
-            const attachmentPreviewLines = getFileAttachmentPreviewLines(preparedInput.attachments);
-            terminalInput.setMode("queue");
-            terminalInput.setRenderEnabled(false);
-            writeUserMessage(userInput);
-            if (attachmentPreviewLines.length > 0)
-            {
-                output.write(`${attachmentPreviewLines.join("\n")}\n`);
-            }
-
-            let wroteAnyChunk = false;
-            let hadToolInThisTurn = false;
-            isMainTurnActiveRef.current = true;
-            try
-            {
-                await agentLoop.runTurn(preparedInput.content, {
-                    onModelRequestStart: () =>
-                    {
-                        generationIndicator.start();
-                    },
-                    onModelRequestDone: () =>
-                    {
-                        generationIndicator.stop();
-                    },
-                    onAssistantChunk: (chunk) =>
-                    {
-                        generationIndicator.stop();
-                        if (!wroteAnyChunk)
-                        {
-                            if (hadToolInThisTurn)
-                            {
-                                output.write("\n" + colors.dim("─".repeat(48)) + "\n");
-                            }
-                            else
-                            {
-                                output.write("\n");
-                            }
-                            wroteAnyChunk = true;
-                        }
-                        output.write(renderMarkdown(chunk));
-                    },
-                    onToolStart: (toolName, toolArgs) =>
-                    {
-                        generationIndicator.stop();
-                        const detail = getToolDetail(toolName, toolArgs);
-                        const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
-                        output.write(`${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
-                    },
-                    onToolDone: (toolName, toolResult) =>
-                    {
-                        generationIndicator.stop();
-                        hadToolInThisTurn = true;
-                        wroteAnyChunk = false;
-                        const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
-                        output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
-                        if (toolResult.ok)
-                        {
-                            const extra = renderToolResultExtra(toolName, toolResult.data);
-                            if (extra) output.write(extra);
-                        }
-                        output.write("\n");
-                        generationIndicator.activate("Продолжаю...");
-                    },
-                    onToolParseError: (content) =>
-                    {
-                        generationIndicator.stop();
-                        output.write(`\n${colors.red("[tool parse error]")} Не удалось распарсить вызов инструмента\n`);
-                        const preview = content.slice(0, 300);
-                        output.write(`${colors.dim(preview)}\n\n`);
-                    },
-                });
-                await saveCurrentLocalSession();
-            }
-            finally
-            {
-                isMainTurnActiveRef.current = false;
-            }
-
-            output.write("\n\n");
-
-            generationIndicator.resume();
-            terminalInput.setMode("active");
-
-            if (inputQueue.length > 0)
-            {
-                output.write(colors.dim(`Очередь (${inputQueue.length}):\n`));
-                for (let i = 0; i < inputQueue.length; i++)
-                {
-                    const item = inputQueue.itemAt(i) ?? "";
-                    const firstLine = item.split("\n")[0] ?? item;
-                    const preview = firstLine.length > 100
-                        ? `${firstLine.slice(0, 100)}…`
-                        : firstLine;
-                    output.write(colors.dim(`  ${i + 1}. ${preview}\n`));
-                }
-                output.write("\n");
-            }
-
-            terminalInput.setRenderEnabled(true);
-        }
-    }
-    finally
-    {
-        await Promise.allSettled(Array.from(pendingSidechatTasks));
-        terminalInput.close();
-        generationIndicator.stop();
-    }
+    await runMainLoop({
+        inputQueue,
+        terminalInput,
+        agentLoop,
+        saveCurrentLocalSession,
+        isMainTurnActiveRef,
+        activeInterruptCommandRef,
+        commands,
+        generationIndicator,
+        writeUserMessage,
+        pendingSidechatTasks,
+    });
 }

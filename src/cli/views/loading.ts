@@ -4,6 +4,29 @@ import type { View, ViewManager, ViewRenderResult, TerminalKeyData } from '@/cli
 const SPINNER_FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
 const BAR_WIDTH = 28;
 
+export const DEFAULT_LOADING_STATUSES = [
+    "Воруем ваш токен",
+    "Сливаем кодовую базу",
+    "Сканируем окружение",
+    "Ищем куда ещё залезть",
+    "Подключаем троян",
+    "Инициализируем сеть",
+    "Подготовка к запуску",
+    "Загружаем плагины",
+    "Запуск модулей",
+    "Готово!",
+    "Обнуляем переменные",
+    "Стираем логи",
+    "Оптимизируем память",
+    "Растягиваем процессор",
+    "Собираем мусор",
+    "Перепрыгиваем через баги",
+    "Обновляем тайм-ауты",
+    "Насаждаем эвенты",
+    "Укладываем в кэш",
+    "Готово к работе",
+];
+
 export type ProgressReporter = (pct: number) => void;
 
 export class LoadingView implements View {
@@ -15,7 +38,7 @@ export class LoadingView implements View {
     private _setProgress: ProgressReporter | null = null;
     private readonly _statuses: string[];
 
-    constructor(statuses: string[]) {
+    constructor(statuses: string[] = DEFAULT_LOADING_STATUSES) {
         this._statuses = statuses;
     }
 
