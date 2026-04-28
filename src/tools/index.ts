@@ -1,6 +1,7 @@
 import type { ToolHandler } from "./types";
 
 import { handler as bashHandler, name as bashName } from "./defs/bash";
+import { handler as powershellHandler, name as powershellName } from "./defs/powershell";
 import { handler as todoWriteHandler, name as todoWriteName } from "./defs/todo-write";
 import { handler as todoReadHandler, name as todoReadName } from "./defs/todo-read";
 import { handler as fileEditHandler, name as fileEditName } from "./defs/file-edit";
@@ -14,10 +15,7 @@ import { handler as gitEditHandler, name as gitEditName } from "./defs/git-edit"
 import { handler as memoryListHandler, name as memoryListName } from "./defs/memory-list";
 import { handler as memoryReadHandler, name as memoryReadName } from "./defs/memory-read";
 import { handler as memorySaveHandler, name as memorySaveName } from "./defs/memory-save";
-import {
-    handler as powershellHandler,
-    name as powershellName,
-} from "./defs/powershell";
+import { handler as roleSaveHandler, name as roleSaveName } from "./defs/role-save";
 import { handler as toolsListHandler, name as toolsListName } from "./defs/tools-list";
 import { handler as userAskHandler, name as userAskName } from "./defs/user-ask";
 import { handler as userChoiceHandler, name as userChoiceName } from "./defs/user-choice";
@@ -43,6 +41,7 @@ export const toolsRegistry: Record<string, ToolHandler> = {
     [memorySaveName]: memorySaveHandler,
     [memoryReadName]: memoryReadHandler,
     [memoryListName]: memoryListHandler,
+    [roleSaveName]: roleSaveHandler,
     [userAskName]: userAskHandler,
     [userChoiceName]: userChoiceHandler,
     [userConfirmName]: userConfirmHandler,

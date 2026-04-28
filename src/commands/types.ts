@@ -21,6 +21,7 @@ export interface CommandsContext
         after: number;
         summaryChars: number;
     } | null>;
+    resetSession?: () => Promise<void>;
     getTheme?: () => "dark" | "light";
     setTheme?: (theme: "dark" | "light") => void;
     getModelType?: () => "default" | "expert";
@@ -70,6 +71,12 @@ export interface CommandsContext
     getUserName?: () => string | null;
     getConfiguredProviders?: () => import("@/providers").ProviderConfig[];
     saveUserConfig?: (update: { userName?: string | null; configuredProviders?: import("@/providers").ProviderConfig[] }) => Promise<void>;
+    listRoles?: () => { name: string }[];
+    getActiveRole?: () => string | null;
+    setActiveRole?: (roleName: string) => boolean;
+    deleteRole?: (roleName: string) => boolean;
+    createRole?: () => Promise<void>;
+    cancelActiveOperation?: () => boolean;
 }
 
 export interface CommandModule
@@ -77,3 +84,4 @@ export interface CommandModule
     key: string;
     command: Command;
 }
+

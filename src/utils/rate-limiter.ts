@@ -52,25 +52,20 @@ export class TokenBucket
     }
 }
 
-const TOOL_RATE_LIMITS: Record<string, RateLimitConfig> = {
-    bash: { tokensPerInterval: 5, interval: 60_000 },
-    powershell: { tokensPerInterval: 5, interval: 60_000 },
-    "file.write": { tokensPerInterval: 20, interval: 60_000 },
-    git: { tokensPerInterval: 10, interval: 60_000 },
-};
+const TOOL_RATE_LIMITS: Record<string, RateLimitConfig> = {};
 
 const buckets = new Map<string, TokenBucket>();
 
 export function getRateLimiterForTool(toolName: string): TokenBucket | null
 {
+    if (buckets.has(toolName)) return buckets.get(toolName)!;
+
     const config = TOOL_RATE_LIMITS[toolName];
     if (!config) return null;
 
-    if (!buckets.has(toolName))
-    {
-        buckets.set(toolName, new TokenBucket(config));
-    }
-    return buckets.get(toolName)!;
+    const bucket = new TokenBucket(config);
+    buckets.set(toolName, bucket);
+    return bucket;
 }
 
 export function overrideRateLimit(toolName: string, config: RateLimitConfig): void

@@ -21,6 +21,7 @@ export interface StreamingAgentTurnCallbacks {
     onModelRequestStart?: () => void;
     onModelRequestDone?: () => void;
     onToolParseError?: (content: string) => void;
+    signal?: AbortSignal;
 }
 
 const DEFAULT_OPTIONS: StreamingAgentLoopOptions = {
@@ -82,11 +83,19 @@ export default class StreamingAgentLoop {
         userInput: string,
         callbacks: StreamingAgentTurnCallbacks = {},
     ): Promise<AgentTurnResult> {
+        const throwIfAborted = (): void =>
+        {
+            if (!callbacks.signal?.aborted) return;
+            throw callbacks.signal.reason instanceof Error
+                ? callbacks.signal.reason
+                : new Error("Операция прервана");
+        };
         let lastAssistantText = "";
         let toolCallCount = 0;
         let nextPrompt = this.contextManager.prepareUserTurn(userInput).prompt;
 
         for (let step = 0; step < this.options.maxStepsPerTurn; step += 1) {
+            throwIfAborted();
             callbacks.onModelRequestStart?.();
             
             const toolParser = new StreamingToolParser({ maxTools: this.options.maxToolsPerStep });
@@ -97,8 +106,12 @@ export default class StreamingAgentLoop {
             try {
                 for await (const chunk of this.getProvider().complete(
                     nextPrompt,
-                    this.options.getCallOptions?.(),
+                    {
+                        ...this.options.getCallOptions?.(),
+                        signal: callbacks.signal,
+                    },
                 )) {
+                    throwIfAborted();
                     assistantText += chunk;
 
                     const completedTools = toolParser.feed(chunk);
@@ -108,6 +121,7 @@ export default class StreamingAgentLoop {
                             if (toolEvent.preText.length > 0) {
                                 callbacks.onAssistantChunk?.(toolEvent.preText);
                             }
+                            throwIfAborted();
                             toolCallCount += 1;
                             const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
                             batchResults.push({
@@ -123,6 +137,7 @@ export default class StreamingAgentLoop {
                     if (toolEvent.preText.length > 0) {
                         callbacks.onAssistantChunk?.(toolEvent.preText);
                     }
+                    throwIfAborted();
                     toolCallCount += 1;
                     const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
                     batchResults.push({

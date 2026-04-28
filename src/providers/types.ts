@@ -3,6 +3,7 @@ export interface ProviderCallOptions
     thinkingEnabled?: boolean;
     searchEnabled?: boolean;
     modelVariant?: string;
+    signal?: AbortSignal;
 }
 
 export interface ProviderInfo

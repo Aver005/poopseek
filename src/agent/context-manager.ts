@@ -8,7 +8,7 @@ export interface ContextManagerOptions
 }
 
 const DEFAULT_OPTIONS: ContextManagerOptions = {
-    maxMessages: 30,
+    maxMessages: 256,
     refreshEveryApproxTokens: 64_000,
 };
 
@@ -50,10 +50,12 @@ export default class ContextManager
     private messages: AgentMessage[] = [];
     private approxTokensSinceRefresh = 0;
     private bootstrapPending = true;
+    private includeLocalMemoryOnBootstrap = true;
     private skillsContent: string = "";
     private availableSkillsHint: string = "";
     private mcpToolsDoc: string = "";
     private mcpResourcesContext: string = "";
+    private activeRoleContent: string = "";
 
     constructor(
         basePrompt: string,
@@ -131,13 +133,16 @@ export default class ContextManager
         };
     }
 
-    restoreState(state: ContextManagerState): void
+    restoreState(
+        state: ContextManagerState,
+        options: { includeLocalMemoryOnBootstrap?: boolean } = {},
+    ): void
     {
         this.messages = trimMessages(
             (state.messages ?? []).map((message) => ({ ...message })),
             this.options.maxMessages,
         );
-        this.markSessionReset();
+        this.markSessionReset(options.includeLocalMemoryOnBootstrap ?? true);
     }
 
     replaceWithCompactSummary(summary: string): void
@@ -177,16 +182,22 @@ export default class ContextManager
         this.mcpResourcesContext = context;
     }
 
+    setRoleContent(content: string): void
+    {
+        this.activeRoleContent = content;
+    }
+
     clearHistory(): void
     {
         this.messages = [];
         this.markSessionReset();
     }
 
-    markSessionReset(): void
+    markSessionReset(includeLocalMemoryOnBootstrap = true): void
     {
         this.approxTokensSinceRefresh = 0;
         this.bootstrapPending = true;
+        this.includeLocalMemoryOnBootstrap = includeLocalMemoryOnBootstrap;
     }
 
     prepareUserTurn(content: string): PreparedTurnMessage
@@ -219,7 +230,7 @@ export default class ContextManager
                 this.approxTokensSinceRefresh + estimateApproxTokens(totalRaw)
                 >= this.options.refreshEveryApproxTokens
             );
-        const localMemory = includedBootstrap && this.messages.length > 0
+        const localMemory = includedBootstrap && this.includeLocalMemoryOnBootstrap && this.messages.length > 0
             ? this.formatMessages()
             : "";
 
@@ -315,6 +326,11 @@ export default class ContextManager
             blocks.push("", "### MCP RESOURCES", this.mcpResourcesContext.trim());
         }
 
+        if (this.activeRoleContent.trim().length > 0)
+        {
+            blocks.push("", "### ACTIVE ROLE", this.activeRoleContent.trim());
+        }
+
         return blocks.join("\n");
     }
 
@@ -361,7 +377,7 @@ export default class ContextManager
                 this.approxTokensSinceRefresh + estimateApproxTokens(normalizedContent)
                 >= this.options.refreshEveryApproxTokens
             );
-        const localMemory = includedBootstrap && this.messages.length > 0
+        const localMemory = includedBootstrap && this.includeLocalMemoryOnBootstrap && this.messages.length > 0
             ? this.formatMessages()
             : "";
 

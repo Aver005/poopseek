@@ -41,8 +41,11 @@ export class DeepseekWebProvider implements ILLMProvider
             model_type: modelType,
             search_enabled: options?.searchEnabled,
             thinking_enabled: options?.thinkingEnabled,
+            signal: options?.signal,
         });
-        const { text, parentMessageId } = await collectDeepseekOutput(response);
+        const { text, parentMessageId } = await collectDeepseekOutput(response, {
+            signal: options?.signal,
+        });
         if (parentMessageId !== null) this.session!.setParentMessageId(parentMessageId);
         if (text.length > 0) yield text;
     }

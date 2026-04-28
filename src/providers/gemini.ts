@@ -42,6 +42,7 @@ export class GeminiProvider implements ILLMProvider
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
                 generationConfig,
             }),
+            signal: options?.signal,
         });
 
         if (!response.ok)

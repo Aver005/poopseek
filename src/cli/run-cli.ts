@@ -44,6 +44,7 @@ import type { Command } from "@/commands/types";
 import type { AskUserFn } from "@/tools/types";
 import { createVariableProcessor } from "@/variables";
 import { SkillManager } from "@/skills";
+import { listRoles, loadRoleContent, deleteRole } from "@/roles";
 import { MCPManager, loadMCPConfig } from "@/mcp";
 import { loadSkillFolders, saveSkillFolders } from "@/skills/skill-folders-store";
 import { ensureValidToken } from "@/cli/auth-flow";
@@ -223,6 +224,20 @@ export async function runCli(): Promise<void>
 
     const syncSkills = (): void => contextManager.setSkillsContent(skillManager.getActiveContent());
 
+    let activeRoleName: string | null = null;
+    const syncRole = (): void =>
+    {
+        if (activeRoleName)
+        {
+            const content = loadRoleContent(activeRoleName);
+            contextManager.setRoleContent(content ?? "");
+        }
+        else
+        {
+            contextManager.setRoleContent("");
+        }
+    };
+
     const buildAvailableSkillsHint = (): string =>
     {
         const all = skillManager.getSkills();
@@ -287,10 +302,13 @@ export async function runCli(): Promise<void>
         const isDeepseekWeb = provider.info.id === "deepseek-web";
         const label = isDeepseekWeb ? `${provider.info.label} · ${modelVariant}` : provider.info.label;
         const parts: string[] = [colors.magenta(label)];
+          const messageCount = contextManager.getMessageCount();
+          parts.push(colors.dim(`${messageCount} msg`));
         if (searchEnabled) parts.push(colors.green("web"));
         if (thinkingEnabled) parts.push(colors.cyan("think"));
         const activeSkillsCount = skillManager.getActiveNames().length;
         if (activeSkillsCount > 0) parts.push(colors.yellow(`${activeSkillsCount} skills`));
+        if (activeRoleName) parts.push(colors.cyan(`role:${activeRoleName}`));
         return colors.dim("◆ ") + parts.join(colors.dim(" · "));
     });
 
@@ -329,6 +347,18 @@ export async function runCli(): Promise<void>
         {
             const line = lines[i] ?? "";
             const prefix = i === 0 ? colors.magenta(">") : colors.dim("|");
+            output.write(`${prefix} ${line}\n`);
+        }
+    };
+
+    const writeRoleUserMessage = (value: string): void =>
+    {
+        const lines = value.split("\n");
+        output.write("\n");
+        for (let i = 0; i < lines.length; i += 1)
+        {
+            const line = lines[i] ?? "";
+            const prefix = i === 0 ? colors.cyan("role>") : colors.dim("....");
             output.write(`${prefix} ${line}\n`);
         }
     };
@@ -449,6 +479,249 @@ export async function runCli(): Promise<void>
 
     // --- Command handlers ---
 
+    type ActiveOperation = {
+        kind: "role-creation";
+        abortController: AbortController;
+    };
+
+    let activeOperation: ActiveOperation | null = null;
+
+    const cancelActiveOperation = (): boolean =>
+    {
+        if (!activeOperation) return false;
+        const currentOperation = activeOperation;
+        activeOperation = null;
+        if (!currentOperation.abortController.signal.aborted)
+        {
+            currentOperation.abortController.abort(new Error("Создание роли прервано."));
+        }
+        if (inputQueue.hasPendingWaiter())
+        {
+            inputQueue.resolveWaiter("/back");
+        }
+        generationIndicator.stop();
+        return true;
+    };
+
+    const runRoleCreation = async (): Promise<void> =>
+    {
+        const roleProvider = await provider.clone();
+        const abortController = new AbortController();
+        let roleSaved = false;
+        activeOperation = {
+            kind: "role-creation",
+            abortController,
+        };
+
+        const showRoleInput = (): void =>
+        {
+            terminalInput.setMode("active");
+            terminalInput.setRenderEnabled(true);
+        };
+
+        const showRoleBusy = (): void =>
+        {
+            terminalInput.setMode("queue");
+            terminalInput.setRenderEnabled(true);
+        };
+
+        const waitForRoleInput = async (): Promise<string | null> =>
+        {
+            showRoleInput();
+            if (abortController.signal.aborted) return null;
+            const value = await inputQueue.waitForNext();
+            if (abortController.signal.aborted) return null;
+            if (value.trim().toLowerCase() === "/back")
+            {
+                cancelActiveOperation();
+                return null;
+            }
+            writeRoleUserMessage(value);
+            return value;
+        };
+
+        const roleAskUser: AskUserFn = async (request) =>
+        {
+            generationIndicator.stop();
+            terminalInput.setRenderEnabled(true);
+            terminalInput.setMode("active");
+
+            try
+            {
+                if (request.type === "text")
+                {
+                    output.write(`\n${colors.cyan("?")} ${request.prompt}\n`);
+                    return await waitForRoleInput();
+                }
+
+                if (request.type === "confirm")
+                {
+                    output.write(`\n${colors.cyan("?")} ${request.question}\n`);
+                    output.write(`${colors.dim("Введите yes/no или /back")}\n`);
+                    while (!abortController.signal.aborted)
+                    {
+                        const answer = await waitForRoleInput();
+                        if (answer === null) return null;
+                        const normalized = answer.trim().toLowerCase();
+                        if (normalized === "yes" || normalized === "y" || normalized === "да" || normalized === "д")
+                        {
+                            return "yes";
+                        }
+                        if (normalized === "no" || normalized === "n" || normalized === "нет" || normalized === "н")
+                        {
+                            return "no";
+                        }
+                        output.write(`${colors.dim("Нужно ввести yes или no. Для отмены: /back")}\n`);
+                    }
+                    return null;
+                }
+
+                output.write(`\n${colors.cyan("?")} ${request.title}\n`);
+                request.options.forEach((option, index) =>
+                {
+                    output.write(`${colors.dim(String(index + 1) + ".")} ${option}\n`);
+                });
+                output.write(`${colors.dim("Введите номер, точное значение или /back")}\n`);
+                while (!abortController.signal.aborted)
+                {
+                    const answer = await waitForRoleInput();
+                    if (answer === null) return null;
+                    const trimmedAnswer = answer.trim();
+                    const selectedIndex = Number(trimmedAnswer);
+                    if (Number.isInteger(selectedIndex) && selectedIndex >= 1 && selectedIndex <= request.options.length)
+                    {
+                        return request.options[selectedIndex - 1] ?? null;
+                    }
+                    const matchedOption = request.options.find((option) => option === trimmedAnswer);
+                    if (matchedOption) return matchedOption;
+                    return trimmedAnswer;
+                }
+
+                return null;
+            }
+            finally
+            {
+                showRoleInput();
+            }
+        };
+
+        output.write(`\n${colors.cyan("Создание новой роли")}\n`);
+        output.write(`${colors.dim("────────────────────────────────────────")}\n`);
+        output.write(`${colors.dim("Отдельная сессия. Отмена: /back или Ctrl+C")}\n`);
+        output.write(`${colors.dim("Команды внутри мастера отключены, кроме /back")}\n\n`);
+        showRoleInput();
+
+        const roleContextManager = new ContextManager(
+            prompts.roleCreatorPrompt,
+            prompts.toolsPrompt,
+            { maxMessages: 40 },
+            variableProcessor,
+        );
+        const roleToolExecutor = new ToolExecutor(
+            process.cwd(),
+            roleAskUser,
+            (skillName) =>
+            {
+                const skill = skillManager.getSkills().find((s) => s.name === skillName);
+                return skill ? skill.body : null;
+            },
+            mcpManager.createDynamicToolResolver(),
+            () => mcpManager.getDynamicToolNames(),
+            subAgentRunner,
+            (message) => generationIndicator.activate(message),
+        );
+        const roleLoop = new StreamingAgentLoop(() => roleProvider, roleContextManager, roleToolExecutor, {
+            getCallOptions,
+        });
+
+        const savedIsMainTurnActive = isMainTurnActive;
+        isMainTurnActive = true;
+        try
+        {
+            let nextRoleInput = "Привет! Я хочу создать новую роль. Помоги мне с этим.";
+            while (!abortController.signal.aborted && !roleSaved)
+            {
+                await roleLoop.runTurn(nextRoleInput, {
+                    signal: abortController.signal,
+                    onModelRequestStart: () =>
+                    {
+                        showRoleBusy();
+                        generationIndicator.start();
+                    },
+                    onModelRequestDone: () =>
+                    {
+                        generationIndicator.stop();
+                        showRoleInput();
+                    },
+                    onAssistantChunk: (chunk) =>
+                    {
+                        generationIndicator.stop();
+                        showRoleInput();
+                        output.write(renderMarkdown(chunk));
+                    },
+                    onToolStart: (toolName, toolArgs) =>
+                    {
+                        showRoleBusy();
+                        generationIndicator.stop();
+                        const detail = getToolDetail(toolName, toolArgs);
+                        const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
+                        output.write(`${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
+                    },
+                    onToolDone: (toolName, toolResult) =>
+                    {
+                        generationIndicator.stop();
+                        showRoleInput();
+                        const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
+                        output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
+                        if (toolResult.ok)
+                        {
+                            const extra = renderToolResultExtra(toolName, toolResult.data);
+                            if (extra) output.write(extra);
+                            if (toolName === "role.save")
+                            {
+                                roleSaved = true;
+                            }
+                        }
+                        output.write("\n");
+                        generationIndicator.activate("Продолжаю...");
+                    },
+                    onToolParseError: (content) =>
+                    {
+                        generationIndicator.stop();
+                        showRoleInput();
+                        output.write(`\n${colors.red("[tool parse error]")} Не удалось распарсить вызов инструмента\n`);
+                        const preview = content.slice(0, 300);
+                        output.write(`${colors.dim(preview)}\n\n`);
+                    },
+                });
+
+                if (abortController.signal.aborted || roleSaved) break;
+                const followUp = await waitForRoleInput();
+                if (followUp === null) break;
+                nextRoleInput = followUp;
+            }
+        }
+        catch (error)
+        {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!abortController.signal.aborted && message !== "Создание роли прервано.")
+            {
+                throw error;
+            }
+        }
+        finally
+        {
+            isMainTurnActive = savedIsMainTurnActive;
+            generationIndicator.stop();
+            if (activeOperation?.abortController === abortController)
+            {
+                activeOperation = null;
+            }
+            terminalInput.setMode("active");
+            terminalInput.setRenderEnabled(true);
+        }
+    };
+
     let commands = new Map<string, Command>();
     let activeInterruptController: AbortController | null = null;
     let interruptActiveCommand: ((error: Error) => void) | null = null;
@@ -477,7 +750,14 @@ export async function runCli(): Promise<void>
             await resetMainProvider();
             await saveCurrentLocalSession();
         },
-        openSessions: async () =>
+        resetSession: async () =>
+          {
+              contextManager.clearHistory();
+              startNewLocalSession();
+              await resetMainProvider();
+              await saveCurrentLocalSession();
+          },
+          openSessions: async () =>
         {
             const sessions = await listStoredSessions(sessionsDir);
             if (sessions.length === 0)
@@ -628,8 +908,11 @@ export async function runCli(): Promise<void>
                         ? content.slice(0, MAX_MESSAGE_CONTENT)
                         : content;
                     localMessages.push({ role, content: capped });
-                    if (localMessages.length >= MAX_LOCAL_MESSAGES) break;
                 }
+
+                const trimmedLocalMessages = localMessages.length > MAX_LOCAL_MESSAGES
+                    ? localMessages.slice(localMessages.length - MAX_LOCAL_MESSAGES)
+                    : localMessages;
 
                 const lastMsg = chain[chain.length - 1];
                 const parentMessageId = lastMsg?.message_id ?? null;
@@ -640,11 +923,14 @@ export async function runCli(): Promise<void>
                     messageCount: localMessages.length,
                     load: async () =>
                     {
-                        if (localMessages.length === 0)
+                        if (trimmedLocalMessages.length === 0)
                         {
                             return { error: "история пуста или не содержит завершённых сообщений" };
                         }
-                        contextManager.restoreState({ messages: localMessages });
+                        contextManager.restoreState(
+                            { messages: trimmedLocalMessages },
+                            { includeLocalMemoryOnBootstrap: false },
+                        );
                         deepseekProvider.loadRemoteSession(id, parentMessageId);
                         startNewLocalSession();
                         await saveCurrentLocalSession();
@@ -800,6 +1086,28 @@ export async function runCli(): Promise<void>
         getToken: () => token,
         getUserName: () => userNameForContext,
         getConfiguredProviders: () => configuredProviders,
+        listRoles: () => listRoles().map((r) => ({ name: r.name })),
+        getActiveRole: () => activeRoleName,
+        setActiveRole: (roleName: string) =>
+        {
+            if (roleName === "")
+            {
+                activeRoleName = null;
+                syncRole();
+                return true;
+            }
+            const content = loadRoleContent(roleName);
+            if (content === null) return false;
+            activeRoleName = roleName;
+            syncRole();
+            return true;
+        },
+        deleteRole: (roleName: string) => deleteRole(roleName),
+        createRole: () =>
+        {
+            return runRoleCreation();
+        },
+        cancelActiveOperation,
         saveUserConfig: async (update) =>
         {
             if (update.userName !== undefined) userNameForContext = update.userName ?? null;
@@ -827,6 +1135,10 @@ export async function runCli(): Promise<void>
         onStop: () => generationIndicator.resume(),
         onInterrupt: () =>
         {
+            if (cancelActiveOperation())
+            {
+                output.write(`\n${colors.yellow("Создание роли прервано.")}\n\n`);
+            }
             activeInterruptController?.abort("user-interrupt");
             activeInterruptController = null;
             interruptActiveCommand?.(new Error("Операция прервана (Ctrl+C)"));
@@ -845,6 +1157,21 @@ export async function runCli(): Promise<void>
 
     terminalInput.onSubmit((value) =>
     {
+        if (activeOperation?.kind === "role-creation")
+        {
+            const trimmed = value.trim().toLowerCase();
+            if (trimmed === "/back")
+            {
+                cancelActiveOperation();
+                writeDetachedOutput(`\n${colors.yellow("Создание роли прервано.")}\n\n`);
+                return;
+            }
+            if (trimmed.startsWith("/"))
+            {
+                writeDetachedOutput(`\n${colors.dim("Во время создания роли доступна только команда /back.")}\n\n`);
+                return;
+            }
+        }
         if (inputQueue.hasPendingWaiter())
         {
             inputQueue.resolveWaiter(value);
@@ -897,6 +1224,7 @@ export async function runCli(): Promise<void>
 
             const userInput = await inputQueue.waitForNext();
             if (!userInput) continue;
+
             if (userInput.startsWith("/"))
             {
                 terminalInput.setMode("active");

@@ -44,6 +44,7 @@ export class AnthropicProvider implements ILLMProvider
                 ...(options?.thinkingEnabled ? { "anthropic-beta": "interleaved-thinking-2025-05-14" } : {}),
             },
             body: JSON.stringify(body),
+            signal: options?.signal,
         });
 
         if (!response.ok)

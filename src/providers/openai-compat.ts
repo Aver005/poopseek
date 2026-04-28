@@ -49,13 +49,15 @@ export class OpenAICompatProvider implements ILLMProvider
         return new OpenAICompatProvider(this.info, this.baseUrl, this.apiKey, this.model);
     }
 
-    async *complete(prompt: string, _options?: ProviderCallOptions): AsyncIterable<string>
+    async *complete(prompt: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
         const stream = await this.client.chat.completions.create({
             model: this.model,
             messages: [{ role: "user", content: prompt }],
             stream: true,
             temperature: 0.7,
+        }, {
+            signal: options?.signal,
         });
 
         for await (const chunk of stream)

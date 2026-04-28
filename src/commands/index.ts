@@ -1,4 +1,4 @@
-import { writeLine } from "./io";
+﻿import { writeLine } from "./io";
 import type { Command, CommandsContext } from "./types";
 
 import { createBtwCommand } from "./defs/btw";
@@ -27,6 +27,9 @@ import { createStatsCommand } from "./defs/stats";
 import { createSwitchCommand } from "./defs/switch";
 import { createThemeCommand } from "./defs/theme";
 import { createToolsCommand } from "./defs/tools";
+import { createRoleCommand } from "./defs/role"
+import { createBackCommand } from "./defs/back";
+import { createResetCommand, createRstCommand, createNewCommand } from "./defs/reset";
 
 function getCommandKeyByName(commandName: string): string
 {
@@ -72,6 +75,11 @@ export function createCommandHandlers(
     registerCommand(createRefactorCommand(context));
     registerCommand(createProviderCommand(context));
     registerCommand(createAuthCommand(context));
+    registerCommand(createRoleCommand(context));
+    registerCommand(createBackCommand(context));
+    registerCommand(createResetCommand(context));
+    registerCommand(createRstCommand(context));
+    registerCommand(createNewCommand(context));
 
     registerCommand({
         name: "/maestro",
@@ -155,3 +163,4 @@ export async function handleCommand(
 
     return command.execute(args);
 }
+

@@ -2,6 +2,7 @@ export interface SendMessageOptions {
     thinking_enabled?: boolean;
     search_enabled?: boolean;
     model_type?: ModelType;
+    signal?: AbortSignal;
 }
 
 export type ModelType = "default" | "expert";

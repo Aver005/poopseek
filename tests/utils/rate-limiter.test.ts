@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { TokenBucket, checkRateLimit, overrideRateLimit } from "@/utils/rate-limiter";
 
 describe("TokenBucket", () => {
@@ -39,49 +39,34 @@ describe("TokenBucket", () => {
         vi.useFakeTimers();
         const bucket = new TokenBucket({ tokensPerInterval: 3, interval: 1000 });
         vi.advanceTimersByTime(5000);
-        expect(bucket.remaining()).toBe(3); // capped at tokensPerInterval
+        expect(bucket.remaining()).toBe(3);
         vi.useRealTimers();
     });
 });
 
 describe("checkRateLimit", () => {
-    beforeEach(() => {
-        // Override to fresh buckets for each test
-        overrideRateLimit("bash", { tokensPerInterval: 2, interval: 60_000 });
-        overrideRateLimit("file.write", { tokensPerInterval: 2, interval: 60_000 });
+    it("allows all tools by default (no limits configured)", () => {
+        expect(checkRateLimit("bash").allowed).toBe(true);
+        expect(checkRateLimit("powershell").allowed).toBe(true);
+        expect(checkRateLimit("file.write").allowed).toBe(true);
+        expect(checkRateLimit("git").allowed).toBe(true);
+        expect(checkRateLimit("file.read").allowed).toBe(true);
+        expect(checkRateLimit("tools.list").allowed).toBe(true);
     });
 
-    it("allows safe tools without limits", () => {
-        const result = checkRateLimit("file.read");
-        expect(result.allowed).toBe(true);
-        expect(result.error).toBeUndefined();
+    it("respects overrideRateLimit when explicitly set", () => {
+        overrideRateLimit("test-tool", { tokensPerInterval: 2, interval: 60_000 });
+        expect(checkRateLimit("test-tool").allowed).toBe(true);
+        expect(checkRateLimit("test-tool").allowed).toBe(true);
+        const blocked = checkRateLimit("test-tool");
+        expect(blocked.allowed).toBe(false);
+        expect(blocked.error).toContain("Rate limit exceeded");
+        expect(blocked.error).toContain("test-tool");
     });
 
-    it("allows dangerous tools within limit", () => {
-        const result = checkRateLimit("bash");
-        expect(result.allowed).toBe(true);
-    });
-
-    it("blocks dangerous tools when limit exceeded", () => {
-        checkRateLimit("bash");
-        checkRateLimit("bash");
-        const result = checkRateLimit("bash");
-        expect(result.allowed).toBe(false);
-        expect(result.error).toContain("Rate limit exceeded");
-        expect(result.error).toContain("bash");
-    });
-
-    it("tracks limits per-tool independently", () => {
-        checkRateLimit("bash");
-        checkRateLimit("bash");
-        // bash exhausted, but file.write still available
-        const result = checkRateLimit("file.write");
-        expect(result.allowed).toBe(true);
-    });
-
-    it("tools-list is not rate-limited", () => {
+    it("unlimited calls work for any unregistered tool", () => {
         for (let i = 0; i < 100; i++) {
-            expect(checkRateLimit("tools.list").allowed).toBe(true);
+            expect(checkRateLimit("powershell").allowed).toBe(true);
         }
     });
 });

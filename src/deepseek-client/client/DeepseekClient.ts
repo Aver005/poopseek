@@ -35,6 +35,13 @@ export default class DeepseekClient
         options: SendMessageOptions = {},
     ): Promise<Response>
     {
+        if (options.signal?.aborted)
+        {
+            throw options.signal.reason instanceof Error
+                ? options.signal.reason
+                : new Error("Запрос прерван");
+        }
+
         if (!session && !this.currentSession)
         {
             session = await this.createSession();
@@ -71,6 +78,7 @@ export default class DeepseekClient
             method: "POST",
             headers,
             body: JSON.stringify(payload),
+            signal: options.signal,
         });
 
         if (!response.ok)

@@ -1,6 +1,7 @@
 export interface CollectDeepseekOutputOptions
 {
     onTextChunk?: (chunk: string) => void;
+    signal?: AbortSignal;
 }
 
 export interface CollectedDeepseekOutput
@@ -195,6 +196,13 @@ export async function collectDeepseekOutput(
     let buffer = "";
     let outputText = "";
     let parentMessageId: number | null = null;
+    const throwIfAborted = (): void =>
+    {
+        if (!options.signal?.aborted) return;
+        throw options.signal.reason instanceof Error
+            ? options.signal.reason
+            : new Error("Запрос прерван");
+    };
 
     const flushLine = (line: string): void =>
     {
@@ -242,6 +250,7 @@ export async function collectDeepseekOutput(
 
     while (true)
     {
+        throwIfAborted();
         const { done, value } = await reader.read();
         if (done) break;
         if (!value) continue;
@@ -258,6 +267,7 @@ export async function collectDeepseekOutput(
 
     if (buffer.trim().length > 0)
     {
+        throwIfAborted();
         flushLine(buffer);
     }
 
