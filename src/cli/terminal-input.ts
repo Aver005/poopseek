@@ -36,6 +36,7 @@ type TerminalInputController = {
     setRenderEnabled: (enabled: boolean) => void;
     setQueueCallbacks: (callbacks: QueueCallbacks) => void;
     setStatusLine: (getter: () => string) => void;
+    setPromptPrefix: (prefix: string) => void;
     choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
     confirm: (message: string) => Promise<boolean>;
     close: () => void;
@@ -319,13 +320,14 @@ function buildRenderedBlock(
     statusLine: string,
     pasteBlocks: Map<string, string>,
     showPasteHint: boolean,
+    promptPrefix: string,
 ): string
 {
     const inputLines = splitLines(value).map((line) => line);
 
     const firstLinePrefix = mode === "queue"
         ? QUEUE_PREFIX
-        : PROMPT_PREFIX;
+        : promptPrefix;
 
     const lines = inputLines.map((line, index) =>
         `${index === 0 ? firstLinePrefix : CONTINUATION_PREFIX}${renderLineWithPasteBlocks(formatInputLineWithMentions(line, workspaceRoot), pasteBlocks)}`
@@ -421,6 +423,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
     let queueCallbacks: QueueCallbacks = {};
     let getStatusLine: () => string = () => "";
+    let activePromptPrefix = PROMPT_PREFIX;
 
     const notifyValueChange = (): void =>
     {
@@ -810,6 +813,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 getStatusLine(),
                 pasteBlocks,
                 showPasteHint,
+                activePromptPrefix,
             );
             const lines = block.split("\n");
             const cursorMetrics = getCursorMetrics(state.value, state.cursor);
@@ -871,6 +875,12 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         getStatusLine = getter;
     };
 
+    const setPromptPrefix = (prefix: string): void =>
+    {
+        activePromptPrefix = prefix;
+        vm.invalidate();
+    };
+
     const choose = (title: string, items: TerminalChoiceItem[]): Promise<string | null> =>
     {
         if (items.length === 0) return Promise.resolve(null);
@@ -893,5 +903,5 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         vm.destroy();
     };
 
-    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, setStatusLine, choose, confirm, close, viewManager: vm };
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, setStatusLine, setPromptPrefix, choose, confirm, close, viewManager: vm };
 }

@@ -297,13 +297,20 @@ export async function runCli(): Promise<void>
     reportProgress?.(100);
     await terminalInput.viewManager.pop();
 
+    let isRoleCreationActive = false;
+
     terminalInput.setStatusLine(() =>
     {
         const isDeepseekWeb = provider.info.id === "deepseek-web";
         const label = isDeepseekWeb ? `${provider.info.label} · ${modelVariant}` : provider.info.label;
         const parts: string[] = [colors.magenta(label)];
-          const messageCount = contextManager.getMessageCount();
-          parts.push(colors.dim(`${messageCount} msg`));
+        if (isRoleCreationActive)
+        {
+            parts.push(colors.yellow("сценарий: Создание роли"));
+            return colors.dim("◆ ") + parts.join(colors.dim(" · "));
+        }
+        const messageCount = contextManager.getMessageCount();
+        parts.push(colors.dim(`${messageCount} msg`));
         if (searchEnabled) parts.push(colors.green("web"));
         if (thinkingEnabled) parts.push(colors.cyan("think"));
         const activeSkillsCount = skillManager.getActiveNames().length;
@@ -508,6 +515,7 @@ export async function runCli(): Promise<void>
         const roleProvider = await provider.clone();
         const abortController = new AbortController();
         let roleSaved = false;
+        let confirmationGiven = false;
         activeOperation = {
             kind: "role-creation",
             abortController,
@@ -516,12 +524,6 @@ export async function runCli(): Promise<void>
         const showRoleInput = (): void =>
         {
             terminalInput.setMode("active");
-            terminalInput.setRenderEnabled(true);
-        };
-
-        const showRoleBusy = (): void =>
-        {
-            terminalInput.setMode("queue");
             terminalInput.setRenderEnabled(true);
         };
 
@@ -543,73 +545,67 @@ export async function runCli(): Promise<void>
         const roleAskUser: AskUserFn = async (request) =>
         {
             generationIndicator.stop();
-            terminalInput.setRenderEnabled(true);
-            terminalInput.setMode("active");
 
-            try
+            if (request.type === "text")
             {
-                if (request.type === "text")
-                {
-                    output.write(`\n${colors.cyan("?")} ${request.prompt}\n`);
-                    return await waitForRoleInput();
-                }
+                output.write(`\n${colors.cyan("?")} ${request.prompt}\n`);
+                return await waitForRoleInput();
+            }
 
-                if (request.type === "confirm")
-                {
-                    output.write(`\n${colors.cyan("?")} ${request.question}\n`);
-                    output.write(`${colors.dim("Введите yes/no или /back")}\n`);
-                    while (!abortController.signal.aborted)
-                    {
-                        const answer = await waitForRoleInput();
-                        if (answer === null) return null;
-                        const normalized = answer.trim().toLowerCase();
-                        if (normalized === "yes" || normalized === "y" || normalized === "да" || normalized === "д")
-                        {
-                            return "yes";
-                        }
-                        if (normalized === "no" || normalized === "n" || normalized === "нет" || normalized === "н")
-                        {
-                            return "no";
-                        }
-                        output.write(`${colors.dim("Нужно ввести yes или no. Для отмены: /back")}\n`);
-                    }
-                    return null;
-                }
-
-                output.write(`\n${colors.cyan("?")} ${request.title}\n`);
-                request.options.forEach((option, index) =>
-                {
-                    output.write(`${colors.dim(String(index + 1) + ".")} ${option}\n`);
-                });
-                output.write(`${colors.dim("Введите номер, точное значение или /back")}\n`);
+            if (request.type === "confirm")
+            {
+                output.write(`\n${colors.cyan("?")} ${request.question}\n`);
+                output.write(`${colors.dim("Введите yes/no или /back")}\n`);
                 while (!abortController.signal.aborted)
                 {
                     const answer = await waitForRoleInput();
                     if (answer === null) return null;
-                    const trimmedAnswer = answer.trim();
-                    const selectedIndex = Number(trimmedAnswer);
-                    if (Number.isInteger(selectedIndex) && selectedIndex >= 1 && selectedIndex <= request.options.length)
+                    const normalized = answer.trim().toLowerCase();
+                    if (normalized === "yes" || normalized === "y" || normalized === "да" || normalized === "д")
                     {
-                        return request.options[selectedIndex - 1] ?? null;
+                        confirmationGiven = true;
+                        return "yes";
                     }
-                    const matchedOption = request.options.find((option) => option === trimmedAnswer);
-                    if (matchedOption) return matchedOption;
-                    return trimmedAnswer;
+                    if (normalized === "no" || normalized === "n" || normalized === "нет" || normalized === "н")
+                    {
+                        return "no";
+                    }
+                    output.write(`${colors.dim("Нужно ввести yes или no. Для отмены: /back")}\n`);
                 }
-
                 return null;
             }
-            finally
+
+            output.write(`\n${colors.cyan("?")} ${request.title}\n`);
+            request.options.forEach((option, index) =>
             {
-                showRoleInput();
+                output.write(`${colors.dim(String(index + 1) + ".")} ${option}\n`);
+            });
+            output.write(`${colors.dim("Введите номер, точное значение или /back")}\n`);
+            while (!abortController.signal.aborted)
+            {
+                const answer = await waitForRoleInput();
+                if (answer === null) return null;
+                const trimmedAnswer = answer.trim();
+                const selectedIndex = Number(trimmedAnswer);
+                if (Number.isInteger(selectedIndex) && selectedIndex >= 1 && selectedIndex <= request.options.length)
+                {
+                    return request.options[selectedIndex - 1] ?? null;
+                }
+                const matchedOption = request.options.find((option) => option === trimmedAnswer);
+                if (matchedOption) return matchedOption;
+                return trimmedAnswer;
             }
+
+            return null;
         };
 
+        terminalInput.setRenderEnabled(false);
+        isRoleCreationActive = true;
+        terminalInput.setPromptPrefix(`${colors.cyan(">")} `);
         output.write(`\n${colors.cyan("Создание новой роли")}\n`);
         output.write(`${colors.dim("────────────────────────────────────────")}\n`);
         output.write(`${colors.dim("Отдельная сессия. Отмена: /back или Ctrl+C")}\n`);
         output.write(`${colors.dim("Команды внутри мастера отключены, кроме /back")}\n\n`);
-        showRoleInput();
 
         const roleContextManager = new ContextManager(
             prompts.roleCreatorPrompt,
@@ -645,23 +641,19 @@ export async function runCli(): Promise<void>
                     signal: abortController.signal,
                     onModelRequestStart: () =>
                     {
-                        showRoleBusy();
                         generationIndicator.start();
                     },
                     onModelRequestDone: () =>
                     {
                         generationIndicator.stop();
-                        showRoleInput();
                     },
                     onAssistantChunk: (chunk) =>
                     {
                         generationIndicator.stop();
-                        showRoleInput();
                         output.write(renderMarkdown(chunk));
                     },
                     onToolStart: (toolName, toolArgs) =>
                     {
-                        showRoleBusy();
                         generationIndicator.stop();
                         const detail = getToolDetail(toolName, toolArgs);
                         const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
@@ -670,7 +662,6 @@ export async function runCli(): Promise<void>
                     onToolDone: (toolName, toolResult) =>
                     {
                         generationIndicator.stop();
-                        showRoleInput();
                         const marker = toolResult.ok ? colors.green("ok") : colors.red("not ok");
                         output.write(`${colors.dim("[tool]")} ${colors.cyan(toolName)} ${marker}\n`);
                         if (toolResult.ok)
@@ -688,7 +679,6 @@ export async function runCli(): Promise<void>
                     onToolParseError: (content) =>
                     {
                         generationIndicator.stop();
-                        showRoleInput();
                         output.write(`\n${colors.red("[tool parse error]")} Не удалось распарсить вызов инструмента\n`);
                         const preview = content.slice(0, 300);
                         output.write(`${colors.dim(preview)}\n\n`);
@@ -696,6 +686,15 @@ export async function runCli(): Promise<void>
                 });
 
                 if (abortController.signal.aborted || roleSaved) break;
+
+                if (confirmationGiven && !roleSaved)
+                {
+                    confirmationGiven = false;
+                    output.write(`\n${colors.yellow("⚠")} ${colors.dim("Роль была подтверждена, но role.save не был вызван. Отправляю напоминание...")}\n\n`);
+                    nextRoleInput = "СИСТЕМНОЕ НАПОМИНАНИЕ: пользователь уже подтвердил создание роли (ответил 'yes' на user.confirm), но ты не вызвал инструмент role.save. Вызови role.save ПРЯМО СЕЙЧАС — без лишнего текста, без повторных вопросов. Просто вызови инструмент с готовыми данными роли.";
+                    continue;
+                }
+
                 const followUp = await waitForRoleInput();
                 if (followUp === null) break;
                 nextRoleInput = followUp;
@@ -712,11 +711,13 @@ export async function runCli(): Promise<void>
         finally
         {
             isMainTurnActive = savedIsMainTurnActive;
+            isRoleCreationActive = false;
             generationIndicator.stop();
             if (activeOperation?.abortController === abortController)
             {
                 activeOperation = null;
             }
+            terminalInput.setPromptPrefix(`${colors.magenta(">")} `);
             terminalInput.setMode("active");
             terminalInput.setRenderEnabled(true);
         }
