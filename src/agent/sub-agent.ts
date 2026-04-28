@@ -93,7 +93,7 @@ export class SubAgentRunner
 
             const subProvider = await this.getProvider().clone();
             const chunks: string[] = [];
-            for await (const chunk of subProvider.complete(prompt))
+            for await (const chunk of subProvider.complete([{ role: "user", content: prompt }], ""))
             {
                 chunks.push(chunk);
             }

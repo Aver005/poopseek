@@ -1,4 +1,4 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo } from "./types";
+import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 
 export class GeminiProvider implements ILLMProvider
 {
@@ -21,7 +21,7 @@ export class GeminiProvider implements ILLMProvider
         return new GeminiProvider(this.apiKey, this.model);
     }
 
-    async *complete(prompt: string, options?: ProviderCallOptions): AsyncIterable<string>
+    async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
 
@@ -35,13 +35,41 @@ export class GeminiProvider implements ILLMProvider
             generationConfig.thinkingConfig = { thinkingBudget: 8192 };
         }
 
+        // Map to Gemini roles; tool results become user turns
+        const rawContents = messages.map((msg) =>
+        {
+            const text = msg.role === "tool"
+                ? `[TOOL RESULT: ${msg.name ?? "unknown"}]\n${msg.content}`
+                : msg.content;
+            const role = msg.role === "assistant" ? "model" : "user";
+            return { role, parts: [{ text }] };
+        });
+
+        // Gemini rejects consecutive same-role entries — merge them
+        const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+        for (const entry of rawContents)
+        {
+            const last = contents[contents.length - 1];
+            if (last && last.role === entry.role)
+            {
+                last.parts.push(...entry.parts);
+            }
+            else
+            {
+                contents.push({ role: entry.role, parts: [...entry.parts] });
+            }
+        }
+
+        const body: Record<string, unknown> = { contents, generationConfig };
+        if (system.trim().length > 0)
+        {
+            body.systemInstruction = { parts: [{ text: system }] };
+        }
+
         const response = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                generationConfig,
-            }),
+            body: JSON.stringify(body),
             signal: options?.signal,
         });
 

@@ -54,10 +54,6 @@ async function executeTool(
     return result;
 }
 
-/**
- * Streaming version of AgentLoop that detects tools in real-time
- * as chunks arrive, preventing JSON fragmentation issues.
- */
 export default class StreamingAgentLoop {
     private readonly getProvider: () => ILLMProvider;
     private readonly contextManager: ContextManager;
@@ -92,12 +88,17 @@ export default class StreamingAgentLoop {
         };
         let lastAssistantText = "";
         let toolCallCount = 0;
-        let nextPrompt = this.contextManager.prepareUserTurn(userInput).prompt;
+
+        this.contextManager.addUser(userInput);
 
         for (let step = 0; step < this.options.maxStepsPerTurn; step += 1) {
             throwIfAborted();
+
+            const messages = this.contextManager.getMessages();
+            const system = this.contextManager.buildSystemPrompt();
+
             callbacks.onModelRequestStart?.();
-            
+
             const toolParser = new StreamingToolParser({ maxTools: this.options.maxToolsPerStep });
             let assistantText = "";
             let hasDetectedTools = false;
@@ -105,7 +106,8 @@ export default class StreamingAgentLoop {
 
             try {
                 for await (const chunk of this.getProvider().complete(
-                    nextPrompt,
+                    messages,
+                    system,
                     {
                         ...this.options.getCallOptions?.(),
                         signal: callbacks.signal,
@@ -160,7 +162,9 @@ export default class StreamingAgentLoop {
                 }
 
                 this.contextManager.addAssistant(assistantText);
-                nextPrompt = this.contextManager.prepareToolBatchTurn(batchResults).prompt;
+                for (const r of batchResults) {
+                    this.contextManager.addTool(r.name, r.content);
+                }
 
             } finally {
                 callbacks.onModelRequestDone?.();

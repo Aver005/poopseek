@@ -1,4 +1,4 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo } from "./types";
+import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 
 export class AnthropicProvider implements ILLMProvider
 {
@@ -21,14 +21,28 @@ export class AnthropicProvider implements ILLMProvider
         return new AnthropicProvider(this.apiKey, this.model);
     }
 
-    async *complete(prompt: string, options?: ProviderCallOptions): AsyncIterable<string>
+    async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
+        const anthropicMessages = messages.map((msg) =>
+        {
+            if (msg.role === "tool")
+            {
+                return {
+                    role: "user" as const,
+                    content: `[TOOL RESULT: ${msg.name ?? "unknown"}]\n${msg.content}`,
+                };
+            }
+            return { role: msg.role as "user" | "assistant", content: msg.content };
+        });
+
         const body: Record<string, unknown> = {
             model: this.model,
             max_tokens: 16000,
             stream: true,
-            messages: [{ role: "user", content: prompt }],
+            messages: anthropicMessages,
         };
+
+        if (system.trim().length > 0) body.system = system;
 
         if (options?.thinkingEnabled)
         {

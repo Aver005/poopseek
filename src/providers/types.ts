@@ -12,10 +12,17 @@ export interface ProviderInfo
     label: string;
 }
 
+export interface ProviderMessage
+{
+    role: "user" | "assistant" | "tool";
+    content: string;
+    name?: string;
+}
+
 export interface ILLMProvider
 {
     readonly info: ProviderInfo;
-    complete(prompt: string, options?: ProviderCallOptions): AsyncIterable<string>;
+    complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>;
     reset(): Promise<void>;
     clone(): Promise<ILLMProvider>;
 }

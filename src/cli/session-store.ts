@@ -106,7 +106,7 @@ function parseStoredSession(raw: unknown): ParsedStoredSessionFile | null
         const name = normalizeString(message.name);
 
         if (
-            (role !== "user" && role !== "assistant" && role !== "tool" && role !== "system")
+            (role !== "user" && role !== "assistant" && role !== "tool")
             || content === null
         )
         {

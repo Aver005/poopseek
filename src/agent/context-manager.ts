@@ -4,12 +4,10 @@ import type { VariableProcessor } from "@/variables";
 export interface ContextManagerOptions
 {
     maxMessages: number;
-    refreshEveryApproxTokens: number;
 }
 
 const DEFAULT_OPTIONS: ContextManagerOptions = {
     maxMessages: 256,
-    refreshEveryApproxTokens: 64_000,
 };
 
 function trimMessages(
@@ -19,21 +17,6 @@ function trimMessages(
 {
     if (messages.length <= maxMessages) return messages;
     return messages.slice(messages.length - maxMessages);
-}
-
-function estimateApproxTokens(text: string): number
-{
-    const normalized = text.trim();
-    if (normalized.length === 0) return 0;
-    return Math.max(1, Math.ceil(normalized.length / 4));
-}
-
-export interface PreparedTurnMessage
-{
-    prompt: string;
-    approxTokens: number;
-    includedBootstrap: boolean;
-    includedRefresh: boolean;
 }
 
 export interface ContextManagerState
@@ -48,9 +31,6 @@ export default class ContextManager
     private readonly options: ContextManagerOptions;
     private readonly variableProcessor: VariableProcessor | null;
     private messages: AgentMessage[] = [];
-    private approxTokensSinceRefresh = 0;
-    private bootstrapPending = true;
-    private includeLocalMemoryOnBootstrap = true;
     private skillsContent: string = "";
     private availableSkillsHint: string = "";
     private mcpToolsDoc: string = "";
@@ -75,29 +55,19 @@ export default class ContextManager
 
     addUser(content: string): void
     {
-        this.messages.push({
-            role: "user",
-            content,
-        });
+        this.messages.push({ role: "user", content });
         this.messages = trimMessages(this.messages, this.options.maxMessages);
     }
 
     addAssistant(content: string): void
     {
-        this.messages.push({
-            role: "assistant",
-            content,
-        });
+        this.messages.push({ role: "assistant", content });
         this.messages = trimMessages(this.messages, this.options.maxMessages);
     }
 
     addTool(name: string, content: string): void
     {
-        this.messages.push({
-            role: "tool",
-            name,
-            content,
-        });
+        this.messages.push({ role: "tool", name, content });
         this.messages = trimMessages(this.messages, this.options.maxMessages);
     }
 
@@ -106,19 +76,14 @@ export default class ContextManager
         return this.messages.length;
     }
 
-    getApproxTokensSinceRefresh(): number
+    getMessages(): AgentMessage[]
     {
-        return this.approxTokensSinceRefresh;
+        return this.messages.map((m) => ({ ...m }));
     }
 
-    getRefreshEveryApproxTokens(): number
+    buildSystemPrompt(): string
     {
-        return this.options.refreshEveryApproxTokens;
-    }
-
-    isBootstrapPending(): boolean
-    {
-        return this.bootstrapPending;
+        return this.processVariables(this.buildSystemSnapshot());
     }
 
     getDialogueSnapshot(): string
@@ -135,14 +100,13 @@ export default class ContextManager
 
     restoreState(
         state: ContextManagerState,
-        options: { includeLocalMemoryOnBootstrap?: boolean } = {},
+        _options: { includeLocalMemoryOnBootstrap?: boolean } = {},
     ): void
     {
         this.messages = trimMessages(
             (state.messages ?? []).map((message) => ({ ...message })),
             this.options.maxMessages,
         );
-        this.markSessionReset(options.includeLocalMemoryOnBootstrap ?? true);
     }
 
     replaceWithCompactSummary(summary: string): void
@@ -190,94 +154,10 @@ export default class ContextManager
     clearHistory(): void
     {
         this.messages = [];
-        this.markSessionReset();
     }
 
-    markSessionReset(includeLocalMemoryOnBootstrap = true): void
-    {
-        this.approxTokensSinceRefresh = 0;
-        this.bootstrapPending = true;
-        this.includeLocalMemoryOnBootstrap = includeLocalMemoryOnBootstrap;
-    }
-
-    prepareUserTurn(content: string): PreparedTurnMessage
-    {
-        return this.prepareTurnMessage("user", content);
-    }
-
-    prepareToolTurn(name: string, content: string): PreparedTurnMessage
-    {
-        return this.prepareTurnMessage("tool", content, name);
-    }
-
-    prepareToolBatchTurn(results: Array<{ name: string; content: string }>): PreparedTurnMessage
-    {
-        if (results.length === 0)
-        {
-            return this.prepareToolTurn("unknown", "");
-        }
-
-        // Single result: use standard path to avoid code duplication
-        if (results.length === 1)
-        {
-            return this.prepareToolTurn(results[0]!.name, results[0]!.content);
-        }
-
-        const includedBootstrap = this.bootstrapPending;
-        const totalRaw = results.map((r) => r.content).join("\n");
-        const includedRefresh = !includedBootstrap
-            && (
-                this.approxTokensSinceRefresh + estimateApproxTokens(totalRaw)
-                >= this.options.refreshEveryApproxTokens
-            );
-        const localMemory = includedBootstrap && this.includeLocalMemoryOnBootstrap && this.messages.length > 0
-            ? this.formatMessages()
-            : "";
-
-        const blocks: string[] = [];
-
-        if (includedBootstrap)
-        {
-            blocks.push(this.buildSystemSnapshot());
-            if (localMemory.length > 0)
-            {
-                blocks.push("", "### LOCAL MEMORY", localMemory);
-            }
-        }
-        else if (includedRefresh)
-        {
-            blocks.push(this.buildRefreshSnapshot());
-        }
-
-        if (blocks.length > 0) blocks.push("");
-
-        const resultBlocks = results.map(
-            (r) => `### TOOL RESULT: ${r.name}\n${r.content.trim()}`,
-        );
-        blocks.push(resultBlocks.join("\n\n"));
-
-        // Add each result to the message history
-        for (const r of results)
-        {
-            this.addTool(r.name, r.content.trim());
-        }
-
-        const prompt = blocks.join("\n");
-        const approxTokens = estimateApproxTokens(prompt);
-
-        if (includedBootstrap || includedRefresh)
-        {
-            this.approxTokensSinceRefresh = approxTokens;
-        }
-        else
-        {
-            this.approxTokensSinceRefresh += approxTokens;
-        }
-
-        this.bootstrapPending = false;
-
-        return { prompt, approxTokens, includedBootstrap, includedRefresh };
-    }
+    // Kept for call-site compatibility; no longer needed in the new architecture
+    markSessionReset(): void {}
 
     private formatMessages(): string
     {
@@ -290,7 +170,6 @@ export default class ContextManager
                 {
                     return `[TOOL:${message.name ?? "unknown"}]\n${message.content}`;
                 }
-
                 return `[${message.role.toUpperCase()}]\n${message.content}`;
             })
             .join("\n\n");
@@ -300,10 +179,10 @@ export default class ContextManager
     {
         const blocks = [
             "### SYSTEM SNAPSHOT",
-            this.processVariables(this.basePrompt),
+            this.basePrompt,
             "",
             "### TOOLS SNAPSHOT",
-            this.processVariables(this.toolsPrompt),
+            this.toolsPrompt,
         ];
 
         if (this.availableSkillsHint.trim().length > 0)
@@ -332,102 +211,6 @@ export default class ContextManager
         }
 
         return blocks.join("\n");
-    }
-
-    private buildRefreshSnapshot(): string
-    {
-        const blocks = [
-            "### CONTEXT REFRESH",
-            "Повторяю только важные системные правила, доступные инструменты и текущее окружение.",
-            "",
-            this.buildSystemSnapshot(),
-        ];
-
-        return blocks.join("\n");
-    }
-
-    private buildCurrentInputBlock(
-        role: "user" | "tool",
-        content: string,
-        name?: string,
-    ): string
-    {
-        if (role === "tool")
-        {
-            return [
-                `### TOOL RESULT: ${name ?? "unknown"}`,
-                content,
-            ].join("\n");
-        }
-
-        if (content.length === 0) return content;
-        return ["### USER INPUT", content].join("\n");
-    }
-
-    private prepareTurnMessage(
-        role: "user" | "tool",
-        content: string,
-        name?: string,
-    ): PreparedTurnMessage
-    {
-        const normalizedContent = content.trim();
-        const includedBootstrap = this.bootstrapPending;
-        const includedRefresh = !includedBootstrap
-            && (
-                this.approxTokensSinceRefresh + estimateApproxTokens(normalizedContent)
-                >= this.options.refreshEveryApproxTokens
-            );
-        const localMemory = includedBootstrap && this.includeLocalMemoryOnBootstrap && this.messages.length > 0
-            ? this.formatMessages()
-            : "";
-
-        const blocks: string[] = [];
-
-        if (includedBootstrap)
-        {
-            blocks.push(this.buildSystemSnapshot());
-            if (localMemory.length > 0)
-            {
-                blocks.push("", "### LOCAL MEMORY", localMemory);
-            }
-        }
-        else if (includedRefresh)
-        {
-            blocks.push(this.buildRefreshSnapshot());
-        }
-
-        if (blocks.length > 0) blocks.push("");
-        blocks.push(this.buildCurrentInputBlock(role, normalizedContent, name));
-
-        if (role === "tool")
-        {
-            this.addTool(name ?? "unknown", normalizedContent);
-        }
-        else
-        {
-            this.addUser(normalizedContent);
-        }
-
-        const prompt = blocks.join("\n");
-        const approxTokens = estimateApproxTokens(prompt);
-
-        if (includedBootstrap || includedRefresh)
-        {
-            this.approxTokensSinceRefresh = approxTokens;
-        }
-        else
-        {
-            this.approxTokensSinceRefresh += approxTokens;
-        }
-
-        this.bootstrapPending = false;
-
-        return {
-            prompt,
-            approxTokens,
-            includedBootstrap,
-            includedRefresh,
-        };
     }
 
     private processVariables(input: string): string

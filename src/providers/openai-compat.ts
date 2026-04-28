@@ -1,14 +1,14 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo } from "./types";
+import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 import OpenAI from "openai";
 
 type OpenAICompatId = "openai" | "openrouter" | "hugging-face" | "ollama" | "lm-studio";
 
 const DEFAULTS: Record<OpenAICompatId, { label: string; baseUrl: string }> = {
-    "openai":        { label: "OpenAI",       baseUrl: "https://api.openai.com/v1" },
-    "openrouter":    { label: "OpenRouter",   baseUrl: "https://openrouter.ai/api/v1" },
-    "hugging-face":  { label: "HuggingFace",  baseUrl: "https://router.huggingface.co/v1" },
-    "ollama":        { label: "Ollama",       baseUrl: "http://localhost:11434/v1" },
-    "lm-studio":     { label: "LM Studio",    baseUrl: "http://localhost:1234/v1" },
+    "openai":        { label: "OpenAI",      baseUrl: "https://api.openai.com/v1" },
+    "openrouter":    { label: "OpenRouter",  baseUrl: "https://openrouter.ai/api/v1" },
+    "hugging-face":  { label: "HuggingFace", baseUrl: "https://router.huggingface.co/v1" },
+    "ollama":        { label: "Ollama",      baseUrl: "http://localhost:11434/v1" },
+    "lm-studio":     { label: "LM Studio",  baseUrl: "http://localhost:1234/v1" },
 };
 
 type OpenAICompatConfig = Extract<ProviderConfig, { id: OpenAICompatId }>;
@@ -49,11 +49,33 @@ export class OpenAICompatProvider implements ILLMProvider
         return new OpenAICompatProvider(this.info, this.baseUrl, this.apiKey, this.model);
     }
 
-    async *complete(prompt: string, options?: ProviderCallOptions): AsyncIterable<string>
+    async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
+        const openAIMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+
+        if (system.trim().length > 0)
+        {
+            openAIMessages.push({ role: "system", content: system });
+        }
+
+        for (const msg of messages)
+        {
+            if (msg.role === "tool")
+            {
+                openAIMessages.push({
+                    role: "user",
+                    content: `[TOOL RESULT: ${msg.name ?? "unknown"}]\n${msg.content}`,
+                });
+            }
+            else
+            {
+                openAIMessages.push({ role: msg.role, content: msg.content });
+            }
+        }
+
         const stream = await this.client.chat.completions.create({
             model: this.model,
-            messages: [{ role: "user", content: prompt }],
+            messages: openAIMessages,
             stream: true,
             temperature: 0.7,
         }, {

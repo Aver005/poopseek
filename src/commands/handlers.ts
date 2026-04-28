@@ -145,11 +145,7 @@ export function buildCommandHandlers(
         getContextStats: () =>
         {
             const cm = deps.contextManager;
-            return [
-                `Messages in local context: ${cm.getMessageCount()}`,
-                `Approx tokens since refresh: ${cm.getApproxTokensSinceRefresh()}/${cm.getRefreshEveryApproxTokens()}`,
-                `Bootstrap pending: ${cm.isBootstrapPending() ? "yes" : "no"}`,
-            ].join(" | ");
+            return `Messages in local context: ${cm.getMessageCount()}`;
         },
 
         clearHistory: async () =>
@@ -229,7 +225,11 @@ export function buildCommandHandlers(
 
             const compactProvider = await deps.getProvider().clone();
             const chunks: string[] = [];
-            for await (const chunk of compactProvider.complete(compactPrompt, { modelVariant: deps.getModelVariant() }))
+            for await (const chunk of compactProvider.complete(
+                [{ role: "user", content: compactPrompt }],
+                "",
+                { modelVariant: deps.getModelVariant() },
+            ))
             {
                 chunks.push(chunk);
             }

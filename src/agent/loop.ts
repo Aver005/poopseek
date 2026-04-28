@@ -87,10 +87,14 @@ export default class AgentLoop
     {
         let lastAssistantText = "";
         let toolCallCount = 0;
-        let nextPrompt = this.contextManager.prepareUserTurn(userInput).prompt;
+
+        this.contextManager.addUser(userInput);
 
         for (let step = 0; step < this.options.maxStepsPerTurn; step += 1)
         {
+            const messages = this.contextManager.getMessages();
+            const system = this.contextManager.buildSystemPrompt();
+
             callbacks.onModelRequestStart?.();
             let assistantText: string;
             try
@@ -99,7 +103,8 @@ export default class AgentLoop
                 {
                     const chunks: string[] = [];
                     for await (const chunk of this.getProvider().complete(
-                        nextPrompt,
+                        messages,
+                        system,
                         this.options.getCallOptions?.(),
                     ))
                     {
@@ -129,8 +134,6 @@ export default class AgentLoop
 
             lastAssistantText = "";
 
-            const batchResults: Array<{ name: string; content: string }> = [];
-
             for (const segment of parsed.toolCalls)
             {
                 if (segment.preText.length > 0)
@@ -140,19 +143,16 @@ export default class AgentLoop
 
                 toolCallCount += 1;
                 const result = await executeTool(this.toolExecutor, segment.envelope, callbacks);
-
-                batchResults.push({
-                    name: segment.envelope.tool,
-                    content: buildToolResultPayload(segment.envelope.tool, result),
-                });
+                this.contextManager.addTool(
+                    segment.envelope.tool,
+                    buildToolResultPayload(segment.envelope.tool, result),
+                );
             }
 
             if (parsed.postText.length > 0)
             {
                 callbacks.onAssistantChunk?.(parsed.postText);
             }
-
-            nextPrompt = this.contextManager.prepareToolBatchTurn(batchResults).prompt;
         }
 
         return {
