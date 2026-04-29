@@ -19,6 +19,8 @@ import type { ProviderStore } from "@/stores/provider";
 import type { SessionStore } from "@/stores/session";
 import type { ConfigStore } from "@/stores/config";
 import type { CallOptionsStore } from "@/stores/call-options";
+import { createProvider } from "@/providers";
+import type { ProviderConfig } from "@/providers";
 
 export type CommandHandlerDeps = {
     // Stores
@@ -182,6 +184,38 @@ export function buildCommandHandlers(
 
         getModelType: () => sessionStore.getModelVariant() as "default" | "expert",
         setModelType: (nextModelType) => sessionStore.setModelVariant(nextModelType),
+
+        getModel: () =>
+        {
+            const provider = providerStore.getProvider();
+            if (provider.info.id === "deepseek-web") return sessionStore.getModelVariant();
+            const config = configStore.getRuntimeConfig().provider;
+            if (config && "model" in config) return config.model as string;
+            return provider.info.id;
+        },
+
+        setModel: async (model: string) =>
+        {
+            const provider = providerStore.getProvider();
+            if (provider.info.id === "deepseek-web")
+            {
+                sessionStore.setModelVariant(model);
+                return;
+            }
+            const runtimeConfig = configStore.getRuntimeConfig();
+            if (!runtimeConfig.provider || !("model" in runtimeConfig.provider)) return;
+            const newConfig = { ...runtimeConfig.provider, model } as ProviderConfig;
+            const newProvider = await createProvider(newConfig, providerStore.getToken());
+            providerStore.setProvider(newProvider);
+            const configured = configStore.getConfiguredProviders();
+            const updatedConfigured = configured.map((c) => c.id === newConfig.id ? newConfig : c);
+            configStore.setConfiguredProviders(updatedConfigured);
+            const updated = { ...runtimeConfig, provider: newConfig, configuredProviders: updatedConfigured };
+            configStore.setRuntimeConfig(updated);
+            await saveRuntimeConfig(configStore.getRuntimeConfigPath(), updated);
+        },
+
+        listModels: () => providerStore.getProvider().listModels(),
 
         getSearchEnabled: () => callOptionsStore.getSearchEnabled(),
         setSearchEnabled: (enabled) => callOptionsStore.setSearchEnabled(enabled),

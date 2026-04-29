@@ -49,6 +49,19 @@ export class OpenAICompatProvider implements ILLMProvider
         return new OpenAICompatProvider(this.info, this.baseUrl, this.apiKey, this.model);
     }
 
+    async listModels(): Promise<string[]>
+    {
+        try
+        {
+            const list = await this.client.models.list();
+            return list.data.map((m) => m.id).sort();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
         const openAIMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];

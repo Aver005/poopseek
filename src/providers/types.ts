@@ -25,6 +25,7 @@ export interface ILLMProvider
     complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>;
     reset(): Promise<void>;
     clone(): Promise<ILLMProvider>;
+    listModels(): Promise<string[]>;
 }
 
 export type ProviderConfig =

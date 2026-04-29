@@ -1,21 +1,14 @@
 import { writeLine } from "../io";
 import type { Command, CommandsContext } from "../types";
 
-type ModelType = "default" | "expert";
-
-function isModelType(value: string): value is ModelType
-{
-    return value === "default" || value === "expert";
-}
-
 export function createModelCommand(context: CommandsContext): Command
 {
     return {
         name: "/model",
-        description: "Показать или сменить модель (/model [default|expert])",
+        description: "Показать или сменить модель текущего провайдера",
         execute: async (args) =>
         {
-            if (!context.getModelType || !context.setModelType)
+            if (!context.getModel || !context.setModel || !context.listModels)
             {
                 writeLine("");
                 writeLine("Управление моделью недоступно");
@@ -23,27 +16,58 @@ export function createModelCommand(context: CommandsContext): Command
                 return true;
             }
 
-            const rawValue = args[0]?.toLowerCase();
-            if (!rawValue)
+            const arg = args[0];
+
+            if (!arg)
             {
+                const [models, current] = await Promise.all([context.listModels(), context.getModel()]);
                 writeLine("");
-                writeLine(`Текущая модель: ${context.getModelType()}`);
-                writeLine("Использование: /model default|expert");
+                writeLine(`Текущая модель: ${current}`);
+                writeLine("");
+
+                if (models.length === 0)
+                {
+                    writeLine("Использование: /model <название>");
+                    writeLine("");
+                    return true;
+                }
+
+                const chosen = context.choose
+                    ? await context.choose(
+                        "Выбор модели",
+                        models.map((m) => ({ value: m, label: m, hint: m === current ? "текущая" : undefined })),
+                    )
+                    : null;
+
+                if (!chosen)
+                {
+                    writeLine("");
+                    return true;
+                }
+
+                await context.setModel(chosen);
+                writeLine(`Модель переключена: ${chosen}`);
                 writeLine("");
                 return true;
             }
 
-            if (!isModelType(rawValue))
+            const models = await context.listModels();
+            const matched = models.length > 0
+                ? (models.find((m) => m.toLowerCase() === arg.toLowerCase()) ?? null)
+                : arg;
+
+            if (!matched)
             {
                 writeLine("");
-                writeLine("Неверная модель. Доступно: default, expert");
+                writeLine(`Модель не найдена: ${arg}`);
+                writeLine("Используйте /model без аргумента для выбора из списка");
                 writeLine("");
                 return true;
             }
 
-            context.setModelType(rawValue);
+            await context.setModel(matched);
             writeLine("");
-            writeLine(`Модель переключена: ${rawValue}`);
+            writeLine(`Модель переключена: ${matched}`);
             writeLine("");
             return true;
         },

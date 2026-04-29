@@ -21,6 +21,17 @@ export class GeminiProvider implements ILLMProvider
         return new GeminiProvider(this.apiKey, this.model);
     }
 
+    async listModels(): Promise<string[]>
+    {
+        return [
+            "gemini-2.5-pro-preview-05-06",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-thinking-exp",
+            "gemini-1.5-pro-latest",
+            "gemini-1.5-flash-latest",
+        ];
+    }
+
     async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;

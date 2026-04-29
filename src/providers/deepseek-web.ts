@@ -105,6 +105,11 @@ export class DeepseekWebProvider implements ILLMProvider
         if (text.length > 0) yield text;
     }
 
+    async listModels(): Promise<string[]>
+    {
+        return ["default", "expert"];
+    }
+
     getClient(): DeepseekClient
     {
         return this.client;

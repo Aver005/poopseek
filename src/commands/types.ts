@@ -26,6 +26,9 @@ export interface CommandsContext
     setTheme?: (theme: "dark" | "light") => void;
     getModelType?: () => "default" | "expert";
     setModelType?: (modelType: "default" | "expert") => void;
+    getModel?: () => string;
+    setModel?: (model: string) => Promise<void>;
+    listModels?: () => Promise<string[]>;
     runSidechat?: (question: string) => Promise<void>;
     confirm?: (message: string) => Promise<boolean>;
     resolveSessionForLoad?: (id: string) => Promise<{
