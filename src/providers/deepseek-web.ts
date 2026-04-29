@@ -2,11 +2,12 @@ import { collectDeepseekOutput } from "@/bridge/deepseek-stream";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type ChatSession from "@/deepseek-client/client/ChatSession";
 import type { ModelType } from "@/deepseek-client/types";
-import type { ILLMProvider, ProviderCallOptions, ProviderInfo, ProviderMessage } from "./types";
+import type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderInfo, ProviderMessage } from "./types";
 
 export class DeepseekWebProvider implements ILLMProvider
 {
     readonly info: ProviderInfo = { id: "deepseek-web", label: "DeepSeek (web)" };
+    readonly capabilities: ProviderCapabilities = { webSearch: true, thinking: true };
 
     private session: ChatSession | null = null;
     private systemSentForSession = false;

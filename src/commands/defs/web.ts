@@ -16,6 +16,15 @@ export function createWebCommand(context: CommandsContext): Command
                 return true;
             }
 
+            const provider = context.getCurrentProvider?.();
+            if (provider && !provider.capabilities.webSearch)
+            {
+                writeLine("");
+                writeLine(`Веб-поиск не поддерживается провайдером ${provider.info.label}`);
+                writeLine("");
+                return true;
+            }
+
             const next = !context.getSearchEnabled();
             context.setSearchEnabled(next);
             writeLine("");

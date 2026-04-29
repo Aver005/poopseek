@@ -1,4 +1,4 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
+import type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 import OpenAI from "openai";
 
 type OpenAICompatId = "openai" | "openrouter" | "hugging-face" | "ollama" | "lm-studio";
@@ -11,22 +11,39 @@ const DEFAULTS: Record<OpenAICompatId, { label: string; baseUrl: string }> = {
     "lm-studio":     { label: "LM Studio",  baseUrl: "http://localhost:1234/v1" },
 };
 
+const CAPABILITIES: Record<OpenAICompatId, ProviderCapabilities> = {
+    "openai":       { webSearch: false, thinking: false },
+    "openrouter":   { webSearch: true,  thinking: false },
+    "hugging-face": { webSearch: false, thinking: false },
+    "ollama":       { webSearch: false, thinking: false },
+    "lm-studio":    { webSearch: false, thinking: false },
+};
+
 type OpenAICompatConfig = Extract<ProviderConfig, { id: OpenAICompatId }>;
+
+type OpenRouterWebSearchTool = { readonly type: "openrouter:web_search" };
+
+type OpenRouterCreateParams = Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, "tools"> & {
+    tools?: Array<OpenAI.Chat.ChatCompletionTool | OpenRouterWebSearchTool>;
+};
 
 export class OpenAICompatProvider implements ILLMProvider
 {
     private readonly client: OpenAI;
+    readonly capabilities: ProviderCapabilities;
 
     constructor(
         readonly info: ProviderInfo,
         private readonly baseUrl: string,
         private readonly apiKey: string,
         private readonly model: string,
+        capabilities: ProviderCapabilities,
     ) {
         this.client = new OpenAI({
             baseURL: this.baseUrl,
             apiKey: this.apiKey || "local",
         });
+        this.capabilities = capabilities;
     }
 
     static fromConfig(config: OpenAICompatConfig): OpenAICompatProvider
@@ -39,6 +56,7 @@ export class OpenAICompatProvider implements ILLMProvider
             baseUrl,
             apiKey,
             config.model,
+            CAPABILITIES[config.id],
         );
     }
 
@@ -46,7 +64,7 @@ export class OpenAICompatProvider implements ILLMProvider
 
     async clone(): Promise<ILLMProvider>
     {
-        return new OpenAICompatProvider(this.info, this.baseUrl, this.apiKey, this.model);
+        return new OpenAICompatProvider(this.info, this.baseUrl, this.apiKey, this.model, this.capabilities);
     }
 
     async listModels(): Promise<string[]>
@@ -86,14 +104,23 @@ export class OpenAICompatProvider implements ILLMProvider
             }
         }
 
-        const stream = await this.client.chat.completions.create({
+        const tools: Array<OpenAI.Chat.ChatCompletionTool | OpenRouterWebSearchTool> | undefined =
+            this.capabilities.webSearch && options?.searchEnabled
+                ? [{ type: "openrouter:web_search" }]
+                : undefined;
+
+        const params: OpenRouterCreateParams = {
             model: this.model,
             messages: openAIMessages,
             stream: true,
             temperature: 0.7,
-        }, {
-            signal: options?.signal,
-        });
+            tools,
+        };
+
+        const stream = await this.client.chat.completions.create(
+            params as OpenAI.Chat.ChatCompletionCreateParamsStreaming,
+            { signal: options?.signal },
+        );
 
         for await (const chunk of stream)
         {

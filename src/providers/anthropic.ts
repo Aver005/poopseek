@@ -1,8 +1,9 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
+import type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 
 export class AnthropicProvider implements ILLMProvider
 {
     readonly info: ProviderInfo;
+    readonly capabilities: ProviderCapabilities = { webSearch: false, thinking: true };
 
     constructor(
         private readonly apiKey: string,

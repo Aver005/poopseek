@@ -1,4 +1,4 @@
-export type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo } from "./types";
+export type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo } from "./types";
 export { DeepseekWebProvider } from "./deepseek-web";
 export { OpenAICompatProvider } from "./openai-compat";
 export { AnthropicProvider } from "./anthropic";

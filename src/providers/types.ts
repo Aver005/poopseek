@@ -6,6 +6,12 @@ export interface ProviderCallOptions
     signal?: AbortSignal;
 }
 
+export interface ProviderCapabilities
+{
+    webSearch: boolean;
+    thinking: boolean;
+}
+
 export interface ProviderInfo
 {
     id: string;
@@ -23,6 +29,7 @@ export interface ProviderMessage
 export interface ILLMProvider
 {
     readonly info: ProviderInfo;
+    readonly capabilities: ProviderCapabilities;
     complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>;
     reset(): Promise<void>;
     clone(): Promise<ILLMProvider>;

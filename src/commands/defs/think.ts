@@ -16,6 +16,15 @@ export function createThinkCommand(context: CommandsContext): Command
                 return true;
             }
 
+            const provider = context.getCurrentProvider?.();
+            if (provider && !provider.capabilities.thinking)
+            {
+                writeLine("");
+                writeLine(`Режим рассуждений не поддерживается провайдером ${provider.info.label}`);
+                writeLine("");
+                return true;
+            }
+
             const next = !context.getThinkingEnabled();
             context.setThinkingEnabled(next);
             writeLine("");
