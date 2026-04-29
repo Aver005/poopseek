@@ -99,6 +99,10 @@ export function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
     }
 }
 
+// ── Public export for streaming parser ───────────────────────────────────────
+
+export { extractJsonLikeBlocks };
+
 function repairLiteralControlChars(input: string): string
 {
     let result = "";
