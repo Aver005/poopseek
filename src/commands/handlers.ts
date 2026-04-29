@@ -89,7 +89,7 @@ function formatSessionDate(value: string): string
 }
 
 export function buildCommandHandlers(
-    rl: { close: () => void; viewManager: ViewManager },
+    rl: { close: () => void; viewManager: ViewManager; setRenderEnabled?: (enabled: boolean) => void },
     deps: CommandHandlerDeps,
 ): Map<string, Command>
 {
@@ -370,6 +370,7 @@ export function buildCommandHandlers(
         deleteRole: (roleName) => deleteRole(roleName),
         createRole: deps.createRole,
         cancelActiveOperation: deps.cancelActiveOperation,
+        setRenderEnabled: rl.setRenderEnabled ? (enabled) => rl.setRenderEnabled!(enabled) : undefined,
 
         saveUserConfig: async (update) =>
         {

@@ -77,6 +77,7 @@ export interface CommandsContext
     deleteRole?: (roleName: string) => boolean;
     createRole?: () => Promise<void>;
     cancelActiveOperation?: () => boolean;
+    setRenderEnabled?: (enabled: boolean) => void;
 }
 
 export interface CommandModule

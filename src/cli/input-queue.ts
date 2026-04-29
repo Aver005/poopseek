@@ -4,6 +4,7 @@ export interface InputQueue
     hasPendingWaiter(): boolean;
     resolveWaiter(value: string): void;
     enqueue(value: string): void;
+    clear(): void;
     readonly length: number;
     itemAt(index: number): string | undefined;
     itemsSnapshot(): readonly string[];
@@ -46,6 +47,12 @@ export function createInputQueue(onSync: (size: number) => void): InputQueue
         {
             items.push(value);
             onSync(items.length);
+        },
+
+        clear(): void
+        {
+            items.length = 0;
+            onSync(0);
         },
 
         get length()

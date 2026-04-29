@@ -77,6 +77,11 @@ export function createCommandHandlers(
     registerCommand(createAuthCommand(context));
     registerCommand(createRoleCommand(context));
     registerCommand(createBackCommand(context));
+    registerCommand({
+        name: "/home",
+        description: "Вернуться на главный экран (прерывает текущую операцию)",
+        execute: () => true,
+    });
     registerCommand(createResetCommand(context));
     registerCommand(createRstCommand(context));
     registerCommand(createNewCommand(context));

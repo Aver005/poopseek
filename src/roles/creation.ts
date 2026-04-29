@@ -70,11 +70,13 @@ export async function runRoleCreation(deps: RoleCreationDeps): Promise<void>
         activeOperationRef,
     } = deps;
 
-    const roleProvider = await getProvider().clone();
+    terminalInput.setMode("queue");
+    terminalInput.setRenderEnabled(false);
     const abortController = new AbortController();
+    activeOperationRef.current = { kind: "role-creation", abortController };
+    const roleProvider = await getProvider().clone();
     let roleSaved = false;
     let confirmationGiven = false;
-    activeOperationRef.current = { kind: "role-creation", abortController };
 
     const showRoleInput = (): void =>
     {
@@ -84,9 +86,11 @@ export async function runRoleCreation(deps: RoleCreationDeps): Promise<void>
 
     const waitForRoleInput = async (): Promise<string | null> =>
     {
+        isMainTurnActiveRef.current = false;
         showRoleInput();
-        if (abortController.signal.aborted) return null;
         const value = await inputQueue.waitForNext();
+        terminalInput.setMode("queue");
+        isMainTurnActiveRef.current = true;
         if (abortController.signal.aborted) return null;
         writeRoleUserMessage(value);
         return value;
@@ -149,7 +153,6 @@ export async function runRoleCreation(deps: RoleCreationDeps): Promise<void>
         return null;
     };
 
-    terminalInput.setRenderEnabled(false);
     isRoleCreationActiveRef.current = true;
     terminalInput.setPromptPrefix(`${colors.cyan(">")} `);
     output.write(`\n${colors.cyan("Создание новой роли")}\n`);

@@ -28,6 +28,7 @@ export type MainLoopDeps = {
     };
     writeUserMessage: (value: string) => void;
     pendingSidechatTasks: Set<Promise<void>>;
+    onTurnComplete?: () => void;
 };
 
 export async function runMainLoop(deps: MainLoopDeps): Promise<void>
@@ -43,6 +44,7 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
         generationIndicator,
         writeUserMessage,
         pendingSidechatTasks,
+        onTurnComplete,
     } = deps;
 
     try
@@ -172,6 +174,7 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
                     },
                 });
                 await saveCurrentLocalSession();
+                onTurnComplete?.();
             }
             finally
             {

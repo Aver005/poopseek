@@ -8,6 +8,7 @@ export type SubmitHandlerDeps = {
     inputQueue: InputQueue;
     startQueuedSidechat: (question: string) => void;
     writeDetachedOutput: (value: string) => void;
+    onGoHome?: () => void;
 };
 
 function parseBtwQuestion(value: string): string | null
@@ -25,9 +26,16 @@ export function createSubmitHandler(deps: SubmitHandlerDeps): (value: string) =>
 
     return (value) =>
     {
+        const trimmed = value.trim().toLowerCase();
+
+        if (trimmed === "/home")
+        {
+            deps.onGoHome?.();
+            return;
+        }
+
         if (activeOperationRef.current?.kind === "role-creation")
         {
-            const trimmed = value.trim().toLowerCase();
             if (trimmed === "/back")
             {
                 cancelActiveOperation();

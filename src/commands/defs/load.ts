@@ -51,6 +51,7 @@ export function createLoadCommand(context: CommandsContext): Command
                 return true;
             }
 
+            context.setRenderEnabled?.(false);
             writeLine("");
             writeLine("Поиск сессии...");
             writeLine("");
@@ -62,11 +63,14 @@ export function createLoadCommand(context: CommandsContext): Command
             }
             catch (error)
             {
+                context.setRenderEnabled?.(true);
                 const message = error instanceof Error ? error.message : String(error);
                 writeLine(`Ошибка загрузки: ${message}`);
                 writeLine("");
                 return true;
             }
+
+            context.setRenderEnabled?.(true);
 
             if (!resolved)
             {

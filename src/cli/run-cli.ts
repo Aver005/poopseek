@@ -409,6 +409,34 @@ export async function runCli(): Promise<void>
         return true;
     };
 
+    const onGoHome = (): void =>
+    {
+        const wasCancelledOperation = cancelActiveOperation();
+        activeInterruptCommandRef.current?.(new Error("Операция прервана (/home)"));
+        activeInterruptCommandRef.current = null;
+        if (inputQueue.hasPendingWaiter())
+        {
+            inputQueue.resolveWaiter("");
+        }
+        inputQueue.clear();
+        if (wasCancelledOperation)
+            output.write(`\n${colors.yellow("Создание роли прервано.")}\n`);
+
+        printWelcome(
+            appVersion,
+            providerStore.getProvider(),
+            colorMode,
+            terminalCapabilities
+        );
+
+        terminalInput.setPromptPrefix(`${colors.magenta(">")} `);
+        terminalInput.setMode("active");
+        if (!isMainTurnActiveRef.current)
+        {
+            terminalInput.setRenderEnabled(true);
+        }
+    };
+
     // --- Command handlers ---
 
     const commands = buildCommandHandlers(terminalInput, {
@@ -490,11 +518,20 @@ export async function runCli(): Promise<void>
         inputQueue,
         startQueuedSidechat,
         writeDetachedOutput,
+        onGoHome,
     }));
 
-    printWelcome(appVersion, providerStore.getProvider(), colorMode, terminalCapabilities);
+    printWelcome(
+        appVersion,
+        providerStore.getProvider(),
+        colorMode,
+        terminalCapabilities
+    );
 
     terminalInput.start(commands);
+
+    const MAX_MESSAGES = 40;
+    const WARN_AT_MESSAGES = MAX_MESSAGES - 5;
 
     await runMainLoop({
         inputQueue,
@@ -507,5 +544,17 @@ export async function runCli(): Promise<void>
         generationIndicator,
         writeUserMessage,
         pendingSidechatTasks,
+        onTurnComplete: () =>
+        {
+            const count = contextManager.getMessageCount();
+            if (count >= WARN_AT_MESSAGES)
+            {
+                const isFull = count >= MAX_MESSAGES;
+                const msg = isFull
+                    ? `Контекст заполнен (${count}/${MAX_MESSAGES} сообщ.). Используйте /compact.`
+                    : `Контекст почти заполнен (${count}/${MAX_MESSAGES} сообщ.). Рекомендуется /compact.`;
+                output.write(`${colors.yellow("⚠")} ${colors.dim(msg)}\n`);
+            }
+        },
     });
 }
