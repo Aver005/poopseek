@@ -11,12 +11,12 @@
     "test:coverage": "vitest run --coverage",
     "cloc": "cloc --exclude-dir=\"node_modules,build,.git\" .",
 
-    "build:windows": "bun run scripts/build-exe.ts",
-    "build:macos": "bash scripts/build-macos.sh",
+    "build:windows": "bun run scripts/build/build-exe.ts",
+    "build:macos": "bash scripts/build/build-macos.sh",
     "build:plugin": "bun run plugins/figma/build.ts",
     "build:all": "bun run build:windows && bun run build:plugin",
 
-    "compile": "bun run build:windows",
+    "compile":     "bun run build:windows",
     "compile:mac": "bun run build:macos"
   },
   "devDependencies": {

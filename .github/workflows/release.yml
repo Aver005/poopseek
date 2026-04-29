@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version без v (например: 1.2.3)"
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          TAG="v${VERSION}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG"         >> $GITHUB_OUTPUT
+
+      - name: Build all platforms
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          DEFINE="__APP_VERSION__='\"$VERSION\"'"
+          mkdir -p dist
+
+          bun build src/index.ts --compile --target bun-windows-x64  --outfile dist/poopseek-windows-x64.exe  --define $DEFINE
+          bun build src/index.ts --compile --target bun-darwin-x64   --outfile dist/poopseek-darwin-x64       --define $DEFINE
+          bun build src/index.ts --compile --target bun-darwin-arm64  --outfile dist/poopseek-darwin-arm64     --define $DEFINE
+          bun build src/index.ts --compile --target bun-linux-x64    --outfile dist/poopseek-linux-x64        --define $DEFINE
+          bun build src/index.ts --compile --target bun-linux-arm64   --outfile dist/poopseek-linux-arm64      --define $DEFINE
+
+      - name: Package archives
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          cd dist
+
+          pack_unix() {
+            local target="$1" bin="$2"
+            local pkg="pkg-${target}"
+            mkdir -p "${pkg}/poopseek"
+            cp "${bin}" "${pkg}/poopseek/poopseek"
+            chmod +x "${pkg}/poopseek/poopseek"
+            cp -R ../assets "${pkg}/poopseek/assets"
+            mkdir -p "${pkg}/poopseek/docs"
+            cp -R ../docs/tools "${pkg}/poopseek/docs/tools"
+            echo "$VERSION" > "${pkg}/poopseek/VERSION.txt"
+            tar -czf "poopseek-${target}.tar.gz" -C "${pkg}" poopseek
+          }
+
+          pack_unix darwin-x64  poopseek-darwin-x64
+          pack_unix darwin-arm64 poopseek-darwin-arm64
+          pack_unix linux-x64   poopseek-linux-x64
+          pack_unix linux-arm64  poopseek-linux-arm64
+
+          mkdir -p pkg-windows/poopseek
+          cp poopseek-windows-x64.exe pkg-windows/poopseek/poopseek.exe
+          cp -R ../assets pkg-windows/poopseek/assets
+          mkdir -p pkg-windows/poopseek/docs
+          cp -R ../docs/tools pkg-windows/poopseek/docs/tools
+          echo "$VERSION" > pkg-windows/poopseek/VERSION.txt
+          cd pkg-windows && zip -r ../poopseek-windows-x64.zip poopseek && cd ..
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum poopseek-*.tar.gz poopseek-*.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "PoopSeek v${{ steps.ver.outputs.version }}"
+          generate_release_notes: true
+          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+          files: |
+            dist/poopseek-windows-x64.zip
+            dist/poopseek-darwin-x64.tar.gz
+            dist/poopseek-darwin-arm64.tar.gz
+            dist/poopseek-linux-x64.tar.gz
+            dist/poopseek-linux-arm64.tar.gz
+            dist/SHA256SUMS.txt
