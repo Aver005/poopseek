@@ -63,6 +63,8 @@ export interface CommandsContext
     mcpGetPrompt?: (serverName: string, promptName: string) => Promise<string>;
     getSearchEnabled?: () => boolean;
     setSearchEnabled?: (enabled: boolean) => void;
+    getLocalSearchEnabled?: () => boolean;
+    setLocalSearchEnabled?: (enabled: boolean) => void;
     getThinkingEnabled?: () => boolean;
     setThinkingEnabled?: (enabled: boolean) => void;
     getPoetEnabled?: () => boolean;

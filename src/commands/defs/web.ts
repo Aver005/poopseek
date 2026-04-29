@@ -5,9 +5,28 @@ export function createWebCommand(context: CommandsContext): Command
 {
     return {
         name: "/web",
-        description: "Переключить веб-поиск (search_enabled)",
-        execute: () =>
+        description: "Переключить нативный веб-поиск провайдера; /web --local — встроенный поиск через инструменты",
+        execute: (args) =>
         {
+            const isLocal = args.includes("--local");
+
+            if (isLocal)
+            {
+                if (!context.getLocalSearchEnabled || !context.setLocalSearchEnabled)
+                {
+                    writeLine("");
+                    writeLine("Управление локальным поиском недоступно");
+                    writeLine("");
+                    return true;
+                }
+                const next = !context.getLocalSearchEnabled();
+                context.setLocalSearchEnabled(next);
+                writeLine("");
+                writeLine(`Локальный веб-поиск: ${next ? "включён" : "выключен"}`);
+                writeLine("");
+                return true;
+            }
+
             if (!context.getSearchEnabled || !context.setSearchEnabled)
             {
                 writeLine("");
@@ -20,7 +39,8 @@ export function createWebCommand(context: CommandsContext): Command
             if (provider && !provider.capabilities.webSearch)
             {
                 writeLine("");
-                writeLine(`Веб-поиск не поддерживается провайдером ${provider.info.label}`);
+                writeLine(`Нативный веб-поиск не поддерживается провайдером ${provider.info.label}`);
+                writeLine(`Используйте /web --local для встроенного поиска через инструменты`);
                 writeLine("");
                 return true;
             }

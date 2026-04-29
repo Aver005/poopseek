@@ -35,6 +35,7 @@ export default class ContextManager
     private availableSkillsHint: string = "";
     private mcpToolsDoc: string = "";
     private mcpResourcesContext: string = "";
+    private webToolsDoc: string = "";
     private activeRoleContent: string = "";
     private poetModeContent: string = "";
 
@@ -147,6 +148,11 @@ export default class ContextManager
         this.mcpResourcesContext = context;
     }
 
+    setWebToolsDoc(doc: string): void
+    {
+        this.webToolsDoc = doc;
+    }
+
     setRoleContent(content: string): void
     {
         this.activeRoleContent = content;
@@ -199,6 +205,11 @@ export default class ContextManager
         if (this.skillsContent.trim().length > 0)
         {
             blocks.push("", "### ACTIVE SKILLS", this.skillsContent.trim());
+        }
+
+        if (this.webToolsDoc.trim().length > 0)
+        {
+            blocks.push("", "### WEB TOOLS", this.webToolsDoc.trim());
         }
 
         if (this.mcpToolsDoc.trim().length > 0)

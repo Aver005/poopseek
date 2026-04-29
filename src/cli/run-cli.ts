@@ -38,6 +38,7 @@ import { createProvider, DeepseekWebProvider, type ILLMProvider } from "@/provid
 import { runRoleCreation, type ActiveOperation } from "@/roles/creation";
 import { createDeepseekHistoryImporter } from "@/deepseek-client/history-import";
 import { printWelcome } from "@/cli/welcome";
+import { webToolsRegistry, webToolNames, WEB_TOOLS_PROMPT } from "@/tools/web-tools";
 import { createAskUser } from "@/cli/ask-user";
 import { createSubmitHandler } from "@/cli/submit-handler";
 import { runMainLoop } from "@/cli/turn-runner";
@@ -223,6 +224,11 @@ export async function runCli(): Promise<void>
         contextManager.setPoetMode(callOptionsStore.getPoetEnabled() ? prompts.poetPrompt : "");
     };
 
+    const syncLocalSearch = (): void =>
+    {
+        contextManager.setWebToolsDoc(callOptionsStore.getLocalSearchEnabled() ? WEB_TOOLS_PROMPT : "");
+    };
+
     const buildAvailableSkillsHint = (): string =>
     {
         const all = skillManager.getSkills();
@@ -248,6 +254,7 @@ export async function runCli(): Promise<void>
 
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
     const subAgentRunner = new SubAgentRunner(() => providerStore.getProvider(), process.cwd());
+    const mcpDynamicResolver = mcpManager.createDynamicToolResolver();
     const toolExecutor = new ToolExecutor(
         process.cwd(),
         (req) => askUserImpl(req),
@@ -256,8 +263,12 @@ export async function runCli(): Promise<void>
             const skill = skillManager.getSkills().find((s) => s.name === skillName);
             return skill ? skill.body : null;
         },
-        mcpManager.createDynamicToolResolver(),
-        () => mcpManager.getDynamicToolNames(),
+        (toolName) => mcpDynamicResolver(toolName)
+            ?? (callOptionsStore.getLocalSearchEnabled() ? webToolsRegistry[toolName] : undefined),
+        () => [
+            ...mcpManager.getDynamicToolNames(),
+            ...(callOptionsStore.getLocalSearchEnabled() ? webToolNames : []),
+        ],
         subAgentRunner,
         (message) => generationIndicator.activate(message),
     );
@@ -300,6 +311,7 @@ export async function runCli(): Promise<void>
         }
         parts.push(colors.dim(`${contextManager.getMessageCount()} msg`));
         if (callOptionsStore.getSearchEnabled()) parts.push(colors.green("web"));
+        if (callOptionsStore.getLocalSearchEnabled()) parts.push(colors.green("web:local"));
         if (callOptionsStore.getThinkingEnabled()) parts.push(colors.cyan("think"));
         const rateDelayMs = callOptionsStore.getRequestDelayMs();
         if (rateDelayMs > 0) parts.push(colors.yellow(`rate:${rateDelayMs}ms`));
@@ -465,6 +477,7 @@ export async function runCli(): Promise<void>
         syncSkills,
         syncAvailableSkills,
         syncRole,
+        syncLocalSearch,
         syncPoet,
         poetPrompt: prompts.poetPrompt,
         viewManager: terminalInput.viewManager,

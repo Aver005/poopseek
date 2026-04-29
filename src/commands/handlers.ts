@@ -50,6 +50,9 @@ export type CommandHandlerDeps = {
     // Roles
     syncRole: () => void;
 
+    // Web tools (local)
+    syncLocalSearch: () => void;
+
     // Poet mode
     syncPoet: () => void;
     poetPrompt: string;
@@ -223,6 +226,12 @@ export function buildCommandHandlers(
 
         getSearchEnabled: () => callOptionsStore.getSearchEnabled(),
         setSearchEnabled: (enabled) => callOptionsStore.setSearchEnabled(enabled),
+        getLocalSearchEnabled: () => callOptionsStore.getLocalSearchEnabled(),
+        setLocalSearchEnabled: (enabled) =>
+        {
+            callOptionsStore.setLocalSearchEnabled(enabled);
+            deps.syncLocalSearch();
+        },
         getThinkingEnabled: () => callOptionsStore.getThinkingEnabled(),
         setThinkingEnabled: (enabled) => callOptionsStore.setThinkingEnabled(enabled),
         getPoetEnabled: () => callOptionsStore.getPoetEnabled(),

@@ -1,6 +1,8 @@
 export type CallOptionsStore = {
     getSearchEnabled(): boolean;
     setSearchEnabled(enabled: boolean): void;
+    getLocalSearchEnabled(): boolean;
+    setLocalSearchEnabled(enabled: boolean): void;
     getThinkingEnabled(): boolean;
     setThinkingEnabled(enabled: boolean): void;
     getPoetEnabled(): boolean;
@@ -14,6 +16,7 @@ export type CallOptionsStore = {
 export function createCallOptionsStore(): CallOptionsStore
 {
     let searchEnabled = false;
+    let localSearchEnabled = false;
     let thinkingEnabled = false;
     let poetEnabled = false;
     let activeRoleName: string | null = null;
@@ -21,6 +24,8 @@ export function createCallOptionsStore(): CallOptionsStore
     return {
         getSearchEnabled: () => searchEnabled,
         setSearchEnabled: (enabled) => { searchEnabled = enabled; },
+        getLocalSearchEnabled: () => localSearchEnabled,
+        setLocalSearchEnabled: (enabled) => { localSearchEnabled = enabled; },
         getThinkingEnabled: () => thinkingEnabled,
         setThinkingEnabled: (enabled) => { thinkingEnabled = enabled; },
         getPoetEnabled: () => poetEnabled,
