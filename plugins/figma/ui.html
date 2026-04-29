@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoopSeek</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1e1e1e;
+    --bg2: #2c2c2c;
+    --bg3: #383838;
+    --border: #3f3f3f;
+    --text: #e5e5e5;
+    --text-dim: #888;
+    --blue: #18a0fb;
+    --blue-hover: #0d8de3;
+    --red: #f24822;
+    --green: #1bc47d;
+    --radius: 6px;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 12px;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background .3s;
+    flex-shrink: 0;
+  }
+  .dot.ok  { background: var(--blue); }
+  .dot.err { background: var(--red); }
+
+  .header-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .btn-icon {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 13px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+  }
+  .btn-icon:hover { background: var(--bg3); color: var(--text); }
+
+  /* ── Messages ── */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    scroll-behavior: smooth;
+  }
+
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg {
+    padding: 7px 10px;
+    border-radius: var(--radius);
+    line-height: 1.45;
+    word-break: break-word;
+    max-width: 92%;
+    animation: fadeIn .15s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .msg.user      { background: var(--blue); color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
+  .msg.assistant { background: var(--bg3); align-self: flex-start; border-bottom-left-radius: 2px; }
+  .msg.system    { background: none; color: var(--text-dim); font-size: 11px; align-self: center; text-align: center; padding: 2px 0; }
+  .msg.error     { background: rgba(242,72,34,.15); color: var(--red); align-self: flex-start; }
+  .msg.thinking  { color: var(--text-dim); }
+  .msg.thinking::after { content: '...'; animation: dots 1s steps(4,end) infinite; }
+  @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
+
+  /* ── Input ── */
+  .input-area {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    align-items: flex-end;
+  }
+
+  textarea {
+    flex: 1;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 7px 9px;
+    font-size: 12px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    min-height: 34px;
+    max-height: 96px;
+    line-height: 1.4;
+    transition: border-color .15s;
+  }
+  textarea::placeholder { color: var(--text-dim); }
+  textarea:focus { border-color: var(--blue); }
+
+  .send-btn {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background .15s, opacity .15s;
+  }
+  .send-btn:hover:not(:disabled) { background: var(--blue-hover); }
+  .send-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ── Settings panel ── */
+  .settings {
+    display: none;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+    flex-direction: column;
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .settings.open { display: flex; }
+  .settings label { font-size: 11px; color: var(--text-dim); }
+  .settings input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    margin-top: 3px;
+  }
+  .settings input:focus { border-color: var(--blue); }
+  .save-btn {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 11px;
+    align-self: flex-end;
+  }
+  .save-btn:hover { background: var(--blue-hover); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="dot" id="dot"></div>
+  <span class="header-label" id="statusLabel">Подключение…</span>
+  <button class="btn-icon" id="clearBtn" title="Очистить чат">✕</button>
+  <button class="btn-icon" id="settingsBtn" title="Настройки">⚙</button>
+</div>
+
+<div class="settings" id="settings">
+  <div>
+    <label>Адрес сервера</label>
+    <input id="serverInput" type="text" value="http://localhost:7331">
+  </div>
+  <button class="save-btn" id="saveSettingsBtn">Сохранить</button>
+</div>
+
+<div class="messages" id="messages">
+  <div class="msg system">Опишите что нужно создать в Figma</div>
+</div>
+
+<div class="input-area">
+  <textarea id="input" placeholder="Нарисуй онбординг для iOS-приложения…" rows="1"></textarea>
+  <button class="send-btn" id="sendBtn" disabled>↑</button>
+</div>
+
+<script>
+  let serverUrl = 'http://localhost:7331';
+  let sessionId = null;
+  let busy = false;
+
+  const dot = document.getElementById('dot');
+  const statusLabel = document.getElementById('statusLabel');
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('sendBtn');
+  const settingsPanel = document.getElementById('settings');
+  const serverInput = document.getElementById('serverInput');
+  const clearBtn = document.getElementById('clearBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+
+  // ── Status ──────────────────────────────────────────
+  function setStatus(ok, label) {
+    dot.className = 'dot ' + (ok ? 'ok' : 'err');
+    statusLabel.textContent = label;
+    sendBtn.disabled = !ok || busy;
+  }
+
+  async function checkStatus() {
+    try {
+      const r = await fetch(serverUrl + '/v1/status', { signal: AbortSignal.timeout(2500) });
+      if (r.ok) setStatus(true, 'Сервер подключён');
+      else setStatus(false, 'Ошибка сервера');
+    } catch {
+      setStatus(false, 'Сервер недоступен — запустите /figma');
+    }
+  }
+
+  // ── Messages ─────────────────────────────────────────
+  function addMsg(text, type) {
+    const el = document.createElement('div');
+    el.className = 'msg ' + type;
+    el.textContent = text;
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return el;
+  }
+
+  // ── Send ──────────────────────────────────────────────
+  async function send() {
+    const text = inputEl.value.trim();
+    if (!text || busy) return;
+
+    busy = true;
+    sendBtn.disabled = true;
+    inputEl.value = '';
+    autoResize();
+
+    addMsg(text, 'user');
+    const thinkEl = addMsg('Думаю', 'assistant thinking');
+
+    try {
+      const resp = await fetch(serverUrl + '/v1/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, message: text }),
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+      const data = await resp.json();
+      sessionId = data.sessionId;
+
+      thinkEl.className = 'msg assistant';
+      thinkEl.textContent = data.text || '✓';
+
+      if (data.ops?.length > 0) {
+        addMsg('Создаю ' + data.ops.length + ' элемент(ов)…', 'system');
+        parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: data.ops } }, '*');
+      }
+    } catch (err) {
+      thinkEl.className = 'msg error';
+      thinkEl.textContent = 'Ошибка: ' + err.message;
+      setStatus(false, 'Нет соединения');
+    } finally {
+      busy = false;
+      sendBtn.disabled = false;
+    }
+  }
+
+  // ── Messages from main thread ─────────────────────────
+  window.onmessage = (event) => {
+    const msg = event.data?.pluginMessage;
+    if (!msg) return;
+    if (msg.type === 'OPS_DONE')  addMsg('Готово — ' + msg.count + ' элемент(ов) создано', 'system');
+    if (msg.type === 'OPS_ERROR') addMsg('Ошибка холста: ' + msg.error, 'error');
+  };
+
+  // ── Input helpers ─────────────────────────────────────
+  function autoResize() {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 96) + 'px';
+  }
+
+  inputEl.addEventListener('input', autoResize);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  sendBtn.addEventListener('click', send);
+
+  // ── Settings ──────────────────────────────────────────
+  settingsBtn.addEventListener('click', () => settingsPanel.classList.toggle('open'));
+  saveSettingsBtn.addEventListener('click', () => {
+    const val = serverInput.value.trim().replace(/\/$/, '');
+    if (val) { serverUrl = val; settingsPanel.classList.remove('open'); checkStatus(); }
+  });
+
+  // ── Clear ─────────────────────────────────────────────
+  clearBtn.addEventListener('click', () => {
+    sessionId = null;
+    messagesEl.innerHTML = '<div class="msg system">Опишите что нужно создать в Figma</div>';
+    parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: [{ type: 'clear_canvas' }] } }, '*');
+  });
+
+  // ── Init ──────────────────────────────────────────────
+  checkStatus();
+  setInterval(checkStatus, 6000);
+</script>
+</body>
+</html>

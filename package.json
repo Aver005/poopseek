@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "cloc": "cloc --exclude-dir=\"node_modules,build,.git\" ."
+    "cloc": "cloc --exclude-dir=\"node_modules,build,.git\" .",
+    "compile:figma": "cd plugins/figma && bun i && bun run build"
   },
   "devDependencies": {
     "@types/bun": "latest",

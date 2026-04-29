@@ -37,6 +37,7 @@ import { runOnboarding } from "@/cli/onboarding";
 import { createProvider, DeepseekWebProvider, type ILLMProvider } from "@/providers";
 import { runRoleCreation, type ActiveOperation } from "@/roles/creation";
 import { createDeepseekHistoryImporter } from "@/deepseek-client/history-import";
+import { FigmaServerManager } from "@/figma";
 import { printWelcome } from "@/cli/welcome";
 import { webToolsRegistry, webToolNames, WEB_TOOLS_PROMPT } from "@/tools/web-tools";
 import { createAskUser } from "@/cli/ask-user";
@@ -280,6 +281,13 @@ export async function runCli(): Promise<void>
         thinkingEnabled: callOptionsStore.getThinkingEnabled(),
     });
 
+    const figmaServerManager = new FigmaServerManager({
+        getProvider: () => providerStore.getProvider(),
+        basePrompt: prompts.basePrompt,
+        toolsPrompt: prompts.toolsPrompt,
+        variableProcessor,
+    });
+
     const agentLoop = new StreamingAgentLoop(() => providerStore.getProvider(), contextManager, toolExecutor, {
         getCallOptions,
         getRequestDelay: () => callOptionsStore.getRequestDelayMs(),
@@ -512,6 +520,7 @@ export async function runCli(): Promise<void>
             const p = providerStore.getProvider();
             return p instanceof DeepseekWebProvider ? createDeepseekHistoryImporter(p) : undefined;
         },
+        figmaServerManager,
     });
 
     // --- Terminal input callbacks ---

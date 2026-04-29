@@ -1,0 +1,11 @@
+{
+  "name": "poopseek-figma-plugin",
+  "private": true,
+  "scripts": {
+    "build": "bun run build.ts",
+    "watch": "bun run --watch build.ts"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.108.0"
+  }
+}

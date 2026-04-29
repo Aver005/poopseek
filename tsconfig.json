@@ -35,5 +35,6 @@
             "$/*": ["assets/*"],
             "#/*": ["src/deepseek-client/*"]
         }
-    }
+    },
+    "exclude": ["node_modules", "build", "plugins"]
 }

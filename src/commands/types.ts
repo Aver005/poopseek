@@ -89,6 +89,9 @@ export interface CommandsContext
     setRateDelay?: (ms: number) => void;
     getCurrentSessionSnapshot?: () => { messages: import("@/agent/types").AgentMessage[]; sessionId: string; createdAt: string };
     loadSessionById?: (id: string) => Promise<import("@/cli/session-store").StoredSessionSnapshot | null>;
+    getFigmaServerStatus?: () => { running: boolean; port: number };
+    startFigmaServer?: () => Promise<void>;
+    stopFigmaServer?: () => Promise<void>;
 }
 
 export interface CommandModule

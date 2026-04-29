@@ -21,6 +21,7 @@ import type { ConfigStore } from "@/stores/config";
 import type { CallOptionsStore } from "@/stores/call-options";
 import { createProvider } from "@/providers";
 import type { ProviderConfig } from "@/providers";
+import type { FigmaServerManager } from "@/figma";
 
 export type CommandHandlerDeps = {
     // Stores
@@ -82,6 +83,8 @@ export type CommandHandlerDeps = {
 
     // Remote session import (provider-specific, evaluated lazily on each load)
     getRemoteSessionImporter?: () => RemoteSessionImporter | undefined;
+
+    figmaServerManager: FigmaServerManager;
 };
 
 function formatSessionDate(value: string): string
@@ -437,6 +440,13 @@ export function buildCommandHandlers(
             };
         },
         loadSessionById: (id) => loadStoredSession(sessionStore.getSessionsDir(), id),
+
+        getFigmaServerStatus: () => ({
+            running: deps.figmaServerManager.isRunning,
+            port: deps.figmaServerManager.port,
+        }),
+        startFigmaServer: () => deps.figmaServerManager.start(),
+        stopFigmaServer: () => deps.figmaServerManager.stop(),
 
         saveUserConfig: async (update) =>
         {

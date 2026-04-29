@@ -1,0 +1,12 @@
+{
+  "name": "PoopSeek",
+  "id": "com.poopseek.figma-plugin",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["http://localhost:7331"],
+    "reasoning": "Connects to the local PoopSeek agent server"
+  }
+}
