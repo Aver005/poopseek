@@ -32,6 +32,7 @@ import { createRateCommand } from "./defs/rate";
 import { createBackCommand } from "./defs/back";
 import { createResetCommand, createRstCommand, createNewCommand } from "./defs/reset";
 import { createExportCommand } from "./defs/export";
+import { createPoetCommand } from "./defs/poet";
 
 function getCommandKeyByName(commandName: string): string
 {
@@ -81,6 +82,7 @@ export function createCommandHandlers(
     registerCommand(createBackCommand(context));
     registerCommand(createRateCommand(context));
     registerCommand(createExportCommand(context));
+    registerCommand(createPoetCommand(context));
     registerCommand({
         name: "/home",
         description: "Вернуться на главный экран (прерывает текущую операцию)",

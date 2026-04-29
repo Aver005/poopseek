@@ -18,6 +18,7 @@ export type MainLoopDeps = {
     agentLoop: StreamingAgentLoop;
     saveCurrentLocalSession: () => Promise<void>;
     isMainTurnActiveRef: { current: boolean };
+    activeInterruptControllerRef: { current: AbortController | null };
     activeInterruptCommandRef: { current: ((error: Error) => void) | null };
     commands: Map<string, Command>;
     generationIndicator: {
@@ -39,6 +40,7 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
         agentLoop,
         saveCurrentLocalSession,
         isMainTurnActiveRef,
+        activeInterruptControllerRef,
         activeInterruptCommandRef,
         commands,
         generationIndicator,
@@ -115,9 +117,12 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
             let wroteAnyChunk = false;
             let hadToolInThisTurn = false;
             isMainTurnActiveRef.current = true;
+            const turnController = new AbortController();
+            activeInterruptControllerRef.current = turnController;
             try
             {
                 await agentLoop.runTurn(preparedInput.content, {
+                    signal: turnController.signal,
                     onModelRequestStart: () =>
                     {
                         generationIndicator.start();
@@ -189,6 +194,7 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
             }
             finally
             {
+                activeInterruptControllerRef.current = null;
                 isMainTurnActiveRef.current = false;
             }
 

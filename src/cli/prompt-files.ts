@@ -8,6 +8,7 @@ export type PromptFiles = {
     reviewPrompt: string;
     refactorPrompt: string;
     roleCreatorPrompt: string;
+    poetPrompt: string;
 };
 
 function normalizeRelativeAssetPath(inputPath: string): string
@@ -57,14 +58,16 @@ export async function readPromptFiles(): Promise<PromptFiles>
     const refactorPromptPath = resolveExistingAssetPath("assets/prompts/refactor.prompt.md");
     const toolsPromptPath = resolveExistingAssetPath("docs/tools/tool.base.md");
     const roleCreatorPromptPath = resolveExistingAssetPath("assets/prompts/role-creator.prompt.md");
+    const poetPromptPath = resolveExistingAssetPath("assets/prompts/poet.prompt.md");
 
-    const [basePrompt, toolsPrompt, compactPrompt, reviewPrompt, refactorPrompt, roleCreatorPrompt] = await Promise.all([
+    const [basePrompt, toolsPrompt, compactPrompt, reviewPrompt, refactorPrompt, roleCreatorPrompt, poetPrompt] = await Promise.all([
         fs.promises.readFile(basePromptPath, "utf8"),
         fs.promises.readFile(toolsPromptPath, "utf8"),
         fs.promises.readFile(compactPromptPath, "utf8"),
         fs.promises.readFile(reviewPromptPath, "utf8"),
         fs.promises.readFile(refactorPromptPath, "utf8"),
         fs.promises.readFile(roleCreatorPromptPath, "utf8"),
+        fs.promises.readFile(poetPromptPath, "utf8"),
     ]);
 
     return {
@@ -74,5 +77,6 @@ export async function readPromptFiles(): Promise<PromptFiles>
         reviewPrompt,
         refactorPrompt,
         roleCreatorPrompt,
+        poetPrompt,
     };
 }

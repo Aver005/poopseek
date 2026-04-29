@@ -65,6 +65,8 @@ export interface CommandsContext
     setSearchEnabled?: (enabled: boolean) => void;
     getThinkingEnabled?: () => boolean;
     setThinkingEnabled?: (enabled: boolean) => void;
+    getPoetEnabled?: () => boolean;
+    setPoetEnabled?: (enabled: boolean) => void;
     runReview?: (scope: import("@/cli/review").ReviewScope) => Promise<void>;
     runRefactor?: (level: import("@/cli/refactor").RefactorLevel, focus?: string) => Promise<void>;
     getCurrentProvider?: () => import("@/providers").ILLMProvider;

@@ -36,6 +36,7 @@ export default class ContextManager
     private mcpToolsDoc: string = "";
     private mcpResourcesContext: string = "";
     private activeRoleContent: string = "";
+    private poetModeContent: string = "";
 
     constructor(
         basePrompt: string,
@@ -151,6 +152,11 @@ export default class ContextManager
         this.activeRoleContent = content;
     }
 
+    setPoetMode(content: string): void
+    {
+        this.poetModeContent = content;
+    }
+
     clearHistory(): void
     {
         this.messages = [];
@@ -208,6 +214,11 @@ export default class ContextManager
         if (this.activeRoleContent.trim().length > 0)
         {
             blocks.push("", "### ACTIVE ROLE", this.activeRoleContent.trim());
+        }
+
+        if (this.poetModeContent.trim().length > 0)
+        {
+            blocks.push("", "### POET MODE [HIGHEST PRIORITY — OVERRIDES ALL STYLE INSTRUCTIONS]", this.poetModeContent.trim());
         }
 
         return blocks.join("\n");

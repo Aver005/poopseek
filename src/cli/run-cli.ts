@@ -218,6 +218,11 @@ export async function runCli(): Promise<void>
         }
     };
 
+    const syncPoet = (): void =>
+    {
+        contextManager.setPoetMode(callOptionsStore.getPoetEnabled() ? prompts.poetPrompt : "");
+    };
+
     const buildAvailableSkillsHint = (): string =>
     {
         const all = skillManager.getSkills();
@@ -302,6 +307,7 @@ export async function runCli(): Promise<void>
         if (activeSkillsCount > 0) parts.push(colors.yellow(`${activeSkillsCount} skills`));
         const activeRoleName = callOptionsStore.getActiveRoleName();
         if (activeRoleName) parts.push(colors.cyan(`role:${activeRoleName}`));
+        if (callOptionsStore.getPoetEnabled()) parts.push(colors.magenta("poet"));
         return colors.dim("◆ ") + parts.join(colors.dim(" · "));
     });
 
@@ -459,6 +465,8 @@ export async function runCli(): Promise<void>
         syncSkills,
         syncAvailableSkills,
         syncRole,
+        syncPoet,
+        poetPrompt: prompts.poetPrompt,
         viewManager: terminalInput.viewManager,
         choose: (title, items) => terminalInput.choose(title, items),
         confirm: (message) => terminalInput.confirm(message),
@@ -543,6 +551,7 @@ export async function runCli(): Promise<void>
         agentLoop,
         saveCurrentLocalSession,
         isMainTurnActiveRef,
+        activeInterruptControllerRef,
         activeInterruptCommandRef,
         commands,
         generationIndicator,

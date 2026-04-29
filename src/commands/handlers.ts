@@ -50,6 +50,10 @@ export type CommandHandlerDeps = {
     // Roles
     syncRole: () => void;
 
+    // Poet mode
+    syncPoet: () => void;
+    poetPrompt: string;
+
     // Terminal UI
     viewManager: ViewManager;
     choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
@@ -221,6 +225,12 @@ export function buildCommandHandlers(
         setSearchEnabled: (enabled) => callOptionsStore.setSearchEnabled(enabled),
         getThinkingEnabled: () => callOptionsStore.getThinkingEnabled(),
         setThinkingEnabled: (enabled) => callOptionsStore.setThinkingEnabled(enabled),
+        getPoetEnabled: () => callOptionsStore.getPoetEnabled(),
+        setPoetEnabled: (enabled) =>
+        {
+            callOptionsStore.setPoetEnabled(enabled);
+            deps.syncPoet();
+        },
         getRateDelay: () => callOptionsStore.getRequestDelayMs(),
         setRateDelay: (ms) => callOptionsStore.setRequestDelayMs(ms),
 

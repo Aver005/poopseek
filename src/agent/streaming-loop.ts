@@ -9,7 +9,23 @@ import type {
     ToolExecutionResult,
 } from "./types";
 
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal): Promise<void>
+{
+    return new Promise((resolve, reject) =>
+    {
+        if (signal?.aborted)
+        {
+            reject(signal.reason instanceof Error ? signal.reason : new Error("Операция прервана"));
+            return;
+        }
+        const timer = setTimeout(resolve, ms);
+        signal?.addEventListener("abort", () =>
+        {
+            clearTimeout(timer);
+            reject(signal.reason instanceof Error ? signal.reason : new Error("Операция прервана"));
+        }, { once: true });
+    });
+}
 
 export interface StreamingAgentLoopOptions {
     maxStepsPerTurn: number;
@@ -111,8 +127,7 @@ export default class StreamingAgentLoop {
                     this.options.getRequestDelay?.() ?? 0,
                 );
                 if (effectiveDelay > 0) {
-                    await delay(effectiveDelay);
-                    throwIfAborted();
+                    await delay(effectiveDelay, callbacks.signal);
                 }
 
                 const toolParser = new StreamingToolParser({ maxTools: this.options.maxToolsPerStep });

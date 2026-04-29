@@ -3,6 +3,8 @@ export type CallOptionsStore = {
     setSearchEnabled(enabled: boolean): void;
     getThinkingEnabled(): boolean;
     setThinkingEnabled(enabled: boolean): void;
+    getPoetEnabled(): boolean;
+    setPoetEnabled(enabled: boolean): void;
     getActiveRoleName(): string | null;
     setActiveRoleName(name: string | null): void;
     getRequestDelayMs(): number;
@@ -13,6 +15,7 @@ export function createCallOptionsStore(): CallOptionsStore
 {
     let searchEnabled = false;
     let thinkingEnabled = false;
+    let poetEnabled = false;
     let activeRoleName: string | null = null;
     let requestDelayMs = 0;
     return {
@@ -20,6 +23,8 @@ export function createCallOptionsStore(): CallOptionsStore
         setSearchEnabled: (enabled) => { searchEnabled = enabled; },
         getThinkingEnabled: () => thinkingEnabled,
         setThinkingEnabled: (enabled) => { thinkingEnabled = enabled; },
+        getPoetEnabled: () => poetEnabled,
+        setPoetEnabled: (enabled) => { poetEnabled = enabled; },
         getActiveRoleName: () => activeRoleName,
         setActiveRoleName: (name) => { activeRoleName = name; },
         getRequestDelayMs: () => requestDelayMs,
