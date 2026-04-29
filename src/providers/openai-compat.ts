@@ -35,7 +35,7 @@ export class OpenAICompatProvider implements ILLMProvider
         const baseUrl = "baseUrl" in config && config.baseUrl ? config.baseUrl : defaults.baseUrl;
         const apiKey = "apiKey" in config ? config.apiKey : "";
         return new OpenAICompatProvider(
-            { id: config.id, label: defaults.label },
+            { id: config.id, label: defaults.label, model: config.model },
             baseUrl,
             apiKey,
             config.model,

@@ -81,6 +81,8 @@ export interface CommandsContext
     createRole?: () => Promise<void>;
     cancelActiveOperation?: () => boolean;
     setRenderEnabled?: (enabled: boolean) => void;
+    getRateDelay?: () => number;
+    setRateDelay?: (ms: number) => void;
 }
 
 export interface CommandModule

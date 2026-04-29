@@ -1,4 +1,5 @@
 import type { ILLMProvider, ProviderCallOptions } from "@/providers";
+import { isRateLimitError } from "@/utils/retry";
 import ContextManager from "./context-manager";
 import { StreamingToolParser } from "./streaming-tool-parser";
 import ToolExecutor from "./tool-executor";
@@ -8,10 +9,13 @@ import type {
     ToolExecutionResult,
 } from "./types";
 
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 export interface StreamingAgentLoopOptions {
     maxStepsPerTurn: number;
     maxToolsPerStep: number;
     getCallOptions?: () => ProviderCallOptions;
+    getRequestDelay?: () => number;
 }
 
 export interface StreamingAgentTurnCallbacks {
@@ -21,6 +25,7 @@ export interface StreamingAgentTurnCallbacks {
     onModelRequestStart?: () => void;
     onModelRequestDone?: () => void;
     onToolParseError?: (content: string) => void;
+    onRateLimitRetry?: (delayMs: number) => void;
     signal?: AbortSignal;
 }
 
@@ -91,83 +96,106 @@ export default class StreamingAgentLoop {
 
         this.contextManager.addUser(userInput);
 
-        for (let step = 0; step < this.options.maxStepsPerTurn; step += 1) {
+        let rateLimitDelayMs = 0;
+
+        outerLoop: for (let step = 0; step < this.options.maxStepsPerTurn; step += 1) {
             throwIfAborted();
 
             const messages = this.contextManager.getMessages();
             const system = this.contextManager.buildSystemPrompt();
 
-            callbacks.onModelRequestStart?.();
-
-            const toolParser = new StreamingToolParser({ maxTools: this.options.maxToolsPerStep });
-            let assistantText = "";
-            let hasDetectedTools = false;
-            const batchResults: Array<{ name: string; content: string }> = [];
-
-            try {
-                for await (const chunk of this.getProvider().complete(
-                    messages,
-                    system,
-                    {
-                        ...this.options.getCallOptions?.(),
-                        signal: callbacks.signal,
-                    },
-                )) {
+            let retries = 0;
+            retryLoop: while (true) {
+                const effectiveDelay = Math.max(
+                    rateLimitDelayMs,
+                    this.options.getRequestDelay?.() ?? 0,
+                );
+                if (effectiveDelay > 0) {
+                    await delay(effectiveDelay);
                     throwIfAborted();
-                    assistantText += chunk;
+                }
 
-                    const completedTools = toolParser.feed(chunk);
-                    if (completedTools.length > 0) {
-                        hasDetectedTools = true;
-                        for (const toolEvent of completedTools) {
-                            if (toolEvent.preText.length > 0) {
-                                callbacks.onAssistantChunk?.(toolEvent.preText);
+                const toolParser = new StreamingToolParser({ maxTools: this.options.maxToolsPerStep });
+                let assistantText = "";
+                let hasDetectedTools = false;
+                const batchResults: Array<{ name: string; content: string }> = [];
+
+                callbacks.onModelRequestStart?.();
+                try {
+                    for await (const chunk of this.getProvider().complete(
+                        messages,
+                        system,
+                        {
+                            ...this.options.getCallOptions?.(),
+                            signal: callbacks.signal,
+                        },
+                    )) {
+                        throwIfAborted();
+                        assistantText += chunk;
+
+                        const completedTools = toolParser.feed(chunk);
+                        if (completedTools.length > 0) {
+                            hasDetectedTools = true;
+                            for (const toolEvent of completedTools) {
+                                if (toolEvent.preText.length > 0) {
+                                    callbacks.onAssistantChunk?.(toolEvent.preText);
+                                }
+                                throwIfAborted();
+                                toolCallCount += 1;
+                                const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
+                                batchResults.push({
+                                    name: toolEvent.envelope.tool,
+                                    content: buildToolResultPayload(toolEvent.envelope.tool, result),
+                                });
                             }
-                            throwIfAborted();
-                            toolCallCount += 1;
-                            const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
-                            batchResults.push({
-                                name: toolEvent.envelope.tool,
-                                content: buildToolResultPayload(toolEvent.envelope.tool, result),
-                            });
                         }
                     }
-                }
 
-                const finalTools = toolParser.finalize();
-                for (const toolEvent of finalTools) {
-                    if (toolEvent.preText.length > 0) {
-                        callbacks.onAssistantChunk?.(toolEvent.preText);
+                    const finalTools = toolParser.finalize();
+                    for (const toolEvent of finalTools) {
+                        if (toolEvent.preText.length > 0) {
+                            callbacks.onAssistantChunk?.(toolEvent.preText);
+                        }
+                        throwIfAborted();
+                        toolCallCount += 1;
+                        const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
+                        batchResults.push({
+                            name: toolEvent.envelope.tool,
+                            content: buildToolResultPayload(toolEvent.envelope.tool, result),
+                        });
                     }
-                    throwIfAborted();
-                    toolCallCount += 1;
-                    const result = await executeTool(this.toolExecutor, toolEvent.envelope, callbacks);
-                    batchResults.push({
-                        name: toolEvent.envelope.tool,
-                        content: buildToolResultPayload(toolEvent.envelope.tool, result),
-                    });
-                }
 
-                for (const warning of toolParser.getWarnings()) {
-                    callbacks.onToolParseError?.(warning.content);
-                }
-
-                if (!hasDetectedTools && finalTools.length === 0) {
-                    if (assistantText.length > 0) {
-                        callbacks.onAssistantChunk?.(assistantText);
+                    for (const warning of toolParser.getWarnings()) {
+                        callbacks.onToolParseError?.(warning.content);
                     }
+
+                    if (!hasDetectedTools && finalTools.length === 0) {
+                        if (assistantText.length > 0) {
+                            callbacks.onAssistantChunk?.(assistantText);
+                        }
+                        this.contextManager.addAssistant(assistantText);
+                        lastAssistantText = assistantText;
+                        break outerLoop;
+                    }
+
                     this.contextManager.addAssistant(assistantText);
-                    lastAssistantText = assistantText;
-                    break;
+                    for (const r of batchResults) {
+                        this.contextManager.addTool(r.name, r.content);
+                    }
+                    break retryLoop;
+                } catch (error) {
+                    if (isRateLimitError(error) && retries < 5) {
+                        retries += 1;
+                        rateLimitDelayMs = rateLimitDelayMs > 0
+                            ? Math.min(rateLimitDelayMs * 2, 30_000)
+                            : 2_000;
+                        callbacks.onRateLimitRetry?.(rateLimitDelayMs);
+                        continue retryLoop;
+                    }
+                    throw error;
+                } finally {
+                    callbacks.onModelRequestDone?.();
                 }
-
-                this.contextManager.addAssistant(assistantText);
-                for (const r of batchResults) {
-                    this.contextManager.addTool(r.name, r.content);
-                }
-
-            } finally {
-                callbacks.onModelRequestDone?.();
             }
         }
 

@@ -22,6 +22,14 @@ function isRetryable(error: unknown, retryableErrors: string[]): boolean
     return retryableErrors.some((code) => msg.includes(code));
 }
 
+export function isRateLimitError(error: unknown): boolean
+{
+    if (!(error instanceof Error)) return false;
+    if ((error as { status?: number }).status === 429) return true;
+    const msg = error.message.toLowerCase();
+    return msg.includes("rate limit") || msg.includes("429");
+}
+
 function delay(ms: number): Promise<void>
 {
     return new Promise((resolve) => setTimeout(resolve, ms));

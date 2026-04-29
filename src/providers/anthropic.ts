@@ -2,12 +2,15 @@ import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo, P
 
 export class AnthropicProvider implements ILLMProvider
 {
-    readonly info: ProviderInfo = { id: "claude", label: "Claude (Anthropic)" };
+    readonly info: ProviderInfo;
 
     constructor(
         private readonly apiKey: string,
         private readonly model: string,
-    ) {}
+    )
+    {
+        this.info = { id: "claude", label: "Claude (Anthropic)", model };
+    }
 
     static fromConfig(config: Extract<ProviderConfig, { id: "claude" }>): AnthropicProvider
     {

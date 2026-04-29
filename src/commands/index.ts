@@ -27,7 +27,8 @@ import { createStatsCommand } from "./defs/stats";
 import { createSwitchCommand } from "./defs/switch";
 import { createThemeCommand } from "./defs/theme";
 import { createToolsCommand } from "./defs/tools";
-import { createRoleCommand } from "./defs/role"
+import { createRoleCommand } from "./defs/role";
+import { createRateCommand } from "./defs/rate";
 import { createBackCommand } from "./defs/back";
 import { createResetCommand, createRstCommand, createNewCommand } from "./defs/reset";
 
@@ -77,6 +78,7 @@ export function createCommandHandlers(
     registerCommand(createAuthCommand(context));
     registerCommand(createRoleCommand(context));
     registerCommand(createBackCommand(context));
+    registerCommand(createRateCommand(context));
     registerCommand({
         name: "/home",
         description: "Вернуться на главный экран (прерывает текущую операцию)",

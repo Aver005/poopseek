@@ -266,6 +266,7 @@ export async function runCli(): Promise<void>
 
     const agentLoop = new StreamingAgentLoop(() => providerStore.getProvider(), contextManager, toolExecutor, {
         getCallOptions,
+        getRequestDelay: () => callOptionsStore.getRequestDelayMs(),
     });
 
     reportProgress?.(100);
@@ -284,7 +285,8 @@ export async function runCli(): Promise<void>
         const p = providerStore.getProvider();
         const modelVariant = sessionStore.getModelVariant();
         const isDeepseekWeb = p.info.id === "deepseek-web";
-        const label = isDeepseekWeb ? `${p.info.label} · ${modelVariant}` : p.info.label;
+        const displayModel = isDeepseekWeb ? modelVariant : p.info.model;
+        const label = displayModel ? `${p.info.label} · ${displayModel}` : p.info.label;
         const parts: string[] = [colors.magenta(label)];
         if (isRoleCreationActiveRef.current)
         {
@@ -294,6 +296,8 @@ export async function runCli(): Promise<void>
         parts.push(colors.dim(`${contextManager.getMessageCount()} msg`));
         if (callOptionsStore.getSearchEnabled()) parts.push(colors.green("web"));
         if (callOptionsStore.getThinkingEnabled()) parts.push(colors.cyan("think"));
+        const rateDelayMs = callOptionsStore.getRequestDelayMs();
+        if (rateDelayMs > 0) parts.push(colors.yellow(`rate:${rateDelayMs}ms`));
         const activeSkillsCount = skillManager.getActiveNames().length;
         if (activeSkillsCount > 0) parts.push(colors.yellow(`${activeSkillsCount} skills`));
         const activeRoleName = callOptionsStore.getActiveRoleName();

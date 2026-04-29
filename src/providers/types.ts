@@ -10,6 +10,7 @@ export interface ProviderInfo
 {
     id: string;
     label: string;
+    model?: string;
 }
 
 export interface ProviderMessage

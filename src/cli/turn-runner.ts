@@ -172,9 +172,20 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
                         const preview = content.slice(0, 300);
                         output.write(`${colors.dim(preview)}\n\n`);
                     },
+                    onRateLimitRetry: (delayMs) =>
+                    {
+                        generationIndicator.stop();
+                        output.write(`\n${colors.yellow(`[rate limit] повтор через ${Math.round(delayMs / 1000)}с...`)}\n`);
+                    },
                 });
                 await saveCurrentLocalSession();
                 onTurnComplete?.();
+            }
+            catch (error)
+            {
+                generationIndicator.stop();
+                const msg = error instanceof Error ? error.message : String(error);
+                output.write(`\n${colors.red(`Ошибка: ${msg}`)}\n`);
             }
             finally
             {

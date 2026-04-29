@@ -221,6 +221,8 @@ export function buildCommandHandlers(
         setSearchEnabled: (enabled) => callOptionsStore.setSearchEnabled(enabled),
         getThinkingEnabled: () => callOptionsStore.getThinkingEnabled(),
         setThinkingEnabled: (enabled) => callOptionsStore.setThinkingEnabled(enabled),
+        getRateDelay: () => callOptionsStore.getRequestDelayMs(),
+        setRateDelay: (ms) => callOptionsStore.setRequestDelayMs(ms),
 
         runSidechat: deps.runSidechat,
         confirm: deps.confirm,

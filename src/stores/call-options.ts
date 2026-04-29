@@ -5,6 +5,8 @@ export type CallOptionsStore = {
     setThinkingEnabled(enabled: boolean): void;
     getActiveRoleName(): string | null;
     setActiveRoleName(name: string | null): void;
+    getRequestDelayMs(): number;
+    setRequestDelayMs(ms: number): void;
 };
 
 export function createCallOptionsStore(): CallOptionsStore
@@ -12,6 +14,7 @@ export function createCallOptionsStore(): CallOptionsStore
     let searchEnabled = false;
     let thinkingEnabled = false;
     let activeRoleName: string | null = null;
+    let requestDelayMs = 0;
     return {
         getSearchEnabled: () => searchEnabled,
         setSearchEnabled: (enabled) => { searchEnabled = enabled; },
@@ -19,5 +22,7 @@ export function createCallOptionsStore(): CallOptionsStore
         setThinkingEnabled: (enabled) => { thinkingEnabled = enabled; },
         getActiveRoleName: () => activeRoleName,
         setActiveRoleName: (name) => { activeRoleName = name; },
+        getRequestDelayMs: () => requestDelayMs,
+        setRequestDelayMs: (ms) => { requestDelayMs = ms; },
     };
 }

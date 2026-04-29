@@ -2,12 +2,15 @@ import type { ILLMProvider, ProviderCallOptions, ProviderConfig, ProviderInfo, P
 
 export class GeminiProvider implements ILLMProvider
 {
-    readonly info: ProviderInfo = { id: "gemini", label: "Gemini (Google)" };
+    readonly info: ProviderInfo;
 
     constructor(
         private readonly apiKey: string,
         private readonly model: string,
-    ) {}
+    )
+    {
+        this.info = { id: "gemini", label: "Gemini (Google)", model };
+    }
 
     static fromConfig(config: Extract<ProviderConfig, { id: "gemini" }>): GeminiProvider
     {
