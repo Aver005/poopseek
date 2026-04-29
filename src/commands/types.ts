@@ -83,6 +83,8 @@ export interface CommandsContext
     setRenderEnabled?: (enabled: boolean) => void;
     getRateDelay?: () => number;
     setRateDelay?: (ms: number) => void;
+    getCurrentSessionSnapshot?: () => { messages: import("@/agent/types").AgentMessage[]; sessionId: string; createdAt: string };
+    loadSessionById?: (id: string) => Promise<import("@/cli/session-store").StoredSessionSnapshot | null>;
 }
 
 export interface CommandModule

@@ -408,6 +408,17 @@ export function buildCommandHandlers(
         cancelActiveOperation: deps.cancelActiveOperation,
         setRenderEnabled: rl.setRenderEnabled ? (enabled) => rl.setRenderEnabled!(enabled) : undefined,
 
+        getCurrentSessionSnapshot: () =>
+        {
+            const session = sessionStore.getSession();
+            return {
+                messages: deps.contextManager.getMessages(),
+                sessionId: session.id,
+                createdAt: session.createdAt,
+            };
+        },
+        loadSessionById: (id) => loadStoredSession(sessionStore.getSessionsDir(), id),
+
         saveUserConfig: async (update) =>
         {
             if (update.userName !== undefined) configStore.setUserName(update.userName ?? null);
