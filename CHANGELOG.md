@@ -14,7 +14,12 @@ All notable changes to PoopSeek are documented here.
 - **Session reset** — added `markSessionReset()` to `ContextManager`; resets the token counter and schedules a bootstrap message on the next turn.
 - **Batched tool calls** — the agent loop now parses and dispatches multiple tool calls in a single model response step, significantly reducing round-trips for multi-step operations. `maxStepsPerTurn` raised from 10 → 256.
 - **`maxToolsPerStep` limit** — new option on `AgentLoopOptions` caps parallel tool dispatch per step (default 10; refactor mode uses 20) to prevent runaway tool fan-out.
-- **JSON tool-call format** — `parseMessage()` in `tool-call-parser.ts` parses JSON-encoded tool calls from the model, with fenced and bare-object extraction plus light repair for minor JSON formatting issues.
+- **Tool call format migration** — switched primary tool call format from YAML to JSON. `parseMessage()` in `tool-call-parser.ts` now handles JSON parsing with fenced and bare-object extraction, plus light repair for minor formatting issues. Legacy YAML block support is retained for backward compatibility.
+- **Streaming tool parser** — added `streaming-tool-parser.ts` with incremental fence handling and simplified buffer tracking, enabling real-time tool call detection during model response streaming.
+- **Tool parse error handling** — enhanced parser with error handling and JSON repair logic to recover from malformed model outputs.
+- **Simplified tool execution** — removed tool flow actions (`try-again`, etc.) in favor of simplified tool execution flow with direct retry support.
+- **Message-based provider API** — refactored provider abstraction (`ILLMProvider`) to use message-based API instead of prompt-based, improving compatibility with OpenAI, Anthropic, Gemini, and other standard APIs.
+- **Abortable operations** — history fetching and session loading now support `Ctrl+C` interrupt, allowing users to cancel long-running operations.
 - **Reasoning commentary** — the loop filters and surfaces DeepSeek reasoning tokens as inline commentary before tool results, making step-by-step thinking visible in the terminal.
 - **Retry on `try-again`** — `executeWithRetry()` added to the loop; tools that return a `try-again` flow action are automatically retried once before propagating failure.
 
@@ -50,6 +55,13 @@ All notable changes to PoopSeek are documented here.
 - **`skill.read` tool** — lets the agent read the full body of any skill by name; result injected as tool output so the model can reference skill contents mid-turn.
 - **Command history** — terminal input now maintains a per-session history buffer; Up/Down arrows navigate previous commands.
 
+### Role System
+
+- **`role.save` tool** — saves custom agent roles to `~/.poopseek/roles/<name>.role.md` with optional overwrite protection.
+- **Role creation flow** — interactive role creation via `src/roles/creation.ts` with improved user prompts and validation.
+- **Role management** — support for role creation, activation, and abort (Ctrl+C) during the creation process.
+- **`/role` command** — interface for managing roles (set, list, delete).
+
 ### MCP Integration
 
 - **Connection caching and timeout** — `MCPManager` now caches connection status to avoid repeated failed attempts; implements connection timeout to prevent hanging on unresponsive servers; persistent cache stored in platform-specific config directories.
@@ -69,6 +81,10 @@ All notable changes to PoopSeek are documented here.
 - **`/think`** — toggles DeepSeek reasoning mode (`thinking_enabled`) on/off for the current session.
 - **`/web`** — toggles web search (`search_enabled`) on/off for the current session.
 - **`/logout`** — revokes the stored API token, then prompts for a new one immediately (relogin flow). Token validation added to `DeepseekClient`.
+- **`/home`** — interrupts ongoing operations (agent loops, tool executions) and returns the user to the main chat screen; useful for cancelling long-running tasks.
+- **`/export`** — exports the current session dialogue to a Markdown file for sharing or archival purposes.
+- **`/rate`** — configures request delay and rate limit handling for LLM providers; helps avoid API throttling with configurable cooldown periods.
+- **Dynamic model selection** — `/model` command now supports dynamic model listing and selection for all providers (DeepSeek, OpenAI, Anthropic, Gemini, etc.), replacing static model lists with live API queries.
 - **`/review`** — AI-powered code review command with configurable scope:
   - `all` — `git diff HEAD` (staged + unstaged)
   - `staged` — `git diff --staged`
@@ -94,13 +110,20 @@ All notable changes to PoopSeek are documented here.
 - **Onboarding flow** — first-time users now go through a setup wizard to set a preferred name and configure LLM providers; runtime config extended with `userName`, `configuredProviders`, and `onboardingDone` flag.
 - **`$OS` variable** — new variable resolver that exposes `windows`, `linux`, or `macos`; used in prompts to gate platform-specific tool suggestions.
 - **Auth/input/sidechat modules** — `run-cli.ts` refactored: authentication flow extracted to `src/cli/auth-flow.ts`, input queuing to `src/cli/input-queue.ts`, sidechat handling to `src/cli/sidechat.ts`.
+- **Main loop extraction** — main CLI loop, submit handlers, session resolution, and command handlers extracted into separate modules (`src/cli/turn-runner.ts`, `src/cli/submit-handler.ts`, `src/commands/handlers.ts`) for better maintainability.
+- **State management stores** — extracted dedicated state management stores (`src/stores/call-options.ts` and others) to centralize CLI state handling.
+- **Backslash-enter newline** — users can now insert literal newlines in the input box by pressing `\` followed by `Enter`, enabling multi-line input without immediate submission.
+- **Strict TypeScript** — enabled strict TypeScript compiler checks across the project; added testing infrastructure for improved code quality.
 - **Atomic file writes** — shared `writeTextFile()` utility (`src/tools/utils/write-text-file.ts`) used by `file.write`, `file.edit`, and `git.edit` to ensure crash-safe output via temp-file + rename.
 
 ### Fixes
 
 - **Input queue logic** — fixed handling of empty submissions by moving early return after waiter resolution.
 - **Provider configuration** — sanitized existing providers in auth command, preserving skipped providers in selection list; improved provider switching to reuse existing configs and auto-save new ones.
-- **Auth provider handling** — enhanced provider configuration to prevent loss of configured providers when skipping reconfiguration. (`src/tools/utils/write-text-file.ts`) used by `file.write`, `file.edit`, and `git.edit` to ensure crash-safe output via temp-file + rename.
+- **Auth provider handling** — enhanced provider configuration to prevent loss of configured providers when skipping reconfiguration.
+- **Tool parse error handling** — added robust error handling and JSON repair in tool-call parsing to gracefully recover from malformed model outputs.
+- **Abortable history fetch** — `/load` command now supports `Ctrl+C` interrupt during history fetching, allowing users to cancel long-running operations.
+- **User input validation** — provider commands now validate user input and handle missing configuration gracefully.
 
 ### Dependencies
 
@@ -112,8 +135,11 @@ All notable changes to PoopSeek are documented here.
 - PowerShell removed from the base tools list; replaced by cross-platform alternatives.
 - `git` tool description updated for cross-platform compatibility.
 - `assets/prompts/review.prompt.md` and `assets/prompts/refactor.prompt.md` added (135 and 325 lines respectively).
-- `docs/MCP-architecture.md` — comprehensive MCP architecture reference (464 lines).
-- `docs/what-is-skill.md` — skill system specification and discovery algorithm (195 lines).
+- **Documentation restructure** — documentation reorganized into `docs/articles/` and `docs/releases/` subdirectories for better navigation. Removed outdated code review report.
+- **Tool parsing investigation** — added `docs/TODO.md` and tool parsing bug investigation document.
+- **Habr article** — added first part of Habr article with illustrations.
+- **LICENSE** — added MIT License file to the project.
+- **Build scripts** — moved macOS build script from `docker/` to `scripts/` directory; added `cloc` script for code analysis.
 - `CLAUDE.md` updated with MCP configuration reference and path alias table.
 
 ---
