@@ -2,7 +2,7 @@
   "name": "PoopSeek",
   "id": "com.poopseek.figma-plugin",
   "api": "1.0.0",
-  "main": "dist/code.js",
+  "main": "code.js",
   "ui": "ui.html",
   "editorType": ["figma"],
   "networkAccess": {

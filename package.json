@@ -5,16 +5,19 @@
   "private": true,
   "scripts": {
     "start": "bun run src/index.ts",
-    "copy:assets": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path 'build' | Out-Null; Copy-Item -Path 'assets' -Destination 'build' -Recurse -Force; New-Item -ItemType Directory -Force -Path 'build/docs' | Out-Null; Copy-Item -Path 'docs/tools' -Destination 'build/docs' -Recurse -Force\"",
-    "build": "bun build src/index.ts --target bun --outdir build && bun run copy:assets",
-    "build:exe": "bun run scripts/build-exe.ts",
-    "compile": "bun run build:exe",
     "check": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "cloc": "cloc --exclude-dir=\"node_modules,build,.git\" .",
-    "compile:figma": "cd plugins/figma && bun i && bun run build"
+
+    "build:windows": "bun run scripts/build-exe.ts",
+    "build:macos": "bash scripts/build-macos.sh",
+    "build:plugin": "bun run plugins/figma/build.ts",
+    "build:all": "bun run build:windows && bun run build:plugin",
+
+    "compile": "bun run build:windows",
+    "compile:mac": "bun run build:macos"
   },
   "devDependencies": {
     "@types/bun": "latest",
