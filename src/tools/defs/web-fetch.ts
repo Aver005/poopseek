@@ -39,10 +39,22 @@ export const handler: ToolHandler = async (args) =>
     if (!url)
         return { ok: false, output: "Обязательный аргумент: url", error: "Missing url" };
 
+    try
+    {
+        const parsed = new URL(url);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+            return { ok: false, output: `Протокол не поддерживается: ${parsed.protocol}`, error: "Unsupported protocol" };
+    }
+    catch
+    {
+        return { ok: false, output: `Некорректный URL: ${url}`, error: "Invalid URL" };
+    }
+
     let response: Response;
     try
     {
         response = await fetch(url, {
+            signal: AbortSignal.timeout(10_000),
             headers: {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9",

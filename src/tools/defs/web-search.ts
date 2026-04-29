@@ -27,8 +27,8 @@ function parseResults(html: string, max: number): SearchResult[]
 {
     const results: SearchResult[] = [];
 
-    const titleRe = /<a\s+rel="nofollow"\s+class="result__a"\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-    const snippetRe = /<div\s+class="result__snippet"[^>]*>([\s\S]*?)<\/div>/g;
+    const titleRe = /<a\s[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    const snippetRe = /<a\s[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
 
     const titles: Array<{ href: string; text: string }> = [];
     const snippets: string[] = [];
@@ -69,6 +69,7 @@ export const handler: ToolHandler = async (args) =>
     try
     {
         response = await fetch(url, {
+            signal: AbortSignal.timeout(10_000),
             headers: {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Accept": "text/html",
