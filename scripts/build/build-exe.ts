@@ -23,7 +23,7 @@ async function copyDirectory(src: string, dest: string): Promise<void>
 
 async function main(): Promise<void>
 {
-    const rootPath = path.resolve(import.meta.dir, "..");
+    const rootPath = path.resolve(import.meta.dir, "..", "..");
     const outDir = path.join(rootPath, "build", "windows");
     const exePath = path.join(outDir, "poopseek.exe");
     const version = getVersionArg(Bun.argv.slice(2));
