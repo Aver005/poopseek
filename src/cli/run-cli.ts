@@ -295,6 +295,9 @@ export async function runCli(): Promise<void>
         toolsPrompt: prompts.toolsPrompt,
         figmaPrompt: prompts.figmaPrompt,
         variableProcessor,
+        getCallOptions,
+        getRequestDelay: () => callOptionsStore.getRequestDelayMs(),
+        getWebToolsDoc: () => callOptionsStore.getLocalSearchEnabled() ? WEB_TOOLS_PROMPT : "",
     });
 
     const agentLoop = new StreamingAgentLoop(() => providerStore.getProvider(), contextManager, toolExecutor, {

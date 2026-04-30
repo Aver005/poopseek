@@ -195,13 +195,19 @@ export default class ContextManager
 
     private buildSystemSnapshot(): string
     {
-        const blocks = [
-            "### SYSTEM SNAPSHOT",
-            this.basePrompt,
-            "",
-            "### TOOLS SNAPSHOT",
-            this.toolsPrompt,
-        ];
+        const hasFigmaOverride = this.figmaContext.trim().length > 0;
+        const blocks = hasFigmaOverride
+            ? [
+                "### FIGMA SYSTEM SNAPSHOT",
+                this.figmaContext.trim(),
+            ]
+            : [
+                "### SYSTEM SNAPSHOT",
+                this.basePrompt,
+                "",
+                "### TOOLS SNAPSHOT",
+                this.toolsPrompt,
+            ];
 
         if (this.availableSkillsHint.trim().length > 0)
         {
@@ -231,11 +237,6 @@ export default class ContextManager
         if (this.activeRoleContent.trim().length > 0)
         {
             blocks.push("", "### ACTIVE ROLE", this.activeRoleContent.trim());
-        }
-
-        if (this.figmaContext.trim().length > 0)
-        {
-            blocks.push("", "### FIGMA DESIGN MODE", this.figmaContext.trim());
         }
 
         if (this.poetModeContent.trim().length > 0)

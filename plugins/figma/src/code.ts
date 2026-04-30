@@ -150,6 +150,8 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const weightMap: Record<string, string> = {
                         Bold: "Bold", SemiBold: "Semi Bold", Medium: "Medium",
                         Regular: "Regular", Light: "Light",
+                        "700": "Bold", "600": "Semi Bold", "500": "Medium",
+                        "400": "Regular", "300": "Light",
                     };
                     const style = weightMap[String(op.fontWeight ?? "Regular")] ?? "Regular";
                     await figma.loadFontAsync({ family: "Inter", style });
@@ -387,8 +389,12 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     if (node && node.type === "FRAME")
                     {
                         const frame = node as FrameNode;
-                        if (op.direction) frame.layoutMode = String(op.direction) as "HORIZONTAL" | "VERTICAL" | "NONE";
-                        if (op.hugContent) frame.primaryAxisSizingMode = "AUTO";
+                        const direction = op.direction
+                            ? String(op.direction) as "HORIZONTAL" | "VERTICAL" | "NONE"
+                            : frame.layoutMode;
+                        if (op.direction) frame.layoutMode = direction;
+                        if (op.hugContent || op.hugMain) frame.primaryAxisSizingMode = "AUTO";
+                        if (op.hugCross) frame.counterAxisSizingMode = "AUTO";
                         if (op.gap !== undefined) frame.itemSpacing = Number(op.gap);
                         if (op.paddingH !== undefined)
                         {

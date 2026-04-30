@@ -3,8 +3,9 @@ type BunServer = Server<unknown>;
 import ContextManager from "@/agent/context-manager";
 import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
-import type { ILLMProvider } from "@/providers";
+import type { ILLMProvider, ProviderCallOptions } from "@/providers";
 import { figmaToolsRegistry, FIGMA_TOOLS_DOC } from "@/tools/defs/figma";
+import { webToolNames, webToolsRegistry } from "@/tools/web-tools";
 import type { VariableProcessor } from "@/variables";
 import type { FigmaChatRequest, FigmaChatResponse, FigmaOp, FigmaSession } from "./types";
 
@@ -18,6 +19,9 @@ export interface FigmaServerDeps
     toolsPrompt: string;
     figmaPrompt: string;
     variableProcessor: VariableProcessor;
+    getCallOptions?: () => ProviderCallOptions;
+    getRequestDelay?: () => number;
+    getWebToolsDoc?: () => string;
 }
 
 
@@ -39,8 +43,12 @@ export class FigmaServerManager
             process.cwd(),
             undefined,
             undefined,
-            (name) => figmaToolsRegistry[name],
-            () => Object.keys(figmaToolsRegistry),
+            (name) => figmaToolsRegistry[name]
+                ?? (this.deps.getWebToolsDoc?.().trim() ? webToolsRegistry[name] : undefined),
+            () => [
+                ...Object.keys(figmaToolsRegistry),
+                ...(this.deps.getWebToolsDoc?.().trim() ? webToolNames : []),
+            ],
         );
     }
 
@@ -150,6 +158,7 @@ export class FigmaServerManager
 
         const session = this.getOrCreateSession(body.sessionId);
         session.lastActivityAt = Date.now();
+        this.syncSessionRuntimeState(session);
 
         const textChunks: string[] = [];
 
@@ -194,20 +203,24 @@ export class FigmaServerManager
 
         const id = sessionId ?? crypto.randomUUID();
 
-        const basePrompt = [this.deps.basePrompt, "", this.deps.figmaPrompt, "", FIGMA_TOOLS_DOC].join("\n");
-
         const contextManager = new ContextManager(
-            basePrompt,
+            this.deps.basePrompt,
             this.deps.toolsPrompt,
             { maxMessages: 40 },
             this.deps.variableProcessor,
         );
+        contextManager.setFigmaContext(this.buildFigmaSystemPrompt());
+        contextManager.setWebToolsDoc(this.deps.getWebToolsDoc?.() ?? "");
 
         const agentLoop = new StreamingAgentLoop(
             () => this.deps.getProvider(),
             contextManager,
             this.toolExecutor,
-            { maxStepsPerTurn: 64 },
+            {
+                maxStepsPerTurn: 64,
+                getCallOptions: () => this.deps.getCallOptions?.() ?? {},
+                getRequestDelay: () => this.deps.getRequestDelay?.() ?? 0,
+            },
         );
 
         const session: FigmaSession = {
@@ -220,6 +233,17 @@ export class FigmaServerManager
 
         this.sessions.set(id, session);
         return session;
+    }
+
+    private syncSessionRuntimeState(session: FigmaSession): void
+    {
+        session.contextManager.setFigmaContext(this.buildFigmaSystemPrompt());
+        session.contextManager.setWebToolsDoc(this.deps.getWebToolsDoc?.() ?? "");
+    }
+
+    private buildFigmaSystemPrompt(): string
+    {
+        return [this.deps.figmaPrompt, "", FIGMA_TOOLS_DOC].join("\n");
     }
 
     private cleanupSessions(): void

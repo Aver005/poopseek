@@ -24,7 +24,14 @@ const TYPO: Record<string, TypoSpec> = {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-interface Frame { id: string; width: number; height: number; isAutoLayout?: boolean }
+interface Frame
+{
+    id: string;
+    width: number;
+    height: number;
+    isAutoLayout?: boolean;
+    layout?: "HORIZONTAL" | "VERTICAL";
+}
 
 interface State
 {
@@ -59,6 +66,22 @@ function frameId(s: State, p: P): { frameId?: string }
 {
     const f = top(s);
     return f && !p.detach ? { frameId: f.id } : {};
+}
+
+function inferredWidth(p: P, par?: Frame): number | undefined
+{
+    const explicit = num(p.w ?? p.width);
+    if (explicit !== undefined) return explicit;
+    if (!par) return 390;
+
+    const insetX = num(p.x);
+    if (!par.isAutoLayout && insetX !== undefined)
+        return Math.max(par.width - insetX * 2, 1);
+
+    if (!par.isAutoLayout || par.layout === "VERTICAL")
+        return par.width;
+
+    return undefined;
 }
 
 // ── Style applicators ─────────────────────────────────────────────────────────
@@ -121,19 +144,21 @@ function Frame_(node: JsxNode, s: State, layout?: "HORIZONTAL" | "VERTICAL"): vo
     const p = node.props;
     const par = top(s);
     const id = str(p.id) ?? uid(s, layout ? (layout === "VERTICAL" ? "vstk" : "hstk") : "frm");
-    const fw = w(p, par?.width ?? 390);
-    // Don't use h() with undefined — JS default params make h(p, undefined) === h(p) === 100
-    const fh = (p.h !== undefined || p.height !== undefined)
-        ? num(p.h ?? p.height)
-        : layout ? undefined : 100;
+    const explicitW = num(p.w ?? p.width);
+    const explicitH = num(p.h ?? p.height);
+    const fillParent = par?.layout === "HORIZONTAL" && explicitW === undefined && p.x === undefined;
+    const fw = fillParent ? undefined : inferredWidth(p, par);
+    const fh = explicitH ?? (layout ? undefined : 100);
+    const autoWidth = fw === undefined;
+    const autoHeight = fh === undefined;
     const cr = num(p.radius ?? p.cornerRadius);
 
-    const fillParent = par?.isAutoLayout && p.w === undefined && p.width === undefined && !p.x;
     push({
         type: "create_frame", id,
         name: str(p.name) ?? node.type,
         ...frameId(s, p),
-        width: fw, ...(fh !== undefined ? { height: fh } : {}),
+        ...(fw !== undefined ? { width: fw } : {}),
+        ...(fh !== undefined ? { height: fh } : {}),
         ...pos(p),
         ...(!p.gradient && p.fill ? { fill: str(p.fill) } : {}),
         ...(cr !== undefined ? { cornerRadius: cr } : {}),
@@ -149,7 +174,15 @@ function Frame_(node: JsxNode, s: State, layout?: "HORIZONTAL" | "VERTICAL"): vo
         push({
             type: "set_auto_layout", nodeId: id,
             direction: layout,
-            hugContent: fh === undefined,
+            ...(layout === "VERTICAL"
+                ? {
+                    ...(autoHeight ? { hugMain: true } : {}),
+                    ...(autoWidth && !fillParent ? { hugCross: true } : {}),
+                }
+                : {
+                    ...(autoWidth && !fillParent ? { hugMain: true } : {}),
+                    ...(autoHeight ? { hugCross: true } : {}),
+                }),
             ...(p.gap       !== undefined ? { gap:      num(p.gap) } : {}),
             ...(p.padX ?? p.px ? { paddingH: num(p.padX ?? p.px) } : {}),
             ...(p.padY ?? p.py ? { paddingV: num(p.padY ?? p.py) } : {}),
@@ -163,7 +196,7 @@ function Frame_(node: JsxNode, s: State, layout?: "HORIZONTAL" | "VERTICAL"): vo
     shadow(s, id, p.shadow);
     opacity(s, id, p.opacity);
 
-    s.stack.push({ id, width: fw, height: fh ?? 200, isAutoLayout: !!layout });
+    s.stack.push({ id, width: fw ?? par?.width ?? 200, height: fh ?? par?.height ?? 200, isAutoLayout: !!layout, layout });
     kids(node, s);
     s.stack.pop();
 }
@@ -175,25 +208,29 @@ function Card(node: JsxNode, s: State): void
     const p = node.props;
     const par = top(s);
     const id = str(p.id) ?? uid(s, "card");
-    const fw = w(p, par ? par.width - 32 : 358);
+    const explicitW = num(p.w ?? p.width);
     const fh = num(p.h ?? p.height);
+    const fillParent = par?.layout === "HORIZONTAL" && explicitW === undefined && p.x === undefined;
+    const fw = fillParent ? undefined : (explicitW ?? inferredWidth(p, par) ?? 358);
     const hasKids = node.children.some((c) => typeof c === "object");
 
     push({
         type: "create_frame", id,
         name: str(p.name) ?? "Карточка",
         ...frameId(s, p),
-        width: fw, ...(fh !== undefined ? { height: fh } : {}),
+        ...(fw !== undefined ? { width: fw } : {}),
+        ...(fh !== undefined ? { height: fh } : {}),
         ...pos(p),
         fill: str(p.fill) ?? "#FFFFFF",
         cornerRadius: num(p.radius) ?? 16,
+        ...(fillParent ? { fillParent: true } : {}),
     } as FigmaOp, s);
 
     if (hasKids)
         push({
             type: "set_auto_layout", nodeId: id,
             direction: "VERTICAL",
-            hugContent: fh === undefined,
+            ...(fh === undefined ? { hugMain: true } : {}),
             gap: num(p.gap) ?? 12,
             paddingH: num(p.padX ?? p.px) ?? 16,
             paddingV: num(p.padY ?? p.py) ?? 16,
@@ -204,7 +241,7 @@ function Card(node: JsxNode, s: State): void
     shadow(s, id, p.shadow, "card");
     if (p.gradient) gradient(s, id, p.gradient);
 
-    s.stack.push({ id, width: fw, height: fh ?? 200 });
+    s.stack.push({ id, width: fw ?? par?.width ?? 358, height: fh ?? par?.height ?? 200, isAutoLayout: hasKids, layout: hasKids ? "VERTICAL" : undefined });
     kids(node, s);
     s.stack.pop();
 }
@@ -214,16 +251,24 @@ function Button(node: JsxNode, s: State): void
     const p = node.props;
     const par = top(s);
     const variant = str(p.variant) ?? "primary";
+    const size = str(p.size)?.toLowerCase() ?? "medium";
     const id = str(p.id) ?? uid(s, "btn");
     const label = str(p.text) ?? (text(node) || "Button");
     const useFullWidth = !!p.fullWidth;
-    const fw = useFullWidth && !par?.isAutoLayout ? (par?.width ?? 358) : num(p.w ?? p.width);
-    const fh = num(p.h ?? p.height) ?? 52;
+    const explicitW = num(p.w ?? p.width);
+    const sizePresets: Record<string, { height: number; paddingH: number; paddingV: number; fontSize: number }> = {
+        small: { height: 40, paddingH: 16, paddingV: 10, fontSize: 14 },
+        medium: { height: 52, paddingH: 24, paddingV: 16, fontSize: 16 },
+        large: { height: 56, paddingH: 28, paddingV: 18, fontSize: 16 },
+    };
+    const preset = sizePresets[size] ?? sizePresets.medium;
+    const fw = useFullWidth && !par?.isAutoLayout ? (par?.width ?? 358) : explicitW;
+    const fh = num(p.h ?? p.height) ?? preset?.height ?? 52;
 
     const fills: Record<string, string> = { primary: "#18A0FB", secondary: "#F5F5F5", ghost: "transparent" };
     const tints: Record<string, string> = { primary: "#FFFFFF", secondary: "#1A1A1A", ghost: "#18A0FB" };
     const fillColor = str(p.fill) ?? fills[variant] ?? "#18A0FB";
-    const textColor = str(p.color) ?? tints[variant] ?? "#FFFFFF";
+    const textColor = str(p.textColor ?? p.color) ?? tints[variant] ?? "#FFFFFF";
 
     push({
         type: "create_frame", id,
@@ -233,14 +278,15 @@ function Button(node: JsxNode, s: State): void
         height: fh, ...pos(p),
         fill: fillColor,
         cornerRadius: num(p.radius) ?? 12,
-        ...(useFullWidth && par?.isAutoLayout ? { fillParent: true } : {}),
+        ...(useFullWidth && par?.layout === "VERTICAL" ? { fillParent: true } : {}),
     } as FigmaOp, s);
 
     push({
         type: "set_auto_layout", nodeId: id,
         direction: "HORIZONTAL", gap: 8,
-        paddingH: num(p.padX ?? p.px) ?? 24,
-        paddingV: num(p.padY ?? p.py) ?? 16,
+        ...(fw === undefined && !useFullWidth ? { hugMain: true } : {}),
+        paddingH: num(p.padX ?? p.px) ?? preset?.paddingH ?? 24,
+        paddingV: num(p.padY ?? p.py) ?? preset?.paddingV ?? 16,
         align: "CENTER", counterAlign: "CENTER",
     } as FigmaOp, s);
 
@@ -248,7 +294,7 @@ function Button(node: JsxNode, s: State): void
     if (p.gradient) gradient(s, id, p.gradient);
 
     const lid = uid(s, "btn_lbl");
-    push({ type: "create_text", id: lid, frameId: id, content: label, fontSize: 16, fontWeight: "Bold", color: textColor } as FigmaOp, s);
+    push({ type: "create_text", id: lid, frameId: id, content: label, fontSize: preset?.fontSize ?? 16, fontWeight: "Bold", color: textColor } as FigmaOp, s);
 }
 
 function NavBar(node: JsxNode, s: State): void
@@ -333,7 +379,7 @@ function Badge(node: JsxNode, s: State): void
     const p = node.props;
     const id = str(p.id) ?? uid(s, "bdg");
     const label = str(p.text) ?? (text(node) || "•");
-    const textColor = str(p.color) ?? "#FFFFFF";
+    const textColor = str(p.textColor ?? p.color) ?? "#FFFFFF";
 
     push({ type: "create_frame", id, name: "Badge", ...frameId(s, p), ...pos(p), fill: str(p.fill) ?? "#18A0FB", cornerRadius: num(p.radius) ?? 100 } as FigmaOp, s);
     push({ type: "set_auto_layout", nodeId: id, direction: "HORIZONTAL", hugContent: true, gap: 0, paddingH: 10, paddingV: 4, align: "CENTER", counterAlign: "CENTER" } as FigmaOp, s);
@@ -366,6 +412,7 @@ function Line_(node: JsxNode, s: State): void
 {
     const p = node.props;
     const par = top(s);
+    const orientation = str(p.orientation)?.toLowerCase();
     push({
         type: "create_line", name: str(p.name) ?? "Line",
         ...frameId(s, p),
@@ -373,7 +420,9 @@ function Line_(node: JsxNode, s: State): void
         length: num(p.length ?? p.w ?? p.width) ?? par?.width ?? 100,
         color: str(p.color) ?? "#E5E5E5",
         weight: num(p.weight) ?? 1,
-        ...(p.rotation !== undefined ? { rotation: num(p.rotation) } : {}),
+        ...((p.rotation !== undefined || orientation === "vertical")
+            ? { rotation: num(p.rotation) ?? 90 }
+            : {}),
     } as FigmaOp, s);
 }
 
@@ -386,7 +435,7 @@ function Text_(node: JsxNode, s: State, typoKey?: string): void
 
     const tw = num(p.w ?? p.width);
     const par = top(s);
-    const textFillParent = par?.isAutoLayout && tw === undefined && !p.x;
+    const textFillParent = par?.layout === "VERTICAL" && tw === undefined && p.x === undefined;
     push({
         type: "create_text", id,
         name: str(p.name) ?? (typoKey ?? "Text"),
