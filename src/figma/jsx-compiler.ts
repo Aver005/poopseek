@@ -1,30 +1,18 @@
-import type { FigmaOp } from "./types";
+import { resolveClassNameProps } from "./classname";
+import { createEnsureColorVariablesOp } from "./design-tokens";
+import { createEnsureThemeVariablesOp } from "./theme-state";
 import type { JsxNode } from "./jsx-parser";
+import type { FigmaOp } from "./types";
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
+interface TypoSpec
+{
+    fontSize: number;
+    fontWeight: string;
+    letterSpacing?: number;
+    lineHeight?: number;
+}
 
-const SHADOW_PRESETS: Record<string, Record<string, unknown>> = {
-    card:   { color: "#000000", x: 0, y: 2,  blur: 12, spread: 0, opacity: 0.08 },
-    modal:  { color: "#000000", x: 0, y: 8,  blur: 32, spread: 0, opacity: 0.12 },
-    button: { color: "#18A0FB", x: 0, y: 4,  blur: 12, spread: 0, opacity: 0.30 },
-};
-
-interface TypoSpec { fontSize: number; fontWeight: string; letterSpacing?: number; lineHeight?: number }
-const TYPO: Record<string, TypoSpec> = {
-    Hero:    { fontSize: 40, fontWeight: "Bold",     letterSpacing: -2 },
-    H1:      { fontSize: 28, fontWeight: "Bold",     letterSpacing: -1 },
-    H2:      { fontSize: 22, fontWeight: "SemiBold", letterSpacing: -0.5 },
-    H3:      { fontSize: 18, fontWeight: "SemiBold" },
-    Body:    { fontSize: 16, fontWeight: "Regular" },
-    BodySm:  { fontSize: 14, fontWeight: "Regular" },
-    Small:   { fontSize: 14, fontWeight: "Regular" },
-    Caption: { fontSize: 12, fontWeight: "Regular",  letterSpacing: 0.5 },
-    Label:   { fontSize: 12, fontWeight: "Medium" },
-};
-
-// ── State ─────────────────────────────────────────────────────────────────────
-
-interface Frame
+interface FrameContext
 {
     id: string;
     width: number;
@@ -36,473 +24,804 @@ interface Frame
 interface State
 {
     ops: FigmaOp[];
-    n: number;
-    stack: Frame[];
+    counter: number;
+    stack: FrameContext[];
 }
 
-function uid(s: State, pfx: string): string { return `${pfx}_${s.n++}`; }
-function top(s: State): Frame | undefined    { return s.stack.at(-1); }
-function push(op: FigmaOp, s: State): void  { s.ops.push(op); }
+type Props = Record<string, unknown>;
 
-// ── Prop helpers ──────────────────────────────────────────────────────────────
+const SHADOW_PRESETS: Record<string, Record<string, unknown>> = {
+    card: { color: "#000000", x: 0, y: 2, blur: 12, spread: 0, opacity: 0.08 },
+    modal: { color: "#000000", x: 0, y: 8, blur: 32, spread: 0, opacity: 0.12 },
+    button: { color: "#2563EB", x: 0, y: 4, blur: 12, spread: 0, opacity: 0.30 },
+};
 
-type P = Record<string, unknown>;
+const TYPO: Record<string, TypoSpec> = {
+    Hero: { fontSize: 40, fontWeight: "Bold", letterSpacing: -2, lineHeight: 44 },
+    H1: { fontSize: 28, fontWeight: "Bold", letterSpacing: -1, lineHeight: 32 },
+    H2: { fontSize: 22, fontWeight: "SemiBold", letterSpacing: -0.5, lineHeight: 28 },
+    H3: { fontSize: 18, fontWeight: "SemiBold", lineHeight: 24 },
+    Body: { fontSize: 16, fontWeight: "Regular", lineHeight: 24 },
+    BodySm: { fontSize: 14, fontWeight: "Regular", lineHeight: 20 },
+    Small: { fontSize: 14, fontWeight: "Regular", lineHeight: 20 },
+    Caption: { fontSize: 12, fontWeight: "Regular", letterSpacing: 0.5, lineHeight: 16 },
+    Label: { fontSize: 12, fontWeight: "Medium", lineHeight: 16 },
+};
 
-const str  = (v: unknown): string | undefined => v !== undefined ? String(v) : undefined;
-const num  = (v: unknown): number | undefined => { const n = Number(v); return (v !== undefined && !isNaN(n)) ? n : undefined; };
-const w    = (p: P, def = 100) => num(p.w ?? p.width)  ?? def;
-const h    = (p: P, def = 100) => num(p.h ?? p.height) ?? def;
-const text = (n: JsxNode)      => n.children.filter((c): c is string => typeof c === "string").join("").trim();
-
-function pos(p: P): { x?: number; y?: number }
+function uid(state: State, prefix: string): string
 {
-    const r: { x?: number; y?: number } = {};
-    if (p.x !== undefined) r.x = num(p.x);
-    if (p.y !== undefined) r.y = num(p.y);
-    return r;
+    return `${prefix}_${state.counter++}`;
 }
 
-function frameId(s: State, p: P): { frameId?: string }
+function top(state: State): FrameContext | undefined
 {
-    const f = top(s);
-    return f && !p.detach ? { frameId: f.id } : {};
+    return state.stack.at(-1);
 }
 
-function inferredWidth(p: P, par?: Frame): number | undefined
+function push(state: State, op: FigmaOp): void
 {
-    const explicit = num(p.w ?? p.width);
+    state.ops.push(op);
+}
+
+function str(value: unknown): string | undefined
+{
+    return value === undefined ? undefined : String(value);
+}
+
+function num(value: unknown): number | undefined
+{
+    const numberValue = Number(value);
+    return value !== undefined && !Number.isNaN(numberValue) ? numberValue : undefined;
+}
+
+function textContent(node: JsxNode): string
+{
+    return node.children.filter((child): child is string => typeof child === "string").join("").trim();
+}
+
+function mergeProps(node: JsxNode): Props
+{
+    const className = typeof node.props.className === "string" ? node.props.className : "";
+    const classProps = className ? resolveClassNameProps(className) : {};
+    return {
+        ...classProps,
+        ...node.props,
+    };
+}
+
+function getText(node: JsxNode, props: Props): string
+{
+    return str(props.label ?? props.content ?? props.text) ?? textContent(node);
+}
+
+function sanitizePropString(value: unknown): string | undefined
+{
+    const raw = str(value);
+    if (!raw) return raw;
+    const trimmed = raw.trim();
+    return trimmed.replace(/^`+|`+$/g, "").trim();
+}
+
+function parentRef(state: State, props: Props): { frameId?: string }
+{
+    const parent = top(state);
+    return parent && !props.detach ? { frameId: parent.id } : {};
+}
+
+function position(props: Props): { x?: number; y?: number }
+{
+    const result: { x?: number; y?: number } = {};
+    const x = num(props.x);
+    const y = num(props.y);
+    if (x !== undefined) result.x = x;
+    if (y !== undefined) result.y = y;
+    return result;
+}
+
+function inferWidth(props: Props, parent?: FrameContext): number | undefined
+{
+    const explicit = num(props.w ?? props.width);
     if (explicit !== undefined) return explicit;
-    if (!par) return 390;
-
-    const insetX = num(p.x);
-    if (!par.isAutoLayout && insetX !== undefined)
-        return Math.max(par.width - insetX * 2, 1);
-
-    if (!par.isAutoLayout || par.layout === "VERTICAL")
-        return par.width;
-
+    if (props.widthMode === "FILL")
+        return parent?.isAutoLayout ? undefined : parent?.width;
+    if (!parent) return 390;
+    if (!parent.isAutoLayout) return parent.width;
+    if (parent.layout === "VERTICAL") return undefined;
     return undefined;
 }
 
-// ── Style applicators ─────────────────────────────────────────────────────────
-
-function shadow(s: State, nodeId: string, v: unknown, def?: string): void
+function inferHeight(props: Props, parent?: FrameContext, defaultHeight?: number): number | undefined
 {
-    const key = str(v) ?? def;
+    const explicit = num(props.h ?? props.height);
+    if (explicit !== undefined) return explicit;
+    if (props.heightMode === "FILL")
+        return parent?.isAutoLayout ? undefined : parent?.height;
+    return defaultHeight;
+}
+
+function applyShadow(state: State, nodeId: string, shadow: unknown, fallback?: string): void
+{
+    const key = str(shadow) ?? fallback;
     if (!key || key === "none" || key === "false") return;
     const preset = SHADOW_PRESETS[key];
-    if (preset) push({ type: "set_shadow", nodeId, ...preset } as FigmaOp, s);
+    if (!preset) return;
+    push(state, { type: "set_shadow", nodeId, ...preset });
 }
 
-function stroke(s: State, nodeId: string, color: string, weight = 1, align = "INSIDE"): void
+function applyStroke(state: State, nodeId: string, color: unknown, weight: unknown = 1, align = "INSIDE"): void
 {
-    push({ type: "set_stroke", nodeId, color, weight, align } as FigmaOp, s);
+    if (color === undefined || color === false || color === "none") return;
+    const resolvedWeight = num(weight) ?? 1;
+    if (resolvedWeight <= 0) return;
+    push(state, { type: "set_stroke", nodeId, color, weight: resolvedWeight, align });
 }
 
-function gradient(s: State, nodeId: string, v: unknown): void
+function applyEdgeStroke(state: State, nodeId: string, props: Props, width: number | undefined, height: number | undefined): void
 {
-    const g = str(v);
-    if (!g) return;
-    const [from = "#18A0FB", to = "#0D8DE3", angle = "0"] = g.split(":");
-    push({ type: "set_gradient", nodeId, from, to, angle: Number(angle) } as FigmaOp, s);
+    const edge = str(props.borderEdge);
+    if (!edge) return;
+    const color = props.stroke ?? "#E2E8F0";
+    const lineLength = width ?? 100;
+    const y = edge === "BOTTOM" ? Math.max((height ?? 1) - 1, 0) : 0;
+    push(state, {
+        type: "create_line",
+        id: uid(state, "edge"),
+        frameId: nodeId,
+        x: 0,
+        y,
+        length: lineLength,
+        color,
+        weight: num(props.strokeWeight) ?? 1,
+        name: edge === "BOTTOM" ? "Border Bottom" : "Border Top",
+    });
 }
 
-function opacity(s: State, nodeId: string, v: unknown): void
+function applyGradient(state: State, nodeId: string, value: unknown): void
 {
-    if (v !== undefined) push({ type: "set_opacity", nodeId, opacity: num(v) } as FigmaOp, s);
+    const gradient = str(value);
+    if (!gradient) return;
+    const [from = "#2563EB", to = "#1D4ED8", angle = "0"] = gradient.split(":");
+    push(state, { type: "set_gradient", nodeId, from, to, angle: Number(angle) });
 }
 
-// ── Children ──────────────────────────────────────────────────────────────────
-
-function kids(node: JsxNode, s: State): void
+function applyOpacity(state: State, nodeId: string, value: unknown): void
 {
-    for (const c of node.children) if (typeof c === "object") compile(c, s);
+    const resolved = num(value);
+    if (resolved === undefined) return;
+    push(state, { type: "set_opacity", nodeId, opacity: resolved });
 }
 
-// ── Containers ───────────────────────────────────────────────────────────────
-
-function Screen(node: JsxNode, s: State): void
+function applyTextStyle(state: State, nodeId: string, props: Props, preset?: TypoSpec): void
 {
-    const p = node.props;
-    const id = str(p.id) ?? uid(s, "scr");
-    const fw = w(p, 390), fh = h(p, 844);
-    push({
-        type: "create_frame", id,
-        name: str(p.name) ?? "Screen",
-        width: fw, height: fh,
-        x: num(p.x) ?? 0, y: num(p.y) ?? 0,
-        ...(!p.gradient ? { fill: str(p.fill) ?? "#FFFFFF" } : { fill: str(p.fill) ?? "#FFFFFF" }),
-    } as FigmaOp, s);
-    if (p.gradient) gradient(s, id, p.gradient);
-    s.stack.push({ id, width: fw, height: fh });
-    kids(node, s);
-    s.stack.pop();
+    const align = str(props.align ?? props.textAlign);
+    const lineHeight = num(props.lineHeight) ?? preset?.lineHeight;
+    const letterSpacing = num(props.letterSpacing) ?? preset?.letterSpacing;
+
+    if (!align && lineHeight === undefined && letterSpacing === undefined) return;
+
+    push(state, {
+        type: "set_text_style",
+        nodeId,
+        ...(align ? { align: align.toUpperCase() } : {}),
+        ...(lineHeight !== undefined ? { lineHeight } : {}),
+        ...(letterSpacing !== undefined ? { letterSpacing } : {}),
+    });
 }
 
-function Frame_(node: JsxNode, s: State, layout?: "HORIZONTAL" | "VERTICAL"): void
+function createAutoLayout(state: State, nodeId: string, props: Props, direction: "HORIZONTAL" | "VERTICAL", options: { hugMain?: boolean; hugCross?: boolean } = {}): void
 {
-    const p = node.props;
-    const par = top(s);
-    const id = str(p.id) ?? uid(s, layout ? (layout === "VERTICAL" ? "vstk" : "hstk") : "frm");
-    const explicitW = num(p.w ?? p.width);
-    const explicitH = num(p.h ?? p.height);
-    const fillParent = par?.layout === "HORIZONTAL" && explicitW === undefined && p.x === undefined;
-    const fw = fillParent ? undefined : inferredWidth(p, par);
-    const fh = explicitH ?? (layout ? undefined : 100);
-    const autoWidth = fw === undefined;
-    const autoHeight = fh === undefined;
-    const cr = num(p.radius ?? p.cornerRadius);
+    const alignMap: Record<string, string> = {
+        center: "CENTER",
+        start: "MIN",
+        end: "MAX",
+        "space-between": "SPACE_BETWEEN",
+    };
 
-    push({
-        type: "create_frame", id,
-        name: str(p.name) ?? node.type,
-        ...frameId(s, p),
-        ...(fw !== undefined ? { width: fw } : {}),
-        ...(fh !== undefined ? { height: fh } : {}),
-        ...pos(p),
-        ...(!p.gradient && p.fill ? { fill: str(p.fill) } : {}),
-        ...(cr !== undefined ? { cornerRadius: cr } : {}),
+    const crossAlign = str(props.align ?? props.counterAlign);
+    const mainAlign = str(props.justifyContent ?? props.justify);
+
+    push(state, {
+        type: "set_auto_layout",
+        nodeId,
+        direction,
+        ...(options.hugMain ? { hugMain: true } : {}),
+        ...(options.hugCross ? { hugCross: true } : {}),
+        ...(props.gap !== undefined ? { gap: num(props.gap) } : {}),
+        ...(props.padX ?? props.px ? { paddingH: num(props.padX ?? props.px) } : {}),
+        ...(props.padY ?? props.py ? { paddingV: num(props.padY ?? props.py) } : {}),
+        ...(props.paddingLeft !== undefined ? { paddingLeft: num(props.paddingLeft) } : {}),
+        ...(props.paddingRight !== undefined ? { paddingRight: num(props.paddingRight) } : {}),
+        ...(props.paddingTop !== undefined ? { paddingTop: num(props.paddingTop) } : {}),
+        ...(props.paddingBottom !== undefined ? { paddingBottom: num(props.paddingBottom) } : {}),
+        ...(crossAlign ? { counterAlign: alignMap[crossAlign.toLowerCase()] ?? crossAlign.toUpperCase() } : {}),
+        ...(mainAlign ? { align: alignMap[mainAlign.toLowerCase()] ?? mainAlign.toUpperCase() } : {}),
+    });
+}
+
+function compileChildren(node: JsxNode, state: State): void
+{
+    for (const child of node.children)
+        if (typeof child === "object")
+            compile(child, state);
+}
+
+function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" | "VERTICAL", defaults: Partial<Props> = {}): void
+{
+    const props = { ...defaults, ...mergeProps(node) };
+    const parent = top(state);
+    const layoutMode = forcedLayout ?? (str(props.layoutMode) as "HORIZONTAL" | "VERTICAL" | undefined);
+    const id = str(props.id) ?? uid(state, layoutMode === "VERTICAL" ? "vstk" : layoutMode === "HORIZONTAL" ? "hstk" : "frm");
+    const fillParent = props.widthMode === "FILL" || (!!props.fullWidth && parent?.layout === "VERTICAL");
+    const fillParentHeight = props.heightMode === "FILL";
+    const width = fillParent ? undefined : inferWidth(props, parent);
+    const height = inferHeight(props, parent, layoutMode ? undefined : 100);
+    const autoWidth = width === undefined;
+    const autoHeight = height === undefined;
+
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? node.type,
+        ...parentRef(state, props),
+        ...(width !== undefined ? { width } : {}),
+        ...(height !== undefined ? { height } : {}),
+        ...position(props),
+        ...(!props.gradient && props.fill !== undefined ? { fill: props.fill } : {}),
+        ...(num(props.radius ?? props.cornerRadius) !== undefined ? { cornerRadius: num(props.radius ?? props.cornerRadius) } : {}),
+        ...(props.radiusTopLeft !== undefined ? { cornerRadiusTopLeft: num(props.radiusTopLeft) } : {}),
+        ...(props.radiusTopRight !== undefined ? { cornerRadiusTopRight: num(props.radiusTopRight) } : {}),
         ...(fillParent ? { fillParent: true } : {}),
-    } as FigmaOp, s);
+        ...(fillParentHeight ? { fillParentHeight: true } : {}),
+        ...(props.clipContent ? { clipContent: true } : {}),
+    });
 
-    if (layout)
+    if (layoutMode)
     {
-        const aMap: Record<string, string> = { center: "CENTER", start: "MIN", end: "MAX", "space-between": "SPACE_BETWEEN" };
-        // CSS convention: align = cross axis (⊥ flow), justify = main axis (↕ flow)
-        const crossAlignProp = str(p.align ?? p.counterAlign);
-        const mainAlignProp  = str(p.justify ?? p.justifyContent);
-        push({
-            type: "set_auto_layout", nodeId: id,
-            direction: layout,
-            ...(layout === "VERTICAL"
-                ? {
-                    ...(autoHeight ? { hugMain: true } : {}),
-                    ...(autoWidth && !fillParent ? { hugCross: true } : {}),
-                }
-                : {
-                    ...(autoWidth && !fillParent ? { hugMain: true } : {}),
-                    ...(autoHeight ? { hugCross: true } : {}),
-                }),
-            ...(p.gap       !== undefined ? { gap:      num(p.gap) } : {}),
-            ...(p.padX ?? p.px ? { paddingH: num(p.padX ?? p.px) } : {}),
-            ...(p.padY ?? p.py ? { paddingV: num(p.padY ?? p.py) } : {}),
-            ...(crossAlignProp ? { counterAlign: aMap[crossAlignProp.toLowerCase()] ?? crossAlignProp } : {}),
-            ...(mainAlignProp  ? { align:        aMap[mainAlignProp.toLowerCase()]  ?? mainAlignProp  } : {}),
-        } as FigmaOp, s);
+        createAutoLayout(state, id, props, layoutMode, {
+            hugMain: autoHeight || layoutMode === "HORIZONTAL",
+            hugCross: autoWidth || layoutMode === "VERTICAL",
+        });
     }
 
-    if (p.gradient) gradient(s, id, p.gradient);
-    if (p.stroke)   stroke(s, id, str(p.stroke)!, num(p.strokeWeight) ?? 1);
-    shadow(s, id, p.shadow);
-    opacity(s, id, p.opacity);
+    if (props.gradient) applyGradient(state, id, props.gradient);
+    if (props.borderEdge)
+        applyEdgeStroke(state, id, props, width, height);
+    else
+        applyStroke(state, id, props.stroke, props.strokeWeight);
+    applyShadow(state, id, props.shadow);
+    applyOpacity(state, id, props.opacity);
 
-    s.stack.push({ id, width: fw ?? par?.width ?? 200, height: fh ?? par?.height ?? 200, isAutoLayout: !!layout, layout });
-    kids(node, s);
-    s.stack.pop();
+    state.stack.push({
+        id,
+        width: width ?? parent?.width ?? 200,
+        height: height ?? parent?.height ?? 200,
+        isAutoLayout: !!layoutMode,
+        layout: layoutMode,
+    });
+    compileChildren(node, state);
+    state.stack.pop();
 }
 
-// ── Composite components ──────────────────────────────────────────────────────
-
-function Card(node: JsxNode, s: State): void
+function compileScreen(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const par = top(s);
-    const id = str(p.id) ?? uid(s, "card");
-    const explicitW = num(p.w ?? p.width);
-    const fh = num(p.h ?? p.height);
-    const fillParent = par?.layout === "HORIZONTAL" && explicitW === undefined && p.x === undefined;
-    const fw = fillParent ? undefined : (explicitW ?? inferredWidth(p, par) ?? 358);
-    const hasKids = node.children.some((c) => typeof c === "object");
+    const props = mergeProps(node);
+    const id = str(props.id) ?? uid(state, "screen");
+    const width = num(props.w ?? props.width) ?? 390;
+    const height = num(props.h ?? props.height) ?? 844;
+    const layoutMode = str(props.layoutMode) as "HORIZONTAL" | "VERTICAL" | undefined;
 
-    push({
-        type: "create_frame", id,
-        name: str(p.name) ?? "Карточка",
-        ...frameId(s, p),
-        ...(fw !== undefined ? { width: fw } : {}),
-        ...(fh !== undefined ? { height: fh } : {}),
-        ...pos(p),
-        fill: str(p.fill) ?? "#FFFFFF",
-        cornerRadius: num(p.radius) ?? 16,
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? "Screen",
+        width,
+        height,
+        x: num(props.x) ?? 0,
+        y: num(props.y) ?? 0,
+        ...(!props.gradient && props.fill !== undefined ? { fill: props.fill } : { fill: props.fill ?? "#FFFFFF" }),
+        ...(props.clipContent ? { clipContent: true } : {}),
+    });
+
+    if (layoutMode)
+        createAutoLayout(state, id, props, layoutMode, { hugMain: false, hugCross: false });
+
+    if (props.gradient) applyGradient(state, id, props.gradient);
+    if (props.borderEdge)
+        applyEdgeStroke(state, id, props, width, height);
+    else
+        applyStroke(state, id, props.stroke, props.strokeWeight);
+    applyShadow(state, id, props.shadow);
+    applyOpacity(state, id, props.opacity);
+
+    state.stack.push({ id, width, height, isAutoLayout: !!layoutMode, layout: layoutMode });
+    compileChildren(node, state);
+    state.stack.pop();
+}
+
+function compileCard(node: JsxNode, state: State): void
+{
+    compileFrame(node, state, "VERTICAL", {
+        fill: "#FFFFFF",
+        radius: 16,
+        gap: 12,
+        padX: 16,
+        padY: 16,
+        stroke: "#E2E8F0",
+        strokeWeight: 1,
+        shadow: "card",
+    });
+}
+
+function compileText(node: JsxNode, state: State, presetName?: string): void
+{
+    const props = mergeProps(node);
+    const preset = presetName ? TYPO[presetName] : undefined;
+    const parent = top(state);
+    const id = str(props.id) ?? uid(state, "txt");
+    const width = num(props.w ?? props.width);
+    const fillParent = props.widthMode === "FILL" || (parent?.layout === "VERTICAL" && width === undefined && props.x === undefined);
+    const content = getText(node, props);
+
+    push(state, {
+        type: "create_text",
+        id,
+        name: str(props.name) ?? (presetName ?? "Text"),
+        ...parentRef(state, props),
+        content,
+        ...position(props),
+        fontSize: num(props.size ?? props.fontSize) ?? preset?.fontSize ?? 16,
+        fontWeight: str(props.weight ?? props.fontWeight) ?? preset?.fontWeight ?? "Regular",
+        color: props.color ?? props.textColor ?? "#0F172A",
+        ...(width !== undefined ? { width } : {}),
         ...(fillParent ? { fillParent: true } : {}),
-    } as FigmaOp, s);
+        ...(props.heightMode === "FILL" ? { fillParentHeight: true } : {}),
+    });
 
-    if (hasKids)
-        push({
-            type: "set_auto_layout", nodeId: id,
-            direction: "VERTICAL",
-            ...(fh === undefined ? { hugMain: true } : {}),
-            gap: num(p.gap) ?? 12,
-            paddingH: num(p.padX ?? p.px) ?? 16,
-            paddingV: num(p.padY ?? p.py) ?? 16,
-        } as FigmaOp, s);
-
-    if (p.stroke !== false && p.stroke !== "none")
-        stroke(s, id, str(p.stroke) ?? "#E5E5E5", 1, "INSIDE");
-    shadow(s, id, p.shadow, "card");
-    if (p.gradient) gradient(s, id, p.gradient);
-
-    s.stack.push({ id, width: fw ?? par?.width ?? 358, height: fh ?? par?.height ?? 200, isAutoLayout: hasKids, layout: hasKids ? "VERTICAL" : undefined });
-    kids(node, s);
-    s.stack.pop();
+    applyTextStyle(state, id, props, preset);
+    applyOpacity(state, id, props.opacity);
 }
 
-function Button(node: JsxNode, s: State): void
+function compileButton(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const par = top(s);
-    const variant = str(p.variant) ?? "primary";
-    const size = str(p.size)?.toLowerCase() ?? "medium";
-    const id = str(p.id) ?? uid(s, "btn");
-    const label = str(p.text) ?? (text(node) || "Button");
-    const useFullWidth = !!p.fullWidth;
-    const explicitW = num(p.w ?? p.width);
-    const sizePresets: Record<string, { height: number; paddingH: number; paddingV: number; fontSize: number }> = {
+    const props = mergeProps(node);
+    const parent = top(state);
+    const variant = str(props.variant)?.toLowerCase() ?? "primary";
+    const size = str(props.size)?.toLowerCase() ?? "medium";
+    const id = str(props.id) ?? uid(state, "btn");
+    const label = getText(node, props);
+    const presets: Record<string, { height: number; paddingH: number; paddingV: number; fontSize: number }> = {
         small: { height: 40, paddingH: 16, paddingV: 10, fontSize: 14 },
         medium: { height: 52, paddingH: 24, paddingV: 16, fontSize: 16 },
         large: { height: 56, paddingH: 28, paddingV: 18, fontSize: 16 },
     };
-    const preset = sizePresets[size] ?? sizePresets.medium;
-    const fw = useFullWidth && !par?.isAutoLayout ? (par?.width ?? 358) : explicitW;
-    const fh = num(p.h ?? p.height) ?? preset?.height ?? 52;
+    const variantDefaults: Record<string, { fill: unknown; textColor: unknown; shadow?: string }> = {
+        primary: { fill: "#2563EB", textColor: "#FFFFFF", shadow: "button" },
+        secondary: { fill: "#F1F5F9", textColor: "#0F172A" },
+        ghost: { fill: "#FFFFFF00", textColor: "#2563EB" },
+    };
 
-    const fills: Record<string, string> = { primary: "#18A0FB", secondary: "#F5F5F5", ghost: "transparent" };
-    const tints: Record<string, string> = { primary: "#FFFFFF", secondary: "#1A1A1A", ghost: "#18A0FB" };
-    const fillColor = str(p.fill) ?? fills[variant] ?? "#18A0FB";
-    const textColor = str(p.textColor ?? p.color) ?? tints[variant] ?? "#FFFFFF";
+    const preset = presets[size] ?? presets.medium!;
+    const variantPreset = variantDefaults[variant] ?? variantDefaults.primary!;
+    const fillParent = props.widthMode === "FILL" || !!props.fullWidth;
+    const width = fillParent ? undefined : num(props.w ?? props.width);
+    const height = num(props.h ?? props.height) ?? preset.height;
 
-    push({
-        type: "create_frame", id,
-        name: str(p.name) ?? `Кнопка / ${label}`,
-        ...frameId(s, p),
-        ...(fw !== undefined ? { width: fw } : {}),
-        height: fh, ...pos(p),
-        fill: fillColor,
-        cornerRadius: num(p.radius) ?? 12,
-        ...(useFullWidth && par?.layout === "VERTICAL" ? { fillParent: true } : {}),
-    } as FigmaOp, s);
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? `Button / ${label}`,
+        ...parentRef(state, props),
+        ...(width !== undefined ? { width } : {}),
+        height,
+        ...position(props),
+        fill: props.fill ?? variantPreset.fill,
+        cornerRadius: num(props.radius ?? props.cornerRadius) ?? 12,
+        ...(fillParent && parent?.layout === "VERTICAL" ? { fillParent: true } : {}),
+    });
 
-    push({
-        type: "set_auto_layout", nodeId: id,
-        direction: "HORIZONTAL", gap: 8,
-        ...(fw === undefined && !useFullWidth ? { hugMain: true } : {}),
-        paddingH: num(p.padX ?? p.px) ?? preset?.paddingH ?? 24,
-        paddingV: num(p.padY ?? p.py) ?? preset?.paddingV ?? 16,
-        align: "CENTER", counterAlign: "CENTER",
-    } as FigmaOp, s);
+    createAutoLayout(state, id, {
+        ...props,
+        gap: props.gap ?? 8,
+        padX: props.padX ?? preset.paddingH,
+        padY: props.padY ?? preset.paddingV,
+        align: "center",
+        justifyContent: "center",
+    }, "HORIZONTAL", {
+        hugMain: width === undefined && !fillParent,
+        hugCross: false,
+    });
 
-    shadow(s, id, p.shadow, variant === "primary" ? "button" : undefined);
-    if (p.gradient) gradient(s, id, p.gradient);
+    applyShadow(state, id, props.shadow, variantPreset.shadow);
+    applyStroke(state, id, props.stroke, props.strokeWeight);
+    applyGradient(state, id, props.gradient);
+    applyOpacity(state, id, props.opacity);
 
-    const lid = uid(s, "btn_lbl");
-    push({ type: "create_text", id: lid, frameId: id, content: label, fontSize: preset?.fontSize ?? 16, fontWeight: "Bold", color: textColor } as FigmaOp, s);
+    push(state, {
+        type: "create_text",
+        id: uid(state, "btn_txt"),
+        frameId: id,
+        content: label,
+        fontSize: num(props.size ?? props.fontSize) ?? preset.fontSize,
+        fontWeight: str(props.weight ?? props.fontWeight) ?? "Bold",
+        color: props.textColor ?? props.color ?? variantPreset.textColor,
+    });
 }
 
-function NavBar(node: JsxNode, s: State): void
+function compileInput(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const par = top(s);
-    const id = str(p.id) ?? uid(s, "nav");
-    const fw = par?.width ?? 390;
-    const fh = num(p.h ?? p.height) ?? 94;
+    const props = mergeProps(node);
+    const parent = top(state);
+    const id = str(props.id) ?? uid(state, "input");
+    const fillParent = props.widthMode === "FILL" || !!props.fullWidth;
+    const width = fillParent ? undefined : (num(props.w ?? props.width) ?? (parent ? parent.width - 32 : 320));
+    const height = num(props.h ?? props.height) ?? 52;
+    const placeholder = getText(node, props) || str(props.placeholder) || "Enter text";
 
-    push({ type: "create_frame", id, name: "Nav Bar", ...frameId(s, p), width: fw, height: fh, x: 0, y: 0, fill: str(p.fill) ?? "#FFFFFF" } as FigmaOp, s);
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? "Input",
+        ...parentRef(state, props),
+        ...(width !== undefined ? { width } : {}),
+        height,
+        ...position(props),
+        fill: props.fill ?? "#F8FAFC",
+        cornerRadius: num(props.radius ?? props.cornerRadius) ?? 10,
+        ...(fillParent && parent?.layout === "VERTICAL" ? { fillParent: true } : {}),
+    });
 
-    if (p.title)
-        push({ type: "create_text", frameId: id, content: str(p.title)!, x: Math.round(fw / 2) - 50, y: 56, fontSize: 17, fontWeight: "Bold", color: "#1A1A1A" } as FigmaOp, s);
+    createAutoLayout(state, id, {
+        ...props,
+        gap: props.gap ?? 8,
+        padX: props.padX ?? 16,
+        padY: props.padY ?? 14,
+        align: "center",
+    }, "HORIZONTAL");
 
-    push({ type: "create_line", frameId: id, x: 0, y: fh - 1, length: fw, color: "#E5E5E5", weight: 1 } as FigmaOp, s);
-
-    s.stack.push({ id, width: fw, height: fh });
-    kids(node, s);
-    s.stack.pop();
+    applyStroke(state, id, props.stroke ?? "#CBD5E1", props.strokeWeight ?? 1);
+    push(state, {
+        type: "create_text",
+        id: uid(state, "input_txt"),
+        frameId: id,
+        content: placeholder,
+        fontSize: num(props.size ?? props.fontSize) ?? 16,
+        fontWeight: str(props.weight ?? props.fontWeight) ?? "Regular",
+        color: props.color ?? "#64748B",
+    });
 }
 
-function TabBar(node: JsxNode, s: State): void
+function compileBadge(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const par = top(s);
-    const id = str(p.id) ?? uid(s, "tab");
-    const fw = par?.width ?? 390;
-    const fh = num(p.h ?? p.height) ?? 83;
-    const fy = par ? par.height - fh : 0;
+    const props = mergeProps(node);
+    const id = str(props.id) ?? uid(state, "badge");
+    const label = getText(node, props) || "Badge";
 
-    push({ type: "create_frame", id, name: "Tab Bar", ...frameId(s, p), width: fw, height: fh, x: 0, y: fy, fill: str(p.fill) ?? "#FFFFFF" } as FigmaOp, s);
-    push({ type: "create_line", frameId: id, x: 0, y: 0, length: fw, color: "#E5E5E5", weight: 1 } as FigmaOp, s);
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? "Badge",
+        ...parentRef(state, props),
+        ...position(props),
+        fill: props.fill ?? "#2563EB",
+        cornerRadius: num(props.radius ?? props.cornerRadius) ?? 999,
+    });
 
-    s.stack.push({ id, width: fw, height: fh });
-    kids(node, s);
-    s.stack.pop();
+    createAutoLayout(state, id, {
+        ...props,
+        gap: props.gap ?? 0,
+        padX: props.padX ?? 10,
+        padY: props.padY ?? 4,
+        align: "center",
+        justifyContent: "center",
+    }, "HORIZONTAL", { hugMain: true });
+
+    push(state, {
+        type: "create_text",
+        id: uid(state, "badge_txt"),
+        frameId: id,
+        content: label,
+        fontSize: num(props.size ?? props.fontSize) ?? 12,
+        fontWeight: str(props.weight ?? props.fontWeight) ?? "SemiBold",
+        color: props.textColor ?? props.color ?? "#FFFFFF",
+    });
 }
 
-function Input_(node: JsxNode, s: State): void
+function compileIcon(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const par = top(s);
-    const id = str(p.id) ?? uid(s, "inp");
-    const inp_full = !!p.fullWidth;
-    const fw = inp_full && !par?.isAutoLayout ? (par?.width ?? 358) : w(p, par ? par.width - 32 : 326);
-    const fh = h(p, 52);
-    const placeholder = str(p.placeholder) ?? (text(node) || "Введите текст…");
+    const props = mergeProps(node);
+    const id = str(props.id) ?? uid(state, "icon");
+    const size = num(props.size ?? props.w ?? props.width) ?? 40;
+    const symbol = str(props.symbol ?? props.icon) ?? (getText(node, props) || "◉");
 
-    push({ type: "create_frame", id, name: str(p.name) ?? "Input", ...frameId(s, p), width: fw, height: fh, ...pos(p), fill: str(p.fill) ?? "#F5F5F5", cornerRadius: num(p.radius) ?? 10 } as FigmaOp, s);
-    push({ type: "set_auto_layout", nodeId: id, direction: "HORIZONTAL", gap: 8, paddingH: 16, paddingV: 0, align: "MIN", counterAlign: "CENTER" } as FigmaOp, s);
-    stroke(s, id, str(p.stroke) ?? "#E5E5E5", 1, "INSIDE");
-    push({ type: "create_text", frameId: id, content: placeholder, fontSize: 16, color: "#999999" } as FigmaOp, s);
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? `Icon / ${symbol}`,
+        ...parentRef(state, props),
+        width: size,
+        height: size,
+        ...position(props),
+        fill: props.fill ?? "#F1F5F9",
+        cornerRadius: num(props.radius ?? props.cornerRadius) ?? 12,
+    });
+
+    createAutoLayout(state, id, { align: "center", justifyContent: "center" }, "HORIZONTAL");
+    push(state, {
+        type: "create_text",
+        id: uid(state, "icon_txt"),
+        frameId: id,
+        content: symbol,
+        fontSize: Math.round(size * 0.45),
+        fontWeight: "Medium",
+        color: props.color ?? "#0F172A",
+    });
 }
 
-function Avatar(node: JsxNode, s: State): void
+function compileAvatar(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const par = top(s);
-    const sz = num(p.size) ?? 48;
-    const id = str(p.id) ?? uid(s, "av");
-    const sym = str(p.symbol ?? p.icon) ?? "👤";
+    const props = mergeProps(node);
+    const size = num(props.size ?? props.w ?? props.width) ?? 48;
+    const symbol = str(props.symbol ?? props.icon) ?? "👤";
+    const id = str(props.id) ?? uid(state, "avatar");
 
-    push({ type: "create_ellipse", id, name: "Avatar", ...frameId(s, p), width: sz, height: sz, ...pos(p), fill: str(p.fill) ?? "#E8F4FD" } as FigmaOp, s);
-    push({ type: "create_text", frameId: par?.id, content: sym, fontSize: Math.round(sz * 0.45), color: "#18A0FB" } as FigmaOp, s);
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? "Avatar",
+        ...parentRef(state, props),
+        width: size,
+        height: size,
+        ...position(props),
+        fill: props.fill ?? "#DBEAFE",
+        cornerRadius: 999,
+    });
+
+    createAutoLayout(state, id, { align: "center", justifyContent: "center" }, "HORIZONTAL");
+    push(state, {
+        type: "create_text",
+        id: uid(state, "avatar_txt"),
+        frameId: id,
+        content: symbol,
+        fontSize: Math.round(size * 0.4),
+        fontWeight: "Medium",
+        color: props.color ?? "#2563EB",
+    });
 }
 
-function Icon_(node: JsxNode, s: State): void
+function compileImage(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const sz = num(p.size) ?? 40;
-    const id = str(p.id) ?? uid(s, "ico");
-    const sym = str(p.symbol ?? p.icon) ?? (text(node) || "◉");
+    const props = mergeProps(node);
+    const parent = top(state);
+    const id = str(props.id) ?? uid(state, "img");
+    const fillParent = props.widthMode === "FILL";
+    const width = fillParent ? undefined : (num(props.w ?? props.width) ?? inferWidth(props, parent) ?? 240);
+    const height = num(props.h ?? props.height) ?? 160;
 
-    push({ type: "create_frame", id, name: str(p.name) ?? `Icon / ${sym}`, ...frameId(s, p), width: sz, height: sz, ...pos(p), fill: str(p.fill) ?? "#F5F5F5", cornerRadius: num(p.radius) ?? Math.round(sz * 0.22) } as FigmaOp, s);
-    push({ type: "set_auto_layout", nodeId: id, direction: "HORIZONTAL", gap: 0, paddingH: 0, paddingV: 0, align: "CENTER", counterAlign: "CENTER" } as FigmaOp, s);
-    push({ type: "create_text", frameId: id, content: sym, fontSize: Math.round(sz * 0.5), color: str(p.color) ?? "#1A1A1A" } as FigmaOp, s);
+    push(state, {
+        type: "create_image",
+        id,
+        name: str(props.name) ?? "Image",
+        ...parentRef(state, props),
+        ...(width !== undefined ? { width } : {}),
+        height,
+        ...position(props),
+        src: sanitizePropString(props.src) ?? "",
+        alt: sanitizePropString(props.alt) ?? "",
+        fill: props.fill ?? "#E2E8F0",
+        cornerRadius: num(props.radius ?? props.cornerRadius) ?? 12,
+        ...(props.radiusTopLeft !== undefined ? { cornerRadiusTopLeft: num(props.radiusTopLeft) } : {}),
+        ...(props.radiusTopRight !== undefined ? { cornerRadiusTopRight: num(props.radiusTopRight) } : {}),
+        ...(fillParent && parent?.layout === "VERTICAL" ? { fillParent: true } : {}),
+        ...(props.clipContent ? { clipContent: true } : { clipContent: true }),
+    });
+
+    applyStroke(state, id, props.stroke, props.strokeWeight);
+    applyShadow(state, id, props.shadow);
+    applyOpacity(state, id, props.opacity);
 }
 
-function Badge(node: JsxNode, s: State): void
+function compileRect(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const id = str(p.id) ?? uid(s, "bdg");
-    const label = str(p.text) ?? (text(node) || "•");
-    const textColor = str(p.textColor ?? p.color) ?? "#FFFFFF";
+    const props = mergeProps(node);
+    const id = str(props.id) ?? uid(state, "rect");
 
-    push({ type: "create_frame", id, name: "Badge", ...frameId(s, p), ...pos(p), fill: str(p.fill) ?? "#18A0FB", cornerRadius: num(p.radius) ?? 100 } as FigmaOp, s);
-    push({ type: "set_auto_layout", nodeId: id, direction: "HORIZONTAL", hugContent: true, gap: 0, paddingH: 10, paddingV: 4, align: "CENTER", counterAlign: "CENTER" } as FigmaOp, s);
-    push({ type: "create_text", frameId: id, content: label, fontSize: num(p.size) ?? 12, fontWeight: "SemiBold", color: textColor } as FigmaOp, s);
+    push(state, {
+        type: "create_rect",
+        id,
+        name: str(props.name) ?? "Rect",
+        ...parentRef(state, props),
+        width: num(props.w ?? props.width) ?? 100,
+        height: num(props.h ?? props.height) ?? 100,
+        ...position(props),
+        ...(!props.gradient && props.fill !== undefined ? { fill: props.fill } : {}),
+        ...(num(props.radius ?? props.cornerRadius) !== undefined ? { cornerRadius: num(props.radius ?? props.cornerRadius) } : {}),
+    });
+
+    applyGradient(state, id, props.gradient);
+    applyStroke(state, id, props.stroke, props.strokeWeight);
+    applyShadow(state, id, props.shadow);
+    applyOpacity(state, id, props.opacity);
 }
 
-// ── Primitives ────────────────────────────────────────────────────────────────
-
-function Rect(node: JsxNode, s: State): void
+function compileEllipse(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const id = str(p.id) ?? uid(s, "rect");
+    const props = mergeProps(node);
+    const id = str(props.id) ?? uid(state, "ellipse");
+    const size = num(props.size);
 
-    push({ type: "create_rect", id, name: str(p.name) ?? "Rect", ...frameId(s, p), width: w(p), height: h(p), ...pos(p), ...(!p.gradient && p.fill ? { fill: str(p.fill) } : {}), ...(p.radius !== undefined ? { cornerRadius: num(p.radius) } : {}) } as FigmaOp, s);
-    if (p.gradient) gradient(s, id, p.gradient);
-    if (p.stroke)   stroke(s, id, str(p.stroke)!, num(p.strokeWeight) ?? 1);
-    shadow(s, id, p.shadow);
-    opacity(s, id, p.opacity);
+    push(state, {
+        type: "create_ellipse",
+        id,
+        name: str(props.name) ?? "Ellipse",
+        ...parentRef(state, props),
+        width: size ?? num(props.w ?? props.width) ?? 100,
+        height: size ?? num(props.h ?? props.height) ?? 100,
+        ...position(props),
+        ...(props.fill !== undefined ? { fill: props.fill } : {}),
+    });
+
+    applyStroke(state, id, props.stroke, props.strokeWeight);
+    applyOpacity(state, id, props.opacity);
 }
 
-function Ellipse_(node: JsxNode, s: State): void
+function compileLine(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const id = str(p.id) ?? uid(s, "ell");
-    push({ type: "create_ellipse", id, name: str(p.name) ?? "Ellipse", ...frameId(s, p), width: w(p), height: h(p), ...pos(p), ...(p.fill ? { fill: str(p.fill) } : {}) } as FigmaOp, s);
-    opacity(s, id, p.opacity);
-}
+    const props = mergeProps(node);
+    const parent = top(state);
+    const orientation = str(props.orientation)?.toLowerCase();
 
-function Line_(node: JsxNode, s: State): void
-{
-    const p = node.props;
-    const par = top(s);
-    const orientation = str(p.orientation)?.toLowerCase();
-    push({
-        type: "create_line", name: str(p.name) ?? "Line",
-        ...frameId(s, p),
-        x: num(p.x) ?? 0, y: num(p.y) ?? 0,
-        length: num(p.length ?? p.w ?? p.width) ?? par?.width ?? 100,
-        color: str(p.color) ?? "#E5E5E5",
-        weight: num(p.weight) ?? 1,
-        ...((p.rotation !== undefined || orientation === "vertical")
-            ? { rotation: num(p.rotation) ?? 90 }
+    push(state, {
+        type: "create_line",
+        id: str(props.id) ?? uid(state, "line"),
+        name: str(props.name) ?? "Divider",
+        ...parentRef(state, props),
+        x: num(props.x) ?? 0,
+        y: num(props.y) ?? 0,
+        length: num(props.length ?? props.w ?? props.width) ?? parent?.width ?? 100,
+        color: props.color ?? props.stroke ?? "#E2E8F0",
+        weight: num(props.weight ?? props.strokeWeight) ?? 1,
+        ...((props.rotation !== undefined || orientation === "vertical")
+            ? { rotation: num(props.rotation) ?? 90 }
             : {}),
-    } as FigmaOp, s);
+    });
 }
 
-function Text_(node: JsxNode, s: State, typoKey?: string): void
+function compileNavBar(node: JsxNode, state: State): void
 {
-    const p = node.props;
-    const id = str(p.id) ?? uid(s, "txt");
-    const t = TYPO[typoKey ?? ""] as TypoSpec | undefined;
-    const content = text(node) || str(p.content ?? p.text) || "";
+    const props = mergeProps(node);
+    const parent = top(state);
+    const id = str(props.id) ?? uid(state, "navbar");
+    const width = parent?.width ?? 390;
+    const height = num(props.h ?? props.height) ?? 94;
 
-    const tw = num(p.w ?? p.width);
-    const par = top(s);
-    const textFillParent = par?.layout === "VERTICAL" && tw === undefined && p.x === undefined;
-    push({
-        type: "create_text", id,
-        name: str(p.name) ?? (typoKey ?? "Text"),
-        ...frameId(s, p),
-        content,
-        ...pos(p),
-        fontSize:   num(p.size ?? p.fontSize) ?? t?.fontSize ?? 16,
-        fontWeight: str(p.weight ?? p.fontWeight) ?? t?.fontWeight ?? "Regular",
-        color:      str(p.color) ?? "#1A1A1A",
-        ...(tw !== undefined ? { width: tw } : {}),
-        ...(textFillParent ? { fillParent: true } : {}),
-    } as FigmaOp, s);
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? "Nav Bar",
+        ...parentRef(state, props),
+        width,
+        height,
+        x: num(props.x) ?? 0,
+        y: num(props.y) ?? 0,
+        fill: props.fill ?? "#FFFFFF",
+    });
 
-    const ls = num(p.letterSpacing) ?? t?.letterSpacing;
-    const lh = num(p.lineHeight)    ?? t?.lineHeight;
-    const al = str(p.align ?? p.textAlign);
-    if (ls !== undefined || lh !== undefined || al)
-        push({
-            type: "set_text_style", nodeId: id,
-            ...(al ? { align: al.toUpperCase() } : {}),
-            ...(ls !== undefined ? { letterSpacing: ls } : {}),
-            ...(lh !== undefined ? { lineHeight: lh } : {}),
-        } as FigmaOp, s);
+    if (props.title)
+    {
+        push(state, {
+            type: "create_text",
+            id: uid(state, "nav_title"),
+            frameId: id,
+            content: str(props.title) ?? "",
+            x: Math.round(width / 2) - 60,
+            y: 56,
+            fontSize: 17,
+            fontWeight: "Bold",
+            color: "#0F172A",
+        });
+    }
+
+    if (props.borderEdge)
+        applyEdgeStroke(state, id, props, width, height);
+    else
+        push(state, {
+            type: "create_line",
+            id: uid(state, "nav_divider"),
+            frameId: id,
+            x: 0,
+            y: height - 1,
+            length: width,
+            color: "#E2E8F0",
+            weight: 1,
+            name: "Border Bottom",
+        });
 }
 
-// ── Dispatcher ────────────────────────────────────────────────────────────────
+function compileTabBar(node: JsxNode, state: State): void
+{
+    const props = mergeProps(node);
+    const parent = top(state);
+    const id = str(props.id) ?? uid(state, "tabbar");
+    const width = parent?.width ?? 390;
+    const height = num(props.h ?? props.height) ?? 83;
 
-function compile(node: JsxNode, s: State): void
+    push(state, {
+        type: "create_frame",
+        id,
+        name: str(props.name) ?? "Tab Bar",
+        ...parentRef(state, props),
+        width,
+        height,
+        x: num(props.x) ?? 0,
+        y: num(props.y) ?? ((parent?.height ?? height) - height),
+        fill: props.fill ?? "#FFFFFF",
+    });
+
+    if (props.borderEdge)
+        applyEdgeStroke(state, id, props, width, height);
+    else
+        push(state, {
+            type: "create_line",
+            id: uid(state, "tab_divider"),
+            frameId: id,
+            x: 0,
+            y: 0,
+            length: width,
+            color: "#E2E8F0",
+            weight: 1,
+            name: "Border Top",
+        });
+}
+
+function compile(node: JsxNode, state: State): void
 {
     switch (node.type)
     {
-        case "Screen":   case "Artboard":              return Screen(node, s);
-        case "Frame":                                  return Frame_(node, s);
-        case "VStack":                                 return Frame_(node, s, "VERTICAL");
-        case "HStack":                                 return Frame_(node, s, "HORIZONTAL");
-        case "Card":                                   return Card(node, s);
-        case "Button":                                 return Button(node, s);
-        case "NavBar":                                 return NavBar(node, s);
-        case "TabBar":                                 return TabBar(node, s);
-        case "Input":                                  return Input_(node, s);
-        case "Avatar":                                 return Avatar(node, s);
-        case "Icon":                                   return Icon_(node, s);
-        case "Badge":                                  return Badge(node, s);
-        case "Rect":                                   return Rect(node, s);
-        case "Ellipse":  case "Circle":               return Ellipse_(node, s);
-        case "Line":     case "Divider":              return Line_(node, s);
-        case "Text":                                   return Text_(node, s);
-        case "Hero":                                   return Text_(node, s, "Hero");
-        case "H1":                                     return Text_(node, s, "H1");
-        case "H2":                                     return Text_(node, s, "H2");
-        case "H3":                                     return Text_(node, s, "H3");
-        case "Body":                                   return Text_(node, s, "Body");
-        case "BodySm":   case "Small":                return Text_(node, s, "BodySm");
-        case "Caption":                                return Text_(node, s, "Caption");
-        case "Label":                                  return Text_(node, s, "Label");
-        default:
-            // Unknown PascalCase tag: treat as a Frame if it has element children
-            if (node.children.some((c) => typeof c === "object"))
-                Frame_(node, s);
+        case "Screen": return compileScreen(node, state);
+        case "Frame": return compileFrame(node, state);
+        case "VStack": return compileFrame(node, state, "VERTICAL");
+        case "HStack": return compileFrame(node, state, "HORIZONTAL");
+        case "Card": return compileCard(node, state);
+        case "Text": return compileText(node, state);
+        case "Hero": return compileText(node, state, "Hero");
+        case "H1": return compileText(node, state, "H1");
+        case "H2": return compileText(node, state, "H2");
+        case "H3": return compileText(node, state, "H3");
+        case "Body": return compileText(node, state, "Body");
+        case "BodySm":
+        case "Small": return compileText(node, state, "BodySm");
+        case "Caption": return compileText(node, state, "Caption");
+        case "Label": return compileText(node, state, "Label");
+        case "Button": return compileButton(node, state);
+        case "Image": return compileImage(node, state);
+        case "Input": return compileInput(node, state);
+        case "Badge": return compileBadge(node, state);
+        case "Icon": return compileIcon(node, state);
+        case "Avatar": return compileAvatar(node, state);
+        case "Rect": return compileRect(node, state);
+        case "Ellipse":
+        case "Circle": return compileEllipse(node, state);
+        case "Line":
+        case "Divider": return compileLine(node, state);
+        case "NavBar": return compileNavBar(node, state);
+        case "TabBar": return compileTabBar(node, state);
+        default: return compileFrame(node, state);
     }
 }
 
-// ── Entry ─────────────────────────────────────────────────────────────────────
-
 export function compileJsx(nodes: JsxNode[]): FigmaOp[]
 {
-    const s: State = { ops: [], n: 0, stack: [] };
-    for (const node of nodes) compile(node, s);
-    return s.ops;
+    const state: State = {
+        ops: [
+            createEnsureThemeVariablesOp() as unknown as FigmaOp,
+            createEnsureColorVariablesOp() as unknown as FigmaOp,
+        ],
+        counter: 0,
+        stack: [],
+    };
+
+    for (const node of nodes)
+        compile(node, state);
+
+    return state.ops;
 }

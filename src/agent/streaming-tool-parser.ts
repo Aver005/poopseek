@@ -68,6 +68,11 @@ export class StreamingToolParser {
       const closeFenceIdx = this.buffer.indexOf("```", contentStart);
 
       if (closeFenceIdx === -1) {
+        if (this.isStrayClosingFence(fenceStart, contentStart, language)) {
+          this.lastProcessedLength = contentStart;
+          fencedRegex.lastIndex = contentStart;
+          continue;
+        }
         // No closing ``` yet — save state and stop scanning
         this.pendingFence = { language, fenceStart, contentStart, skip: !isToolLang };
         break;
@@ -160,6 +165,7 @@ export class StreamingToolParser {
 
   finalize(): ParsedToolEvent[] {
     const completedTools: ParsedToolEvent[] = [];
+    const unresolvedTailStart = this.lastProcessedLength;
 
     // Handle an unclosed fence at stream end (model stopped mid-block)
     if (this.pendingFence !== null) {
@@ -172,12 +178,16 @@ export class StreamingToolParser {
           completedTools.push({ type: "tool", preText, envelope });
         }
       }
-      this.lastProcessedLength = this.buffer.length;
+      if (completedTools.length > 0) {
+        this.lastProcessedLength = this.buffer.length;
+      }
       this.pendingFence = null;
     }
 
     // Fallback: let parseMessage (full regex + bare-JSON) sweep the remainder
-    const remaining = this.buffer.slice(this.lastProcessedLength);
+    const remaining = this.buffer.slice(
+      completedTools.length > 0 ? this.lastProcessedLength : unresolvedTailStart,
+    );
     if (remaining.trim().length > 0) {
       const capacity = this.maxTools - this.pendingTools.length - completedTools.length;
       if (capacity > 0) {
@@ -192,7 +202,17 @@ export class StreamingToolParser {
           completedTools.push(...finalTools);
           this.lastProcessedLength = this.buffer.length;
         } else if (/["']?tool["']?\s*:/.test(remaining)) {
-          this.warnings.push({ content: remaining.trim().slice(0, 500) });
+                    const rescue = this.tryRescueTrailingTool(remaining);
+                    if (rescue) {
+                        completedTools.push({
+                            type: "tool",
+                            preText: "",
+                            envelope: rescue,
+                        });
+                        this.lastProcessedLength = this.buffer.length;
+                    } else {
+                        this.warnings.push({ content: remaining.trim().slice(0, 500) });
+                    }
         }
       }
     }
@@ -218,6 +238,29 @@ export class StreamingToolParser {
     this.pendingTools = [];
     this.warnings = [];
     this.pendingFence = null;
+  }
+
+  private isStrayClosingFence(fenceStart: number, contentStart: number, language: string): boolean {
+    if (language.length > 0) return false;
+
+    const before = this.buffer.slice(0, fenceStart);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    const linePrefix = this.buffer.slice(lineStart, fenceStart).trim();
+    if (linePrefix.length > 0) return false;
+
+    const remainder = this.buffer.slice(contentStart).trim();
+    return remainder.length === 0;
+  }
+
+  private tryRescueTrailingTool(text: string): ToolCallEnvelope | null {
+    const toolIndex = text.search(/["']tool["']\s*:/);
+    if (toolIndex === -1) return null;
+
+    let start = toolIndex;
+    while (start >= 0 && text[start] !== "{") start -= 1;
+    if (start < 0) return null;
+
+    return tryParseEnvelope(text.slice(start).trim());
   }
 }
 

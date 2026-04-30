@@ -11,8 +11,47 @@ interface FigmaOp
 
 interface RGB { r: number; g: number; b: number; }
 interface RGBA extends RGB { a: number; }
+interface VariableColorValue
+{
+    kind: "variable-color";
+    hex: string;
+    variable: {
+        collection: string;
+        mode: string;
+        name: string;
+        resolvedType: "COLOR";
+    };
+}
+
+type ColorInput = string | VariableColorValue;
+interface EnsureColorVariablesOp extends FigmaOp
+{
+    type: "ensure_color_variables";
+    collection: string;
+    mode: string;
+    tokens: Array<{
+        key: string;
+        name: string;
+        hex: string;
+    }>;
+}
+interface EnsureThemeVariablesOp extends FigmaOp
+{
+    type: "ensure_theme_variables";
+    collection: string;
+    mode: string;
+    themeName: string;
+    tokens: Array<{
+        token: string;
+        variableName: string;
+        hex: string;
+        description?: string;
+    }>;
+}
 
 const nodeMap = new Map<string, string>();
+const collectionCache = new Map<string, VariableCollection>();
+const colorVariableCache = new Map<string, Variable>();
 
 function parseColor(c: string): RGBA | null
 {
@@ -26,12 +65,124 @@ function parseColor(c: string): RGBA | null
     return null;
 }
 
-function solidPaint(c: string): SolidPaint | null
+function isVariableColorValue(value: unknown): value is VariableColorValue
 {
-    const p = parseColor(c);
+    if (!value || typeof value !== "object") return false;
+    const record = value as Record<string, unknown>;
+    return record.kind === "variable-color" && typeof record.hex === "string";
+}
+
+async function getOrCreateCollection(name: string): Promise<VariableCollection>
+{
+    const cached = collectionCache.get(name);
+    if (cached) return cached;
+
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    const existing = collections.find((collection) => collection.name === name);
+    const collection = existing ?? figma.variables.createVariableCollection(name);
+    collectionCache.set(name, collection);
+    return collection;
+}
+
+async function getOrCreateColorVariable(value: VariableColorValue): Promise<Variable>
+{
+    const cacheKey = `${value.variable.collection}::${value.variable.name}`;
+    const cached = colorVariableCache.get(cacheKey);
+    if (cached) return cached;
+
+    const collection = await getOrCreateCollection(value.variable.collection);
+    const variables = await figma.variables.getLocalVariablesAsync("COLOR");
+    let variable = variables.find((item) =>
+        item.variableCollectionId === collection.id && item.name === value.variable.name);
+
+    if (!variable)
+        variable = figma.variables.createVariable(value.variable.name, collection, "COLOR");
+
+    const color = parseColor(value.hex);
+    if (color)
+    {
+        const modeId = collection.modes[0]?.modeId;
+        if (modeId) variable.setValueForMode(modeId, color);
+    }
+
+    colorVariableCache.set(cacheKey, variable);
+    return variable;
+}
+
+async function ensureColorVariables(op: EnsureColorVariablesOp): Promise<void>
+{
+    const collection = await getOrCreateCollection(op.collection);
+    const modeId = collection.modes[0]?.modeId;
+    if (!modeId) return;
+
+    const variables = await figma.variables.getLocalVariablesAsync("COLOR");
+    const byName = new Map(
+        variables
+            .filter((item) => item.variableCollectionId === collection.id)
+            .map((item) => [item.name, item] as const),
+    );
+
+    for (const token of op.tokens)
+    {
+        let variable = byName.get(token.name);
+        if (!variable)
+        {
+            variable = figma.variables.createVariable(token.name, collection, "COLOR");
+            byName.set(token.name, variable);
+        }
+
+        const color = parseColor(token.hex);
+        if (color) variable.setValueForMode(modeId, color);
+        colorVariableCache.set(`${op.collection}::${token.name}`, variable);
+    }
+}
+
+async function ensureThemeVariables(op: EnsureThemeVariablesOp): Promise<void>
+{
+    const collection = await getOrCreateCollection(op.collection);
+    const modeId = collection.modes[0]?.modeId;
+    if (!modeId) return;
+
+    const variables = await figma.variables.getLocalVariablesAsync("COLOR");
+    const byName = new Map(
+        variables
+            .filter((item) => item.variableCollectionId === collection.id)
+            .map((item) => [item.name, item] as const),
+    );
+
+    for (const token of op.tokens)
+    {
+        let variable = byName.get(token.variableName);
+        if (!variable)
+        {
+            variable = figma.variables.createVariable(token.variableName, collection, "COLOR");
+            byName.set(token.variableName, variable);
+        }
+
+        const color = parseColor(token.hex);
+        if (color) variable.setValueForMode(modeId, color);
+        colorVariableCache.set(`${op.collection}::${token.variableName}`, variable);
+    }
+}
+
+async function solidPaint(input: ColorInput): Promise<SolidPaint | null>
+{
+    const baseColor = typeof input === "string" ? input : input.hex;
+    const p = parseColor(baseColor);
     if (!p) return null;
-    const paint: SolidPaint = { type: "SOLID", color: { r: p.r, g: p.g, b: p.b }, visible: true, blendMode: "NORMAL", opacity: p.a };
-    return paint;
+    const paint: SolidPaint = {
+        type: "SOLID",
+        color: { r: p.r, g: p.g, b: p.b },
+        visible: true,
+        blendMode: "NORMAL",
+        opacity: p.a,
+    };
+
+    if (!isVariableColorValue(input))
+        return paint;
+
+    const variable = await getOrCreateColorVariable(input);
+    return figma.variables.setBoundVariableForPaint(paint, "color", variable);
 }
 
 function resolveParent(frameId: unknown): FrameNode | PageNode
@@ -67,6 +218,25 @@ function resolveNode(nodeId: unknown): BaseNode | null
     return figmaId ? figma.getNodeById(figmaId) : null;
 }
 
+function applyLayoutSizing(node: SceneNode, op: FigmaOp): void
+{
+    if (op.fillParent && "layoutSizingHorizontal" in node)
+        (node as SceneNode & { layoutSizingHorizontal: "FIXED" | "HUG" | "FILL" }).layoutSizingHorizontal = "FILL";
+    if (op.fillParentHeight && "layoutSizingVertical" in node)
+        (node as SceneNode & { layoutSizingVertical: "FIXED" | "HUG" | "FILL" }).layoutSizingVertical = "FILL";
+}
+
+function applyCornerRadii(
+    node: SceneNode,
+    op: FigmaOp,
+): void
+{
+    if ("topLeftRadius" in node && op.cornerRadiusTopLeft !== undefined)
+        (node as SceneNode & { topLeftRadius: number }).topLeftRadius = Number(op.cornerRadiusTopLeft);
+    if ("topRightRadius" in node && op.cornerRadiusTopRight !== undefined)
+        (node as SceneNode & { topRightRadius: number }).topRightRadius = Number(op.cornerRadiusTopRight);
+}
+
 async function executeOps(ops: FigmaOp[]): Promise<number>
 {
     let count = 0;
@@ -77,16 +247,30 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
         {
             switch (op.type)
             {
+                case "ensure_color_variables":
+                {
+                    await ensureColorVariables(op as EnsureColorVariablesOp);
+                    count++;
+                    break;
+                }
+
+                case "ensure_theme_variables":
+                {
+                    await ensureThemeVariables(op as EnsureThemeVariablesOp);
+                    count++;
+                    break;
+                }
+
                 // ── Primitives ──────────────────────────────────────────
 
                 case "create_frame":
                 {
                     const frame = figma.createFrame();
                     frame.name = String(op.name ?? "Frame");
-                    frame.resize(Number(op.width ?? 390), Number(op.height ?? 100));
-                    if (typeof op.fill === "string")
+                    frame.resize(Number(op.width ?? 100), Number(op.height ?? 100));
+                    if (op.fill !== undefined)
                     {
-                        const paint = solidPaint(op.fill);
+                        const paint = await solidPaint(op.fill as ColorInput);
                         frame.fills = paint ? [paint] : [];
                     }
                     else
@@ -94,12 +278,13 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         frame.fills = [];  // Transparent — no white box for layout containers
                     }
                     if (op.cornerRadius !== undefined) frame.cornerRadius = Number(op.cornerRadius);
+                    applyCornerRadii(frame, op);
+                    if (op.clipContent !== undefined) frame.clipsContent = Boolean(op.clipContent);
                     const parent = resolveParent(op.frameId);
                     parent.appendChild(frame);
                     if (op.x !== undefined) frame.x = Number(op.x);  // Position after append (relative to parent)
                     if (op.y !== undefined) frame.y = Number(op.y);
-                    if (op.fillParent && "layoutSizingHorizontal" in frame)
-                        (frame as FrameNode).layoutSizingHorizontal = "FILL";
+                    applyLayoutSizing(frame, op);
                     if (op.id) nodeMap.set(op.id, frame.id);
                     count++;
                     break;
@@ -110,16 +295,18 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const parent = resolveParent(op.frameId);
                     const rect = figma.createRectangle();
                     rect.resize(Number(op.width ?? 100), Number(op.height ?? 100));
-                    if (typeof op.fill === "string")
+                    if (op.fill !== undefined)
                     {
-                        const paint = solidPaint(op.fill);
+                        const paint = await solidPaint(op.fill as ColorInput);
                         if (paint) rect.fills = [paint];
                     }
                     if (op.cornerRadius !== undefined) rect.cornerRadius = Number(op.cornerRadius);
+                    applyCornerRadii(rect, op);
                     if (op.name) rect.name = String(op.name);
                     parent.appendChild(rect);
                     if (op.x !== undefined) rect.x = Number(op.x);
                     if (op.y !== undefined) rect.y = Number(op.y);
+                    applyLayoutSizing(rect, op);
                     if (op.id) nodeMap.set(op.id, rect.id);
                     count++;
                     break;
@@ -130,16 +317,65 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const parent = resolveParent(op.frameId);
                     const ellipse = figma.createEllipse();
                     ellipse.resize(Number(op.width ?? 100), Number(op.height ?? 100));
-                    if (typeof op.fill === "string")
+                    if (op.fill !== undefined)
                     {
-                        const paint = solidPaint(op.fill);
+                        const paint = await solidPaint(op.fill as ColorInput);
                         if (paint) ellipse.fills = [paint];
                     }
                     if (op.name) ellipse.name = String(op.name);
                     parent.appendChild(ellipse);
                     if (op.x !== undefined) ellipse.x = Number(op.x);
                     if (op.y !== undefined) ellipse.y = Number(op.y);
+                    applyLayoutSizing(ellipse, op);
                     if (op.id) nodeMap.set(op.id, ellipse.id);
+                    count++;
+                    break;
+                }
+
+                case "create_image":
+                {
+                    const parent = resolveParent(op.frameId);
+                    const rect = figma.createRectangle();
+                    rect.resize(Number(op.width ?? 160), Number(op.height ?? 100));
+                    rect.name = String(op.name ?? "Image");
+                    if (op.cornerRadius !== undefined) rect.cornerRadius = Number(op.cornerRadius);
+                    applyCornerRadii(rect, op);
+                    parent.appendChild(rect);
+                    if (op.x !== undefined) rect.x = Number(op.x);
+                    if (op.y !== undefined) rect.y = Number(op.y);
+                    applyLayoutSizing(rect, op);
+
+                    let imageApplied = false;
+                    if (typeof op.src === "string" && op.src.trim().length > 0)
+                    {
+                        try
+                        {
+                            const response = await fetch(op.src);
+                            if (response.ok)
+                            {
+                                const bytes = new Uint8Array(await response.arrayBuffer());
+                                const image = figma.createImage(bytes);
+                                rect.fills = [{
+                                    type: "IMAGE",
+                                    imageHash: image.hash,
+                                    scaleMode: "FILL",
+                                }];
+                                imageApplied = true;
+                            }
+                        }
+                        catch (error)
+                        {
+                            console.error(`Image fetch failed for ${String(op.src)}:`, error);
+                        }
+                    }
+
+                    if (!imageApplied && op.fill !== undefined)
+                    {
+                        const paint = await solidPaint(op.fill as ColorInput);
+                        if (paint) rect.fills = [paint];
+                    }
+
+                    if (op.id) nodeMap.set(op.id, rect.id);
                     count++;
                     break;
                 }
@@ -164,20 +400,17 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         text.textAutoResize = "HEIGHT";
                         text.resize(Number(op.width), text.height || 24);
                     }
-                    if (typeof op.color === "string")
+                    if (op.color !== undefined)
                     {
-                        const paint = solidPaint(op.color);
+                        const paint = await solidPaint(op.color as ColorInput);
                         if (paint) text.fills = [paint];
                     }
                     if (op.name) text.name = String(op.name);
                     parent.appendChild(text);
                     if (op.x !== undefined) text.x = Number(op.x);
                     if (op.y !== undefined) text.y = Number(op.y);
-                    if (op.fillParent && "layoutSizingHorizontal" in text)
-                    {
-                        (text as TextNode).layoutSizingHorizontal = "FILL";
-                        text.textAutoResize = "HEIGHT";
-                    }
+                    applyLayoutSizing(text, op);
+                    if (op.fillParent) text.textAutoResize = "HEIGHT";
                     if (op.id) nodeMap.set(op.id, text.id);
                     count++;
                     break;
@@ -189,9 +422,8 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const line = figma.createLine();
                     line.resize(Number(op.length ?? 100), 0);
                     if (op.rotation !== undefined) line.rotation = Number(op.rotation);
-                    const lineColorStr = typeof op.color === "string" ? op.color : "#E5E5E5";
-                    const lineColorParsed = parseColor(lineColorStr);
-                    if (lineColorParsed) line.strokes = [{ type: "SOLID", color: { r: lineColorParsed.r, g: lineColorParsed.g, b: lineColorParsed.b }, opacity: lineColorParsed.a, visible: true, blendMode: "NORMAL" }];
+                    const linePaint = await solidPaint((op.color as ColorInput | undefined) ?? "#E5E5E5");
+                    if (linePaint) line.strokes = [linePaint];
                     line.strokeWeight = op.weight !== undefined ? Number(op.weight) : 1;
                     if (op.name) line.name = String(op.name);
                     parent.appendChild(line);
@@ -271,9 +503,9 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                 case "set_fill":
                 {
                     const node = resolveNode(op.nodeId);
-                    if (node && "fills" in node && typeof op.color === "string")
+                    if (node && "fills" in node && op.color !== undefined)
                     {
-                        const paint = solidPaint(op.color);
+                        const paint = await solidPaint(op.color as ColorInput);
                         if (paint) (node as GeometryMixin).fills = [paint];
                     }
                     count++;
@@ -283,9 +515,9 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                 case "set_stroke":
                 {
                     const node = resolveNode(op.nodeId);
-                    if (node && "strokes" in node && typeof op.color === "string")
+                    if (node && "strokes" in node && op.color !== undefined)
                     {
-                        const paint = solidPaint(op.color);
+                        const paint = await solidPaint(op.color as ColorInput);
                         if (paint)
                         {
                             (node as GeometryMixin).strokes = [paint];
@@ -406,6 +638,10 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                             frame.paddingTop = Number(op.paddingV);
                             frame.paddingBottom = Number(op.paddingV);
                         }
+                        if (op.paddingLeft !== undefined) frame.paddingLeft = Number(op.paddingLeft);
+                        if (op.paddingRight !== undefined) frame.paddingRight = Number(op.paddingRight);
+                        if (op.paddingTop !== undefined) frame.paddingTop = Number(op.paddingTop);
+                        if (op.paddingBottom !== undefined) frame.paddingBottom = Number(op.paddingBottom);
                         if (op.align) frame.primaryAxisAlignItems = String(op.align) as "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
                         if (op.counterAlign) frame.counterAxisAlignItems = String(op.counterAlign) as "MIN" | "MAX" | "CENTER" | "BASELINE";
                     }

@@ -301,6 +301,7 @@ export async function runCli(): Promise<void>
     });
 
     const agentLoop = new StreamingAgentLoop(() => providerStore.getProvider(), contextManager, toolExecutor, {
+        maxToolsPerStep: 1,
         getCallOptions,
         getRequestDelay: () => callOptionsStore.getRequestDelayMs(),
     });

@@ -168,7 +168,7 @@ export class FigmaServerManager
                 onAssistantChunk: (chunk) => textChunks.push(chunk),
                 onToolDone: (_toolName, result) =>
                 {
-                    if (result.data)
+                    if (result.ok && result.data)
                     {
                         if (Array.isArray(result.data))
                             this.pendingOps.push(...(result.data as FigmaOp[]));
@@ -218,6 +218,7 @@ export class FigmaServerManager
             this.toolExecutor,
             {
                 maxStepsPerTurn: 64,
+                maxToolsPerStep: 1,
                 getCallOptions: () => this.deps.getCallOptions?.() ?? {},
                 getRequestDelay: () => this.deps.getRequestDelay?.() ?? 0,
             },

@@ -79,14 +79,16 @@ function extractJsonLikeBlocks(text: string): string[]
 
 export function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
 {
+    const normalized = normalizeToolCandidate(candidate);
+
     try
     {
-        const envelope = toEnvelope(JSON.parse(candidate) as unknown);
+        const envelope = toEnvelope(JSON.parse(normalized) as unknown);
         if (envelope) return envelope;
     }
     catch { /* fall through */ }
 
-    const repaired = repairJsonCandidate(candidate);
+    const repaired = repairJsonCandidate(normalized);
     if (!repaired) return null;
 
     try
@@ -97,6 +99,73 @@ export function tryParseEnvelope(candidate: string): ToolCallEnvelope | null
     {
         return null;
     }
+}
+
+function findToolAnchoredCandidate(text: string): string | null
+{
+    const toolMatch = /["']tool["']\s*:/.exec(text);
+    if (!toolMatch) return null;
+
+    const anchor = toolMatch.index ?? -1;
+    if (anchor === -1) return null;
+
+    let start = anchor;
+    while (start >= 0 && text[start] !== "{") start -= 1;
+    if (start < 0) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < text.length; index += 1)
+    {
+        const char = text[index]!;
+
+        if (inString)
+        {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (char === "\\")
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (char === "\"")
+            {
+                inString = false;
+            }
+
+            continue;
+        }
+
+        if (char === "\"")
+        {
+            inString = true;
+            continue;
+        }
+
+        if (char === "{")
+        {
+            depth += 1;
+            continue;
+        }
+
+        if (char !== "}") continue;
+        if (depth === 0) continue;
+
+        depth -= 1;
+        if (depth === 0)
+        {
+            return text.slice(start, index + 1).trim();
+        }
+    }
+
+    return text.slice(start).trim();
 }
 
 // ── Public export for streaming parser ───────────────────────────────────────
@@ -164,6 +233,18 @@ function repairJsonCandidate(input: string): string | null
     return repaired;
 }
 
+function normalizeToolCandidate(input: string): string
+{
+    const trimmed = input.trim();
+    const strippedFence = trimmed
+        .replace(/^```(?:json|javascript|js|typescript|ts)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+    const languageLineMatch = /^(json|javascript|js|typescript|ts)\s*\r?\n([\s\S]+)$/i.exec(strippedFence);
+    return languageLineMatch?.[2]?.trim() ?? strippedFence;
+}
+
 // ── Public types ─────────────────────────────────────────────────────────────
 
 export interface ToolCallSegment
@@ -221,6 +302,13 @@ export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
         if (bareResult)
         {
             return { toolCalls: [{ preText: "", envelope: bareResult }], postText: "" };
+        }
+
+        const anchoredCandidate = findToolAnchoredCandidate(text);
+        const anchoredResult = anchoredCandidate ? tryParseEnvelope(anchoredCandidate) : null;
+        if (anchoredResult)
+        {
+            return { toolCalls: [{ preText: "", envelope: anchoredResult }], postText: "" };
         }
     }
 

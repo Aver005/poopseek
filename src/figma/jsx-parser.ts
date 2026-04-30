@@ -1,73 +1,174 @@
+export type JsxPropValue = string | number | boolean;
+
+export interface JsxSourceLocation
+{
+    index: number;
+    line: number;
+    column: number;
+}
+
 export interface JsxNode
 {
     type: string;
-    props: Record<string, string | number | boolean>;
+    props: Record<string, JsxPropValue>;
     children: (JsxNode | string)[];
+    loc: JsxSourceLocation;
 }
 
-function parseAttrs(raw: string): Record<string, string | number | boolean>
+export class JsxParseError extends Error
 {
-    const result: Record<string, string | number | boolean> = {};
-    const re = /([\w-]+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(raw)) !== null)
+    readonly loc: JsxSourceLocation;
+
+    constructor(message: string, loc: JsxSourceLocation)
     {
-        const key = m[1]!;
-        const val = m[2] ?? m[3] ?? m[4] ?? "";
-        if (val === "true")       result[key] = true;
-        else if (val === "false") result[key] = false;
+        super(message);
+        this.name = "JsxParseError";
+        this.loc = loc;
+    }
+}
+
+function getLocation(source: string, index: number): JsxSourceLocation
+{
+    let line = 1;
+    let column = 1;
+
+    for (let i = 0; i < index; i += 1)
+    {
+        if (source[i] === "\n")
+        {
+            line += 1;
+            column = 1;
+        }
         else
         {
-            const n = Number(val);
-            result[key] = (!isNaN(n) && val !== "") ? n : val;
+            column += 1;
         }
     }
-    // Standalone boolean attrs: <Button fullWidth /> → fullWidth: true
-    const stripped = raw.replace(/([\w-]+)=(?:"[^"]*"|'[^']*'|\S+)/g, "");
-    const bareRe = /\b([A-Za-z][\w-]*)\b/g;
-    while ((m = bareRe.exec(stripped)) !== null)
+
+    return { index, line, column };
+}
+
+function coerceValue(raw: string): JsxPropValue
+{
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    const numberValue = Number(raw);
+    return raw !== "" && !Number.isNaN(numberValue) ? numberValue : raw;
+}
+
+function parseAttrs(raw: string): Record<string, JsxPropValue>
+{
+    const result: Record<string, JsxPropValue> = {};
+    const attrRe = /([A-Za-z][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = attrRe.exec(raw)) !== null)
     {
-        const key = m[1]!;
+        const key = match[1]!;
+        const value = match[2] ?? match[3] ?? match[4] ?? "";
+        result[key] = coerceValue(value);
+    }
+
+    const stripped = raw.replace(/([A-Za-z][\w-]*)\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/g, " ");
+    const bareAttrRe = /\b([A-Za-z][\w-]*)\b/g;
+
+    while ((match = bareAttrRe.exec(stripped)) !== null)
+    {
+        const key = match[1]!;
         if (!(key in result)) result[key] = true;
     }
+
     return result;
+}
+
+function appendChild(
+    roots: JsxNode[],
+    stack: JsxNode[],
+    child: JsxNode | string,
+): void
+{
+    const parent = stack.at(-1);
+    if (parent)
+    {
+        parent.children.push(child);
+        return;
+    }
+
+    if (typeof child === "string")
+    {
+        if (child.trim().length > 0)
+            throw new Error("Text nodes are only allowed inside JSX tags");
+        return;
+    }
+
+    roots.push(child);
 }
 
 export function parseJsx(input: string): JsxNode[]
 {
-    // Normalise JSX expressions: attr={value} → attr="value"
-    const src = input.replace(/=\{([^}]*)\}/g, '="$1"');
-
-    // Match PascalCase tags only (our component vocabulary)
-    const tagRe = /<(\/?)([A-Z][A-Za-z0-9]*)((?:\s[^>]*?)?)\s*(\/?)>/g;
-    const stack: JsxNode[] = [];
+    const source = input.replace(/=\{([^}]*)\}/g, '="$1"');
     const roots: JsxNode[] = [];
-    let last = 0;
-    let m: RegExpExecArray | null;
+    const stack: JsxNode[] = [];
+    const tagRe = /<[^>]+>/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
 
-    while ((m = tagRe.exec(src)) !== null)
+    while ((match = tagRe.exec(source)) !== null)
     {
-        const [full, closing, tag, attrs, selfClose] = m;
-        const before = src.slice(last, m.index).trim();
-        if (before) (stack.at(-1)?.children ?? roots as (JsxNode | string)[]).push(before);
-        last = m.index + full!.length;
+        const fullTag = match[0]!;
+        const tagIndex = match.index;
+        const before = source.slice(lastIndex, tagIndex);
+        if (before.trim().length > 0)
+            appendChild(roots, stack, before.trim());
 
-        if (closing)
+        const loc = getLocation(source, tagIndex);
+        const inner = fullTag.slice(1, -1).trim();
+        if (inner.length === 0)
+            throw new JsxParseError("Empty JSX tag is not allowed", loc);
+
+        if (inner.startsWith("/"))
         {
+            const closingTag = inner.slice(1).trim();
             const node = stack.pop();
-            if (node) (stack.at(-1)?.children ?? roots as (JsxNode | string)[]).push(node);
+            if (!node)
+                throw new JsxParseError(`Unexpected closing tag </${closingTag}>`, loc);
+            if (node.type !== closingTag)
+                throw new JsxParseError(`Mismatched closing tag </${closingTag}> for <${node.type}>`, loc);
+            appendChild(roots, stack, node);
         }
         else
         {
-            const node: JsxNode = { type: tag!, props: parseAttrs(attrs ?? ""), children: [] };
-            if (selfClose) (stack.at(-1)?.children ?? roots as (JsxNode | string)[]).push(node);
-            else           stack.push(node);
+            const selfClosing = inner.endsWith("/");
+            const content = selfClosing ? inner.slice(0, -1).trim() : inner;
+            const tagMatch = /^([A-Z][A-Za-z0-9]*)(?:\s+([\s\S]*))?$/.exec(content);
+            if (!tagMatch)
+                throw new JsxParseError(`Invalid JSX tag "${fullTag}"`, loc);
+
+            const node: JsxNode = {
+                type: tagMatch[1]!,
+                props: parseAttrs(tagMatch[2] ?? ""),
+                children: [],
+                loc,
+            };
+
+            if (selfClosing)
+                appendChild(roots, stack, node);
+            else
+                stack.push(node);
         }
+
+        lastIndex = tagIndex + fullTag.length;
     }
 
-    // Flush unclosed tags
-    while (stack.length > 1) stack.at(-2)!.children.push(stack.pop()!);
-    if (stack.length === 1) roots.push(stack[0]!);
+    const tail = source.slice(lastIndex).trim();
+    if (tail.length > 0)
+        appendChild(roots, stack, tail);
+
+    if (stack.length > 0)
+    {
+        const unclosed = stack.at(-1)!;
+        throw new JsxParseError(`Unclosed tag <${unclosed.type}>`, unclosed.loc);
+    }
 
     return roots;
 }

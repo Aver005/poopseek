@@ -5,5 +5,7 @@ export { ScopeManager } from "./scope";
 export type { AgentScope } from "./scope";
 export { FigmaLogger } from "./logger";
 export { parseJsx } from "./jsx-parser";
-export type { JsxNode } from "./jsx-parser";
+export type { JsxNode, JsxPropValue, JsxSourceLocation } from "./jsx-parser";
+export { JsxParseError } from "./jsx-parser";
 export { compileJsx } from "./jsx-compiler";
+export { assertValidJsx, formatJsxValidationErrors, validateJsxTree } from "./jsx-validator";
