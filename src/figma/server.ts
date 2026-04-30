@@ -161,7 +161,10 @@ export class FigmaServerManager
                 {
                     if (result.data)
                     {
-                        this.pendingOps.push(result.data as FigmaOp);
+                        if (Array.isArray(result.data))
+                            this.pendingOps.push(...(result.data as FigmaOp[]));
+                        else
+                            this.pendingOps.push(result.data as FigmaOp);
                     }
                 },
             });

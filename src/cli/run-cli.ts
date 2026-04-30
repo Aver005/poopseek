@@ -635,7 +635,7 @@ export async function runCli(): Promise<void>
                 fetch(`http://localhost:${figmaServerManager.port}/v1/ops`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ops: [result.data] }),
+                    body: JSON.stringify({ ops: Array.isArray(result.data) ? result.data : [result.data] }),
                 }).catch(() => {});
             }
         },
