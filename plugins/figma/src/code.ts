@@ -10,18 +10,28 @@ interface FigmaOp
 }
 
 interface RGB { r: number; g: number; b: number; }
+interface RGBA extends RGB { a: number; }
 
 const nodeMap = new Map<string, string>();
 
-function hexToRgb(hex: string): RGB | null
+function parseColor(c: string): RGBA | null
 {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!result) return null;
-    return {
-        r: parseInt(result[1]!, 16) / 255,
-        g: parseInt(result[2]!, 16) / 255,
-        b: parseInt(result[3]!, 16) / 255,
-    };
+    // rgba(r, g, b, a) or rgb(r, g, b)
+    const rgba = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)$/.exec(c);
+    if (rgba)
+        return { r: Number(rgba[1]) / 255, g: Number(rgba[2]) / 255, b: Number(rgba[3]) / 255, a: rgba[4] !== undefined ? Number(rgba[4]) : 1 };
+    const hex = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})?$/i.exec(c);
+    if (hex)
+        return { r: parseInt(hex[1]!, 16) / 255, g: parseInt(hex[2]!, 16) / 255, b: parseInt(hex[3]!, 16) / 255, a: hex[4] ? parseInt(hex[4], 16) / 255 : 1 };
+    return null;
+}
+
+function solidPaint(c: string): SolidPaint | null
+{
+    const p = parseColor(c);
+    if (!p) return null;
+    const paint: SolidPaint = { type: "SOLID", color: { r: p.r, g: p.g, b: p.b }, visible: true, blendMode: "NORMAL", opacity: p.a };
+    return paint;
 }
 
 function resolveParent(frameId: unknown): FrameNode | PageNode
@@ -73,15 +83,23 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                 {
                     const frame = figma.createFrame();
                     frame.name = String(op.name ?? "Frame");
-                    frame.resize(Number(op.width ?? 390), Number(op.height ?? 844));
-                    if (op.x !== undefined) frame.x = Number(op.x);
-                    if (op.y !== undefined) frame.y = Number(op.y);
+                    frame.resize(Number(op.width ?? 390), Number(op.height ?? 100));
                     if (typeof op.fill === "string")
                     {
-                        const rgb = hexToRgb(op.fill);
-                        if (rgb) frame.fills = [{ type: "SOLID", color: rgb }];
+                        const paint = solidPaint(op.fill);
+                        frame.fills = paint ? [paint] : [];
                     }
-                    figma.currentPage.appendChild(frame);
+                    else
+                    {
+                        frame.fills = [];  // Transparent — no white box for layout containers
+                    }
+                    if (op.cornerRadius !== undefined) frame.cornerRadius = Number(op.cornerRadius);
+                    const parent = resolveParent(op.frameId);
+                    parent.appendChild(frame);
+                    if (op.x !== undefined) frame.x = Number(op.x);  // Position after append (relative to parent)
+                    if (op.y !== undefined) frame.y = Number(op.y);
+                    if (op.fillParent && "layoutSizingHorizontal" in frame)
+                        (frame as FrameNode).layoutSizingHorizontal = "FILL";
                     if (op.id) nodeMap.set(op.id, frame.id);
                     count++;
                     break;
@@ -92,16 +110,16 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const parent = resolveParent(op.frameId);
                     const rect = figma.createRectangle();
                     rect.resize(Number(op.width ?? 100), Number(op.height ?? 100));
-                    if (op.x !== undefined) rect.x = Number(op.x);
-                    if (op.y !== undefined) rect.y = Number(op.y);
                     if (typeof op.fill === "string")
                     {
-                        const rgb = hexToRgb(op.fill);
-                        if (rgb) rect.fills = [{ type: "SOLID", color: rgb }];
+                        const paint = solidPaint(op.fill);
+                        if (paint) rect.fills = [paint];
                     }
                     if (op.cornerRadius !== undefined) rect.cornerRadius = Number(op.cornerRadius);
                     if (op.name) rect.name = String(op.name);
                     parent.appendChild(rect);
+                    if (op.x !== undefined) rect.x = Number(op.x);
+                    if (op.y !== undefined) rect.y = Number(op.y);
                     if (op.id) nodeMap.set(op.id, rect.id);
                     count++;
                     break;
@@ -112,15 +130,15 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const parent = resolveParent(op.frameId);
                     const ellipse = figma.createEllipse();
                     ellipse.resize(Number(op.width ?? 100), Number(op.height ?? 100));
-                    if (op.x !== undefined) ellipse.x = Number(op.x);
-                    if (op.y !== undefined) ellipse.y = Number(op.y);
                     if (typeof op.fill === "string")
                     {
-                        const rgb = hexToRgb(op.fill);
-                        if (rgb) ellipse.fills = [{ type: "SOLID", color: rgb }];
+                        const paint = solidPaint(op.fill);
+                        if (paint) ellipse.fills = [paint];
                     }
                     if (op.name) ellipse.name = String(op.name);
                     parent.appendChild(ellipse);
+                    if (op.x !== undefined) ellipse.x = Number(op.x);
+                    if (op.y !== undefined) ellipse.y = Number(op.y);
                     if (op.id) nodeMap.set(op.id, ellipse.id);
                     count++;
                     break;
@@ -129,21 +147,35 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                 case "create_text":
                 {
                     const parent = resolveParent(op.frameId);
-                    const isBold = op.fontWeight === "Bold";
-                    await figma.loadFontAsync({ family: "Inter", style: isBold ? "Bold" : "Regular" });
+                    const weightMap: Record<string, string> = {
+                        Bold: "Bold", SemiBold: "Semi Bold", Medium: "Medium",
+                        Regular: "Regular", Light: "Light",
+                    };
+                    const style = weightMap[String(op.fontWeight ?? "Regular")] ?? "Regular";
+                    await figma.loadFontAsync({ family: "Inter", style });
                     const text = figma.createText();
                     text.characters = String(op.content ?? "");
-                    if (op.x !== undefined) text.x = Number(op.x);
-                    if (op.y !== undefined) text.y = Number(op.y);
+                    text.fontName = { family: "Inter", style };
                     if (op.fontSize !== undefined) text.fontSize = Number(op.fontSize);
-                    if (isBold) text.fontName = { family: "Inter", style: "Bold" };
+                    if (op.width !== undefined)
+                    {
+                        text.textAutoResize = "HEIGHT";
+                        text.resize(Number(op.width), text.height || 24);
+                    }
                     if (typeof op.color === "string")
                     {
-                        const rgb = hexToRgb(op.color);
-                        if (rgb) text.fills = [{ type: "SOLID", color: rgb }];
+                        const paint = solidPaint(op.color);
+                        if (paint) text.fills = [paint];
                     }
                     if (op.name) text.name = String(op.name);
                     parent.appendChild(text);
+                    if (op.x !== undefined) text.x = Number(op.x);
+                    if (op.y !== undefined) text.y = Number(op.y);
+                    if (op.fillParent && "layoutSizingHorizontal" in text)
+                    {
+                        (text as TextNode).layoutSizingHorizontal = "FILL";
+                        text.textAutoResize = "HEIGHT";
+                    }
                     if (op.id) nodeMap.set(op.id, text.id);
                     count++;
                     break;
@@ -153,15 +185,16 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                 {
                     const parent = resolveParent(op.frameId);
                     const line = figma.createLine();
-                    if (op.x !== undefined) line.x = Number(op.x);
-                    if (op.y !== undefined) line.y = Number(op.y);
                     line.resize(Number(op.length ?? 100), 0);
                     if (op.rotation !== undefined) line.rotation = Number(op.rotation);
-                    const lineColor = typeof op.color === "string" ? hexToRgb(op.color) : hexToRgb("#E5E5E5");
-                    if (lineColor) line.strokes = [{ type: "SOLID", color: lineColor }];
+                    const lineColorStr = typeof op.color === "string" ? op.color : "#E5E5E5";
+                    const lineColorParsed = parseColor(lineColorStr);
+                    if (lineColorParsed) line.strokes = [{ type: "SOLID", color: { r: lineColorParsed.r, g: lineColorParsed.g, b: lineColorParsed.b }, opacity: lineColorParsed.a, visible: true, blendMode: "NORMAL" }];
                     line.strokeWeight = op.weight !== undefined ? Number(op.weight) : 1;
                     if (op.name) line.name = String(op.name);
                     parent.appendChild(line);
+                    if (op.x !== undefined) line.x = Number(op.x);
+                    if (op.y !== undefined) line.y = Number(op.y);
                     if (op.id) nodeMap.set(op.id, line.id);
                     count++;
                     break;
@@ -238,8 +271,8 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const node = resolveNode(op.nodeId);
                     if (node && "fills" in node && typeof op.color === "string")
                     {
-                        const rgb = hexToRgb(op.color);
-                        if (rgb) (node as GeometryMixin).fills = [{ type: "SOLID", color: rgb }];
+                        const paint = solidPaint(op.color);
+                        if (paint) (node as GeometryMixin).fills = [paint];
                     }
                     count++;
                     break;
@@ -250,10 +283,10 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const node = resolveNode(op.nodeId);
                     if (node && "strokes" in node && typeof op.color === "string")
                     {
-                        const rgb = hexToRgb(op.color);
-                        if (rgb)
+                        const paint = solidPaint(op.color);
+                        if (paint)
                         {
-                            (node as GeometryMixin).strokes = [{ type: "SOLID", color: rgb }];
+                            (node as GeometryMixin).strokes = [paint];
                             if (op.weight !== undefined) (node as GeometryMixin).strokeWeight = Number(op.weight);
                             if (op.align) (node as GeometryMixin).strokeAlign = String(op.align) as "INSIDE" | "OUTSIDE" | "CENTER";
                         }
@@ -275,7 +308,7 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const node = resolveNode(op.nodeId);
                     if (node && "effects" in node)
                     {
-                        const rgb = typeof op.color === "string" ? (hexToRgb(op.color) ?? { r: 0, g: 0, b: 0 }) : { r: 0, g: 0, b: 0 };
+                        const rgb = typeof op.color === "string" ? (parseColor(op.color) ?? { r: 0, g: 0, b: 0, a: 1 }) : { r: 0, g: 0, b: 0, a: 1 };
                         const shadow: DropShadowEffect = {
                             type: "DROP_SHADOW",
                             color: { r: rgb.r, g: rgb.g, b: rgb.b, a: Number(op.opacity ?? 0.12) },
@@ -297,8 +330,8 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     const node = resolveNode(op.nodeId);
                     if (node && "fills" in node && typeof op.from === "string" && typeof op.to === "string")
                     {
-                        const rgb1 = hexToRgb(op.from);
-                        const rgb2 = hexToRgb(op.to);
+                        const rgb1 = parseColor(op.from);
+                        const rgb2 = parseColor(op.to);
                         if (rgb1 && rgb2)
                         {
                             const transform = angleToGradientTransform(Number(op.angle ?? 0));
@@ -355,6 +388,7 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     {
                         const frame = node as FrameNode;
                         if (op.direction) frame.layoutMode = String(op.direction) as "HORIZONTAL" | "VERTICAL" | "NONE";
+                        if (op.hugContent) frame.primaryAxisSizingMode = "AUTO";
                         if (op.gap !== undefined) frame.itemSpacing = Number(op.gap);
                         if (op.paddingH !== undefined)
                         {
@@ -417,11 +451,13 @@ figma.ui.onmessage = async (msg: { type: string; ops?: FigmaOp[] }) =>
     {
         try
         {
+            const countBefore = figma.currentPage.children.length;
             const count = await executeOps(msg.ops);
             if (count > 0)
             {
-                const created = figma.currentPage.children.slice(-count);
-                figma.viewport.scrollAndZoomIntoView(created);
+                const newTopLevel = figma.currentPage.children.slice(countBefore);
+                const toView = newTopLevel.length > 0 ? newTopLevel : figma.currentPage.children.slice(-1);
+                figma.viewport.scrollAndZoomIntoView(toView);
             }
             figma.ui.postMessage({ type: "OPS_DONE", count });
         }

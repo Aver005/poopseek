@@ -24,7 +24,7 @@ const TYPO: Record<string, TypoSpec> = {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-interface Frame { id: string; width: number; height: number }
+interface Frame { id: string; width: number; height: number; isAutoLayout?: boolean }
 
 interface State
 {
@@ -122,9 +122,13 @@ function Frame_(node: JsxNode, s: State, layout?: "HORIZONTAL" | "VERTICAL"): vo
     const par = top(s);
     const id = str(p.id) ?? uid(s, layout ? (layout === "VERTICAL" ? "vstk" : "hstk") : "frm");
     const fw = w(p, par?.width ?? 390);
-    const fh = h(p, layout ? undefined : 100) ?? undefined;
+    // Don't use h() with undefined — JS default params make h(p, undefined) === h(p) === 100
+    const fh = (p.h !== undefined || p.height !== undefined)
+        ? num(p.h ?? p.height)
+        : layout ? undefined : 100;
     const cr = num(p.radius ?? p.cornerRadius);
 
+    const fillParent = par?.isAutoLayout && p.w === undefined && p.width === undefined && !p.x;
     push({
         type: "create_frame", id,
         name: str(p.name) ?? node.type,
@@ -133,21 +137,24 @@ function Frame_(node: JsxNode, s: State, layout?: "HORIZONTAL" | "VERTICAL"): vo
         ...pos(p),
         ...(!p.gradient && p.fill ? { fill: str(p.fill) } : {}),
         ...(cr !== undefined ? { cornerRadius: cr } : {}),
+        ...(fillParent ? { fillParent: true } : {}),
     } as FigmaOp, s);
 
     if (layout)
     {
         const aMap: Record<string, string> = { center: "CENTER", start: "MIN", end: "MAX", "space-between": "SPACE_BETWEEN" };
-        const ca   = str(p.counterAlign);
-        const al   = str(p.align);
+        // CSS convention: align = cross axis (⊥ flow), justify = main axis (↕ flow)
+        const crossAlignProp = str(p.align ?? p.counterAlign);
+        const mainAlignProp  = str(p.justify ?? p.justifyContent);
         push({
             type: "set_auto_layout", nodeId: id,
             direction: layout,
+            hugContent: fh === undefined,
             ...(p.gap       !== undefined ? { gap:      num(p.gap) } : {}),
             ...(p.padX ?? p.px ? { paddingH: num(p.padX ?? p.px) } : {}),
             ...(p.padY ?? p.py ? { paddingV: num(p.padY ?? p.py) } : {}),
-            ...(al  ? { align:        aMap[al.toLowerCase()]  ?? al  } : {}),
-            ...(ca  ? { counterAlign: aMap[ca.toLowerCase()]  ?? ca  } : {}),
+            ...(crossAlignProp ? { counterAlign: aMap[crossAlignProp.toLowerCase()] ?? crossAlignProp } : {}),
+            ...(mainAlignProp  ? { align:        aMap[mainAlignProp.toLowerCase()]  ?? mainAlignProp  } : {}),
         } as FigmaOp, s);
     }
 
@@ -156,7 +163,7 @@ function Frame_(node: JsxNode, s: State, layout?: "HORIZONTAL" | "VERTICAL"): vo
     shadow(s, id, p.shadow);
     opacity(s, id, p.opacity);
 
-    s.stack.push({ id, width: fw, height: fh ?? 200 });
+    s.stack.push({ id, width: fw, height: fh ?? 200, isAutoLayout: !!layout });
     kids(node, s);
     s.stack.pop();
 }
@@ -186,6 +193,7 @@ function Card(node: JsxNode, s: State): void
         push({
             type: "set_auto_layout", nodeId: id,
             direction: "VERTICAL",
+            hugContent: fh === undefined,
             gap: num(p.gap) ?? 12,
             paddingH: num(p.padX ?? p.px) ?? 16,
             paddingV: num(p.padY ?? p.py) ?? 16,
@@ -208,7 +216,8 @@ function Button(node: JsxNode, s: State): void
     const variant = str(p.variant) ?? "primary";
     const id = str(p.id) ?? uid(s, "btn");
     const label = str(p.text) ?? (text(node) || "Button");
-    const fw = p.fullWidth ? (par?.width ?? 358) : num(p.w ?? p.width);
+    const useFullWidth = !!p.fullWidth;
+    const fw = useFullWidth && !par?.isAutoLayout ? (par?.width ?? 358) : num(p.w ?? p.width);
     const fh = num(p.h ?? p.height) ?? 52;
 
     const fills: Record<string, string> = { primary: "#18A0FB", secondary: "#F5F5F5", ghost: "transparent" };
@@ -224,6 +233,7 @@ function Button(node: JsxNode, s: State): void
         height: fh, ...pos(p),
         fill: fillColor,
         cornerRadius: num(p.radius) ?? 12,
+        ...(useFullWidth && par?.isAutoLayout ? { fillParent: true } : {}),
     } as FigmaOp, s);
 
     push({
@@ -283,7 +293,8 @@ function Input_(node: JsxNode, s: State): void
     const p = node.props;
     const par = top(s);
     const id = str(p.id) ?? uid(s, "inp");
-    const fw = w(p, par ? par.width - 32 : 326);
+    const inp_full = !!p.fullWidth;
+    const fw = inp_full && !par?.isAutoLayout ? (par?.width ?? 358) : w(p, par ? par.width - 32 : 326);
     const fh = h(p, 52);
     const placeholder = str(p.placeholder) ?? (text(node) || "Введите текст…");
 
@@ -312,8 +323,9 @@ function Icon_(node: JsxNode, s: State): void
     const id = str(p.id) ?? uid(s, "ico");
     const sym = str(p.symbol ?? p.icon) ?? (text(node) || "◉");
 
-    push({ type: "create_rect", id, name: str(p.name) ?? `Icon / ${sym}`, ...frameId(s, p), width: sz, height: sz, ...pos(p), fill: str(p.fill) ?? "#F5F5F5", cornerRadius: num(p.radius) ?? Math.round(sz * 0.22) } as FigmaOp, s);
-    push({ type: "create_text", frameId: id, content: sym, fontSize: Math.round(sz * 0.5), color: str(p.color) ?? "#666666" } as FigmaOp, s);
+    push({ type: "create_frame", id, name: str(p.name) ?? `Icon / ${sym}`, ...frameId(s, p), width: sz, height: sz, ...pos(p), fill: str(p.fill) ?? "#F5F5F5", cornerRadius: num(p.radius) ?? Math.round(sz * 0.22) } as FigmaOp, s);
+    push({ type: "set_auto_layout", nodeId: id, direction: "HORIZONTAL", gap: 0, paddingH: 0, paddingV: 0, align: "CENTER", counterAlign: "CENTER" } as FigmaOp, s);
+    push({ type: "create_text", frameId: id, content: sym, fontSize: Math.round(sz * 0.5), color: str(p.color) ?? "#1A1A1A" } as FigmaOp, s);
 }
 
 function Badge(node: JsxNode, s: State): void
@@ -321,9 +333,11 @@ function Badge(node: JsxNode, s: State): void
     const p = node.props;
     const id = str(p.id) ?? uid(s, "bdg");
     const label = str(p.text) ?? (text(node) || "•");
+    const textColor = str(p.color) ?? "#FFFFFF";
 
-    push({ type: "create_rect", id, name: "Badge", ...frameId(s, p), width: 28, height: 18, ...pos(p), fill: str(p.fill) ?? "#18A0FB", cornerRadius: 100 } as FigmaOp, s);
-    push({ type: "create_text", frameId: id, content: label, fontSize: 10, fontWeight: "Bold", color: "#FFFFFF" } as FigmaOp, s);
+    push({ type: "create_frame", id, name: "Badge", ...frameId(s, p), ...pos(p), fill: str(p.fill) ?? "#18A0FB", cornerRadius: num(p.radius) ?? 100 } as FigmaOp, s);
+    push({ type: "set_auto_layout", nodeId: id, direction: "HORIZONTAL", hugContent: true, gap: 0, paddingH: 10, paddingV: 4, align: "CENTER", counterAlign: "CENTER" } as FigmaOp, s);
+    push({ type: "create_text", frameId: id, content: label, fontSize: num(p.size) ?? 12, fontWeight: "SemiBold", color: textColor } as FigmaOp, s);
 }
 
 // ── Primitives ────────────────────────────────────────────────────────────────
@@ -370,6 +384,9 @@ function Text_(node: JsxNode, s: State, typoKey?: string): void
     const t = TYPO[typoKey ?? ""] as TypoSpec | undefined;
     const content = text(node) || str(p.content ?? p.text) || "";
 
+    const tw = num(p.w ?? p.width);
+    const par = top(s);
+    const textFillParent = par?.isAutoLayout && tw === undefined && !p.x;
     push({
         type: "create_text", id,
         name: str(p.name) ?? (typoKey ?? "Text"),
@@ -379,6 +396,8 @@ function Text_(node: JsxNode, s: State, typoKey?: string): void
         fontSize:   num(p.size ?? p.fontSize) ?? t?.fontSize ?? 16,
         fontWeight: str(p.weight ?? p.fontWeight) ?? t?.fontWeight ?? "Regular",
         color:      str(p.color) ?? "#1A1A1A",
+        ...(tw !== undefined ? { width: tw } : {}),
+        ...(textFillParent ? { fillParent: true } : {}),
     } as FigmaOp, s);
 
     const ls = num(p.letterSpacing) ?? t?.letterSpacing;

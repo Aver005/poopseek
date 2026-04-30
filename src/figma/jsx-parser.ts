@@ -22,6 +22,14 @@ function parseAttrs(raw: string): Record<string, string | number | boolean>
             result[key] = (!isNaN(n) && val !== "") ? n : val;
         }
     }
+    // Standalone boolean attrs: <Button fullWidth /> → fullWidth: true
+    const stripped = raw.replace(/([\w-]+)=(?:"[^"]*"|'[^']*'|\S+)/g, "");
+    const bareRe = /\b([A-Za-z][\w-]*)\b/g;
+    while ((m = bareRe.exec(stripped)) !== null)
+    {
+        const key = m[1]!;
+        if (!(key in result)) result[key] = true;
+    }
     return result;
 }
 
