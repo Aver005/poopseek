@@ -18,7 +18,7 @@
     --blue-hover: #0d8de3;
     --red: #f24822;
     --green: #1bc47d;
-    --radius: 6px;
+    --radius: 8px;
   }
 
   body {
@@ -37,7 +37,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 12px;
+    padding: 10px 12px;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -50,7 +50,7 @@
     transition: background .3s;
     flex-shrink: 0;
   }
-  .dot.ok  { background: var(--blue); }
+  .dot.ok  { background: var(--blue); box-shadow: 0 0 6px rgba(24,160,251,.4); }
   .dot.err { background: var(--red); }
 
   .header-label {
@@ -67,12 +67,13 @@
     border: none;
     color: var(--text-dim);
     cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 3px;
+    padding: 3px 5px;
+    border-radius: 4px;
     font-size: 13px;
     line-height: 1;
     display: flex;
     align-items: center;
+    transition: background .15s, color .15s;
   }
   .btn-icon:hover { background: var(--bg3); color: var(--text); }
 
@@ -80,39 +81,42 @@
   .messages {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 12px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
     scroll-behavior: smooth;
   }
 
-  .messages::-webkit-scrollbar { width: 4px; }
-  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .messages::-webkit-scrollbar { width: 5px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+  .messages::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
 
   .msg {
-    padding: 7px 10px;
+    padding: 9px 12px;
     border-radius: var(--radius);
-    line-height: 1.45;
+    line-height: 1.5;
     word-break: break-word;
-    max-width: 92%;
-    animation: fadeIn .15s ease;
+    max-width: 90%;
+    animation: slideIn .2s ease-out;
   }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to   { opacity: 1; transform: none; }
+  }
 
-  .msg.user      { background: var(--blue); color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
-  .msg.assistant { background: var(--bg3); align-self: flex-start; border-bottom-left-radius: 2px; }
-  .msg.system    { background: none; color: var(--text-dim); font-size: 11px; align-self: center; text-align: center; padding: 2px 0; }
-  .msg.error     { background: rgba(242,72,34,.15); color: var(--red); align-self: flex-start; }
-  .msg.thinking  { color: var(--text-dim); }
-  .msg.thinking::after { content: '...'; animation: dots 1s steps(4,end) infinite; }
-  @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
+  .msg.user      { background: var(--blue); color: #fff; align-self: flex-end; border-bottom-right-radius: 3px; }
+  .msg.assistant { background: var(--bg3); align-self: flex-start; border-bottom-left-radius: 3px; }
+  .msg.system    { background: rgba(255,255,255,.04); color: var(--text-dim); font-size: 11px; align-self: center; text-align: center; padding: 4px 10px; border-radius: 20px; max-width: 100%; }
+  .msg.error     { background: rgba(242,72,34,.12); color: var(--red); align-self: flex-start; border: 1px solid rgba(242,72,34,.2); }
+  .msg.thinking  { color: var(--text-dim); background: var(--bg3); align-self: flex-start; border-bottom-left-radius: 3px; }
 
   /* ── Input ── */
   .input-area {
     display: flex;
-    gap: 6px;
-    padding: 8px 12px;
+    gap: 8px;
+    padding: 10px 12px;
     background: var(--bg);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
@@ -125,16 +129,19 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
-    padding: 7px 9px;
+    padding: 9px 11px;
     font-size: 12px;
     font-family: inherit;
     resize: none;
     outline: none;
-    min-height: 34px;
-    max-height: 96px;
-    line-height: 1.4;
+    min-height: 56px;
+    max-height: 140px;
+    line-height: 1.45;
     transition: border-color .15s;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
+  textarea::-webkit-scrollbar { display: none; }
   textarea::placeholder { color: var(--text-dim); }
   textarea:focus { border-color: var(--blue); }
 
@@ -143,18 +150,19 @@
     color: #fff;
     border: none;
     border-radius: var(--radius);
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
     cursor: pointer;
-    font-size: 15px;
+    font-size: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background .15s, opacity .15s;
+    transition: background .15s, opacity .15s, transform .1s;
   }
-  .send-btn:hover:not(:disabled) { background: var(--blue-hover); }
-  .send-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .send-btn:hover:not(:disabled) { background: var(--blue-hover); transform: scale(1.05); }
+  .send-btn:active:not(:disabled) { transform: scale(0.96); }
+  .send-btn:disabled { opacity: .3; cursor: not-allowed; }
 
   /* ── Settings panel ── */
   .settings {
@@ -172,9 +180,9 @@
     width: 100%;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 5px;
     color: var(--text);
-    padding: 5px 8px;
+    padding: 6px 9px;
     font-size: 12px;
     font-family: inherit;
     outline: none;
@@ -185,11 +193,12 @@
     background: var(--blue);
     color: #fff;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     padding: 5px 12px;
     cursor: pointer;
     font-size: 11px;
     align-self: flex-end;
+    transition: background .15s;
   }
   .save-btn:hover { background: var(--blue-hover); }
 </style>
@@ -216,7 +225,7 @@
 </div>
 
 <div class="input-area">
-  <textarea id="input" placeholder="Нарисуй онбординг для iOS-приложения…" rows="1"></textarea>
+  <textarea id="input" placeholder="Нарисуй онбординг для iOS-приложения…" rows="2"></textarea>
   <button class="send-btn" id="sendBtn" disabled>↑</button>
 </div>
 
@@ -224,6 +233,7 @@
   let serverUrl = 'http://localhost:7331';
   let sessionId = null;
   let busy = false;
+  let connected = false;
 
   const dot = document.getElementById('dot');
   const statusLabel = document.getElementById('statusLabel');
@@ -238,6 +248,7 @@
 
   // ── Status ──────────────────────────────────────────
   function setStatus(ok, label) {
+    connected = ok;
     dot.className = 'dot ' + (ok ? 'ok' : 'err');
     statusLabel.textContent = label;
     sendBtn.disabled = !ok || busy;
@@ -253,6 +264,23 @@
     }
   }
 
+  // ── CLI ops polling ──────────────────────────────────
+  let totalOpsThisTurn = 0;
+  async function pollOps() {
+    if (!connected) return;
+    try {
+      const r = await fetch(serverUrl + '/v1/poll-ops', { signal: AbortSignal.timeout(2500) });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.ops?.length > 0) {
+        totalOpsThisTurn += data.ops.length;
+        parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: data.ops } }, '*');
+      }
+    } catch { /* ignore */ }
+  }
+
+  function resetTurnOps() { totalOpsThisTurn = 0; }
+
   // ── Messages ─────────────────────────────────────────
   function addMsg(text, type) {
     const el = document.createElement('div');
@@ -261,6 +289,19 @@
     messagesEl.appendChild(el);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return el;
+  }
+
+  // ── Thinking dots (JS-based, shows live op count) ────
+  function startThinking(el) {
+    let n = 0;
+    el.textContent = 'Думаю';
+    const timer = setInterval(() => {
+      n = (n + 1) % 4;
+      const dots = '.'.repeat(n || 3);
+      const suffix = totalOpsThisTurn > 0 ? ` [${totalOpsThisTurn} элем.]` : '';
+      el.textContent = 'Думаю' + dots + suffix;
+    }, 350);
+    return timer;
   }
 
   // ── Send ──────────────────────────────────────────────
@@ -273,16 +314,20 @@
     inputEl.value = '';
     autoResize();
 
+    resetTurnOps();
     addMsg(text, 'user');
-    const thinkEl = addMsg('Думаю', 'assistant thinking');
+    const thinkEl = addMsg('Думаю', 'thinking');
+    const thinkTimer = startThinking(thinkEl);
 
     try {
       const resp = await fetch(serverUrl + '/v1/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, message: text }),
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(600_000),
       });
+
+      clearInterval(thinkTimer);
 
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
@@ -292,17 +337,15 @@
       thinkEl.className = 'msg assistant';
       thinkEl.textContent = data.text || '✓';
 
-      if (data.ops?.length > 0) {
-        addMsg('Создаю ' + data.ops.length + ' элемент(ов)…', 'system');
-        parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: data.ops } }, '*');
-      }
+      // ops already executed via polling; data.ops is empty
     } catch (err) {
+      clearInterval(thinkTimer);
       thinkEl.className = 'msg error';
       thinkEl.textContent = 'Ошибка: ' + err.message;
       setStatus(false, 'Нет соединения');
     } finally {
       busy = false;
-      sendBtn.disabled = false;
+      sendBtn.disabled = !connected;
     }
   }
 
@@ -310,14 +353,14 @@
   window.onmessage = (event) => {
     const msg = event.data?.pluginMessage;
     if (!msg) return;
-    if (msg.type === 'OPS_DONE')  addMsg('Готово — ' + msg.count + ' элемент(ов) создано', 'system');
+    if (msg.type === 'OPS_DONE')  addMsg('✓ ' + msg.count + ' элемент(ов) на канвасе', 'system');
     if (msg.type === 'OPS_ERROR') addMsg('Ошибка холста: ' + msg.error, 'error');
   };
 
   // ── Input helpers ─────────────────────────────────────
   function autoResize() {
     inputEl.style.height = 'auto';
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 96) + 'px';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
   }
 
   inputEl.addEventListener('input', autoResize);
@@ -342,7 +385,8 @@
 
   // ── Init ──────────────────────────────────────────────
   checkStatus();
-  setInterval(checkStatus, 6000);
+  setInterval(checkStatus, 8000);
+  setInterval(pollOps, 800);
 </script>
 </body>
 </html>

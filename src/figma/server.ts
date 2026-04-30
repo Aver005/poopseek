@@ -26,6 +26,7 @@ export class FigmaServerManager
     readonly port: number;
     private server: BunServer | null = null;
     private readonly sessions = new Map<string, FigmaSession>();
+    private readonly pendingOps: FigmaOp[] = [];
     private readonly toolExecutor: ToolExecutor;
     private cleanupTimer: ReturnType<typeof setInterval> | null = null;
     private readonly deps: FigmaServerDeps;
@@ -68,6 +69,7 @@ export class FigmaServerManager
         this.server?.stop();
         this.server = null;
         this.sessions.clear();
+        this.pendingOps.length = 0;
     }
 
     private corsHeaders(): Record<string, string>
@@ -93,6 +95,16 @@ export class FigmaServerManager
             return this.handleChat(req);
         }
 
+        if (req.method === "POST" && url.pathname === "/v1/ops")
+        {
+            return this.handlePushOps(req);
+        }
+
+        if (req.method === "GET" && url.pathname === "/v1/poll-ops")
+        {
+            return this.handlePollOps();
+        }
+
         if (req.method === "GET" && url.pathname === "/v1/status")
         {
             return Response.json(
@@ -102,6 +114,21 @@ export class FigmaServerManager
         }
 
         return new Response("Not Found", { status: 404, headers: this.corsHeaders() });
+    }
+
+    private async handlePushOps(req: Request): Promise<Response>
+    {
+        let body: { ops?: unknown };
+        try { body = await req.json() as { ops?: unknown }; }
+        catch { return Response.json({ error: "Invalid JSON" }, { status: 400, headers: this.corsHeaders() }); }
+        if (Array.isArray(body.ops)) this.pendingOps.push(...(body.ops as FigmaOp[]));
+        return Response.json({ ok: true }, { headers: this.corsHeaders() });
+    }
+
+    private handlePollOps(): Response
+    {
+        const ops = this.pendingOps.splice(0);
+        return Response.json({ ops }, { headers: this.corsHeaders() });
     }
 
     private async handleChat(req: Request): Promise<Response>
@@ -124,7 +151,6 @@ export class FigmaServerManager
         const session = this.getOrCreateSession(body.sessionId);
         session.lastActivityAt = Date.now();
 
-        const ops: FigmaOp[] = [];
         const textChunks: string[] = [];
 
         try
@@ -135,7 +161,7 @@ export class FigmaServerManager
                 {
                     if (result.data)
                     {
-                        ops.push(result.data as FigmaOp);
+                        this.pendingOps.push(result.data as FigmaOp);
                     }
                 },
             });
@@ -149,7 +175,7 @@ export class FigmaServerManager
         const response: FigmaChatResponse = {
             sessionId: session.id,
             text: textChunks.join(""),
-            ops,
+            ops: [],
         };
 
         return Response.json(response, { headers: this.corsHeaders() });

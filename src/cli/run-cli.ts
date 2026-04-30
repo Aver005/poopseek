@@ -630,6 +630,14 @@ export async function runCli(): Promise<void>
         onFigmaToolDone: (toolName, args, result, durationMs) =>
         {
             figmaLoggerRef.current?.logTool(toolName, args, result, durationMs).catch(() => {});
+            if (result.data && figmaServerManager.isRunning)
+            {
+                fetch(`http://localhost:${figmaServerManager.port}/v1/ops`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ops: [result.data] }),
+                }).catch(() => {});
+            }
         },
         onTurnComplete: () =>
         {
