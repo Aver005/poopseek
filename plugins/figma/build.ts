@@ -12,7 +12,7 @@ const proc = Bun.spawn({
         "src/code.ts",
         "--bundle",
         `--outfile=${path.join(outDir, "code.js")}`,
-        "--target=es2018",
+        "--target=es2015",
         "--platform=browser",
     ],
     stdout: "inherit",

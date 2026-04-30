@@ -92,6 +92,11 @@ export interface CommandsContext
     getFigmaServerStatus?: () => { running: boolean; port: number };
     startFigmaServer?: () => Promise<void>;
     stopFigmaServer?: () => Promise<void>;
+    getAgentScope?: () => "chat" | "figma";
+    getFigmaJamId?: () => string | null;
+    enterFigmaScope?: () => Promise<void>;
+    exitFigmaScope?: () => void;
+    loadFigmaJam?: (sessionId: string) => Promise<{ error?: string }>;
 }
 
 export interface CommandModule

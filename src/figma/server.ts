@@ -16,18 +16,10 @@ export interface FigmaServerDeps
     getProvider: () => ILLMProvider;
     basePrompt: string;
     toolsPrompt: string;
+    figmaPrompt: string;
     variableProcessor: VariableProcessor;
 }
 
-const FIGMA_SYSTEM_ADDENDUM = [
-    "## Figma Design Mode",
-    "Ты работаешь в режиме Figma-дизайна.",
-    "Используй инструменты figma_* для создания элементов прямо на канвасе.",
-    "Всегда создавай дизайн через инструменты — не описывай его словами.",
-    "Создавай полноценные экраны: фреймы → фоны → UI-элементы → текст.",
-    "",
-    FIGMA_TOOLS_DOC,
-].join("\n");
 
 export class FigmaServerManager
 {
@@ -173,7 +165,7 @@ export class FigmaServerManager
 
         const id = sessionId ?? crypto.randomUUID();
 
-        const basePrompt = [this.deps.basePrompt, "", FIGMA_SYSTEM_ADDENDUM].join("\n");
+        const basePrompt = [this.deps.basePrompt, "", this.deps.figmaPrompt, "", FIGMA_TOOLS_DOC].join("\n");
 
         const contextManager = new ContextManager(
             basePrompt,

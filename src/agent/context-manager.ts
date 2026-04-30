@@ -38,6 +38,7 @@ export default class ContextManager
     private webToolsDoc: string = "";
     private activeRoleContent: string = "";
     private poetModeContent: string = "";
+    private figmaContext: string = "";
 
     constructor(
         basePrompt: string,
@@ -163,6 +164,11 @@ export default class ContextManager
         this.poetModeContent = content;
     }
 
+    setFigmaContext(content: string): void
+    {
+        this.figmaContext = content;
+    }
+
     clearHistory(): void
     {
         this.messages = [];
@@ -225,6 +231,11 @@ export default class ContextManager
         if (this.activeRoleContent.trim().length > 0)
         {
             blocks.push("", "### ACTIVE ROLE", this.activeRoleContent.trim());
+        }
+
+        if (this.figmaContext.trim().length > 0)
+        {
+            blocks.push("", "### FIGMA DESIGN MODE", this.figmaContext.trim());
         }
 
         if (this.poetModeContent.trim().length > 0)

@@ -5,6 +5,7 @@ import { getToolDetail, getToolProgressMessage, renderToolResultExtra } from "@/
 import { handleCommand } from "@/commands";
 import { prepareInputWithFileMentions, getFileAttachmentPreviewLines } from "@/cli/file-mentions";
 import type StreamingAgentLoop from "@/agent/streaming-loop";
+import type { ToolExecutionResult } from "@/agent/types";
 import type { InputQueue } from "@/cli/input-queue";
 import type { Command } from "@/commands/types";
 
@@ -30,6 +31,7 @@ export type MainLoopDeps = {
     writeUserMessage: (value: string) => void;
     pendingSidechatTasks: Set<Promise<void>>;
     onTurnComplete?: () => void;
+    onFigmaToolDone?: (toolName: string, args: Record<string, unknown>, result: ToolExecutionResult, durationMs: number) => void;
 };
 
 export async function runMainLoop(deps: MainLoopDeps): Promise<void>
@@ -47,6 +49,7 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
         writeUserMessage,
         pendingSidechatTasks,
         onTurnComplete,
+        onFigmaToolDone,
     } = deps;
 
     try
@@ -116,6 +119,8 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
 
             let wroteAnyChunk = false;
             let hadToolInThisTurn = false;
+            let toolStartMs = 0;
+            let lastToolArgs: Record<string, unknown> = {};
             isMainTurnActiveRef.current = true;
             const turnController = new AbortController();
             activeInterruptControllerRef.current = turnController;
@@ -150,6 +155,8 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
                     },
                     onToolStart: (toolName, toolArgs) =>
                     {
+                        toolStartMs = Date.now();
+                        lastToolArgs = toolArgs;
                         generationIndicator.stop();
                         const detail = getToolDetail(toolName, toolArgs);
                         const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
@@ -169,6 +176,7 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
                         }
                         output.write("\n");
                         generationIndicator.activate("Продолжаю...");
+                        onFigmaToolDone?.(toolName, lastToolArgs, toolResult, Date.now() - toolStartMs);
                     },
                     onToolParseError: (content) =>
                     {

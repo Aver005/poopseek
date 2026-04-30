@@ -43,6 +43,24 @@ export function createLoadCommand(context: CommandsContext): Command
                 return true;
             }
 
+            if (context.getAgentScope?.() === "figma")
+            {
+                writeLine("");
+                writeLine(`Загрузка figma jam: ${id}`);
+                const result = await (context.loadFigmaJam?.(id) ?? Promise.resolve({ error: "loadFigmaJam недоступен" }));
+                if (result.error)
+                {
+                    writeLine(`Ошибка: ${result.error}`);
+                }
+                else
+                {
+                    writeLine(`Figma jam загружен: ${id}`);
+                    writeLine("История восстановлена в контекст.");
+                }
+                writeLine("");
+                return true;
+            }
+
             if (!context.resolveSessionForLoad)
             {
                 writeLine("");

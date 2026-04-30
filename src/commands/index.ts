@@ -34,6 +34,7 @@ import { createResetCommand, createRstCommand, createNewCommand } from "./defs/r
 import { createExportCommand } from "./defs/export";
 import { createPoetCommand } from "./defs/poet";
 import { createFigmaCommand } from "./defs/figma";
+import { createScopeCommand } from "./defs/scope";
 
 function getCommandKeyByName(commandName: string): string
 {
@@ -85,6 +86,7 @@ export function createCommandHandlers(
     registerCommand(createExportCommand(context));
     registerCommand(createPoetCommand(context));
     registerCommand(createFigmaCommand(context));
+    registerCommand(createScopeCommand(context));
     registerCommand({
         name: "/home",
         description: "Вернуться на главный экран (прерывает текущую операцию)",

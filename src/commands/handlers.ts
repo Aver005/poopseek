@@ -85,6 +85,13 @@ export type CommandHandlerDeps = {
     getRemoteSessionImporter?: () => RemoteSessionImporter | undefined;
 
     figmaServerManager: FigmaServerManager;
+
+    // Scope
+    getAgentScope: () => "chat" | "figma";
+    getFigmaJamId: () => string | null;
+    enterFigmaScope: () => Promise<void>;
+    exitFigmaScope: () => void;
+    loadFigmaJam: (sessionId: string) => Promise<{ error?: string }>;
 };
 
 function formatSessionDate(value: string): string
@@ -447,6 +454,12 @@ export function buildCommandHandlers(
         }),
         startFigmaServer: () => deps.figmaServerManager.start(),
         stopFigmaServer: () => deps.figmaServerManager.stop(),
+
+        getAgentScope: deps.getAgentScope,
+        getFigmaJamId: deps.getFigmaJamId,
+        enterFigmaScope: deps.enterFigmaScope,
+        exitFigmaScope: deps.exitFigmaScope,
+        loadFigmaJam: deps.loadFigmaJam,
 
         saveUserConfig: async (update) =>
         {

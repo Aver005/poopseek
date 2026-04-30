@@ -37,7 +37,8 @@ import { runOnboarding } from "@/cli/onboarding";
 import { createProvider, DeepseekWebProvider, type ILLMProvider } from "@/providers";
 import { runRoleCreation, type ActiveOperation } from "@/roles/creation";
 import { createDeepseekHistoryImporter } from "@/deepseek-client/history-import";
-import { FigmaServerManager } from "@/figma";
+import { FigmaServerManager, ScopeManager, FigmaLogger } from "@/figma";
+import { figmaToolsRegistry, FIGMA_TOOLS_DOC } from "@/tools/defs/figma";
 import { printWelcome } from "@/cli/welcome";
 import { webToolsRegistry, webToolNames, WEB_TOOLS_PROMPT } from "@/tools/web-tools";
 import { createAskUser } from "@/cli/ask-user";
@@ -251,6 +252,11 @@ export async function runCli(): Promise<void>
 
     syncAvailableSkills();
 
+    // --- Scope ---
+
+    const scopeManager = new ScopeManager();
+    const figmaLoggerRef = { current: null as FigmaLogger | null };
+
     // --- Agent ---
 
     let askUserImpl: AskUserFn = () => Promise.resolve(null);
@@ -265,10 +271,12 @@ export async function runCli(): Promise<void>
             return skill ? skill.body : null;
         },
         (toolName) => mcpDynamicResolver(toolName)
-            ?? (callOptionsStore.getLocalSearchEnabled() ? webToolsRegistry[toolName] : undefined),
+            ?? (callOptionsStore.getLocalSearchEnabled() ? webToolsRegistry[toolName] : undefined)
+            ?? (scopeManager.isFigma() ? figmaToolsRegistry[toolName] : undefined),
         () => [
             ...mcpManager.getDynamicToolNames(),
             ...(callOptionsStore.getLocalSearchEnabled() ? webToolNames : []),
+            ...(scopeManager.isFigma() ? Object.keys(figmaToolsRegistry) : []),
         ],
         subAgentRunner,
         (message) => generationIndicator.activate(message),
@@ -285,6 +293,7 @@ export async function runCli(): Promise<void>
         getProvider: () => providerStore.getProvider(),
         basePrompt: prompts.basePrompt,
         toolsPrompt: prompts.toolsPrompt,
+        figmaPrompt: prompts.figmaPrompt,
         variableProcessor,
     });
 
@@ -328,6 +337,7 @@ export async function runCli(): Promise<void>
         const activeRoleName = callOptionsStore.getActiveRoleName();
         if (activeRoleName) parts.push(colors.cyan(`role:${activeRoleName}`));
         if (callOptionsStore.getPoetEnabled()) parts.push(colors.magenta("poet"));
+        if (scopeManager.isFigma()) parts.push(colors.blue("figma"));
         return colors.dim("◆ ") + parts.join(colors.dim(" · "));
     });
 
@@ -366,6 +376,39 @@ export async function runCli(): Promise<void>
             const prefix = i === 0 ? colors.magenta(">") : colors.dim("|");
             output.write(`${prefix} ${line}\n`);
         }
+    };
+
+    const buildFigmaContext = (): string =>
+        [prompts.figmaPrompt, "", FIGMA_TOOLS_DOC].join("\n");
+
+    const enterFigmaScope = async (): Promise<void> =>
+    {
+        const jamId = crypto.randomUUID();
+        const logger = new FigmaLogger(jamId, (text) => writeDetachedOutput(`${colors.dim(text)}\n`));
+        await logger.init();
+        figmaLoggerRef.current = logger;
+        scopeManager.enter(jamId);
+        contextManager.setFigmaContext(buildFigmaContext());
+    };
+
+    const exitFigmaScope = (): void =>
+    {
+        scopeManager.exit();
+        figmaLoggerRef.current = null;
+        contextManager.setFigmaContext("");
+    };
+
+    const loadFigmaJam = async (sessionId: string): Promise<{ error?: string }> =>
+    {
+        const state = await FigmaLogger.loadContext(sessionId);
+        if (!state) return { error: "Jam не найден" };
+        contextManager.restoreState(state);
+        const logger = new FigmaLogger(sessionId, (text) => writeDetachedOutput(`${colors.dim(text)}\n`));
+        await logger.init();
+        figmaLoggerRef.current = logger;
+        scopeManager.enter(sessionId);
+        contextManager.setFigmaContext(buildFigmaContext());
+        return {};
     };
 
     askUserImpl = createAskUser({ inputQueue, terminalInput, generationIndicator });
@@ -521,6 +564,11 @@ export async function runCli(): Promise<void>
             return p instanceof DeepseekWebProvider ? createDeepseekHistoryImporter(p) : undefined;
         },
         figmaServerManager,
+        getAgentScope: () => scopeManager.scope,
+        getFigmaJamId: () => scopeManager.jamId,
+        enterFigmaScope,
+        exitFigmaScope,
+        loadFigmaJam,
     });
 
     // --- Terminal input callbacks ---
@@ -579,6 +627,10 @@ export async function runCli(): Promise<void>
         generationIndicator,
         writeUserMessage,
         pendingSidechatTasks,
+        onFigmaToolDone: (toolName, args, result, durationMs) =>
+        {
+            figmaLoggerRef.current?.logTool(toolName, args, result, durationMs).catch(() => {});
+        },
         onTurnComplete: () =>
         {
             const count = contextManager.getMessageCount();
@@ -589,6 +641,10 @@ export async function runCli(): Promise<void>
                     ? `Контекст заполнен (${count}/${MAX_MESSAGES} сообщ.). Используйте /compact.`
                     : `Контекст почти заполнен (${count}/${MAX_MESSAGES} сообщ.). Рекомендуется /compact.`;
                 output.write(`${colors.yellow("⚠")} ${colors.dim(msg)}\n`);
+            }
+            if (scopeManager.isFigma())
+            {
+                figmaLoggerRef.current?.saveContext(contextManager.exportState()).catch(() => {});
             }
         },
     });
