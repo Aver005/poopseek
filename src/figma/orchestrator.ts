@@ -1,5 +1,6 @@
 import type { JsxBuffer } from "@/figma/jsx-buffer";
 import { renderCompositionInvocationJsx } from "@/figma/materializer";
+import type { PreparedDesignBrief } from "@/figma/preprocess";
 import type { FigmaPluginSnapshot } from "@/figma/snapshot-types";
 import type {
     FigmaCompileArtifact,
@@ -46,6 +47,7 @@ export interface FigmaOrchestrationState
     revisionCount: number;
     lastUserPrompt: string;
     layout: LayoutConstraints;
+    currentBrief?: PreparedDesignBrief;
     pluginSnapshot?: FigmaPluginSnapshot;
     activeRootNodeId?: string;
     activeCompositionArtifactId?: string;
@@ -470,6 +472,7 @@ function buildStageRules(
 export function buildStageUserMessage(args: {
     stage: FigmaStage;
     userPrompt: string;
+    designBrief?: PreparedDesignBrief;
     snapshot: FigmaDerivedSnapshot;
     layout: LayoutConstraints;
     repairError?: string;
@@ -486,13 +489,36 @@ export function buildStageUserMessage(args: {
         "",
         "## Пользовательский запрос",
         args.userPrompt.trim(),
+    ];
+
+    if (args.designBrief)
+    {
+        parts.push(
+            "",
+            "## Prepared brief",
+            [
+                `- rewrittenPrompt: ${args.designBrief.rewrittenPrompt}`,
+                `- goal: ${args.designBrief.goal}`,
+                `- platform: ${args.designBrief.platform}`,
+                `- visualDirection: ${args.designBrief.visualDirection}`,
+                `- layoutStrategy: ${args.designBrief.layoutStrategy}`,
+                `- contentStrategy: ${args.designBrief.contentStrategy}`,
+                `- editStrategy: ${args.designBrief.editStrategy}`,
+                ...(args.designBrief.mustHave.length > 0 ? [`- mustHave: ${args.designBrief.mustHave.join(" | ")}`] : []),
+                ...(args.designBrief.avoid.length > 0 ? [`- avoid: ${args.designBrief.avoid.join(" | ")}`] : []),
+                ...(args.designBrief.successCriteria.length > 0 ? [`- successCriteria: ${args.designBrief.successCriteria.join(" | ")}`] : []),
+            ].join("\n"),
+        );
+    }
+
+    parts.push(
         "",
         "## Snapshot",
         args.snapshot.summary,
         "",
         "## Layout constraints",
         formatLayout(args.layout),
-    ];
+    );
 
     if (args.snapshot.invocationJsx)
     {

@@ -1,32 +1,20 @@
-# Figma Tokens Stage
+# Tokens Stage
 
-Ты работаешь только на стадии `tokens`.
+Цель: задать сильную тему через `figma.tokens`.
 
-Твоя задача:
+Выход:
 
-- продумать visual direction;
-- собрать сильную, небанальную тему;
-- задать semantic design tokens через `figma.tokens`;
-- использовать доступные design skills, если orchestrator сообщил, что они доступны.
+- один вызов `figma.tokens`
 
-Что нужно выдать:
+Правила:
 
-- только theme/tokens artifact;
-- без primitives;
-- без composition;
-- без compile.
+1. Никаких `figma.primitives.*`, `figma.compose.*`, `figma.compile`.
+2. Не объясняй словами вместо tool call.
+3. Палитра должна давать выразительный contrast, hierarchy и usable semantic mapping.
+4. Учитывай platform, width constraints и prepared brief.
 
-Жёсткие правила:
+Quality bar:
 
-1. Обязателен вызов `figma.tokens`.
-2. Не переходи к `figma.primitives.*`, `figma.compose.*`, `figma.compile`.
-3. Не описывай дизайн общими словами вместо tool call.
-4. Делай палитру эмоциональной и осмысленной: surface, contrast, accent, hierarchy.
-5. Учитывай platform и layout constraints из orchestration context.
-
-Качество темы:
-
-- semantic colors должны быть пригодны для повторного использования;
-- контраст текста должен быть внятным;
-- spacing/radius/shadow/typography должны ощущаться как единая система;
-- избегай стерильных default-решений, если задача просит выразительный UI.
+- не стерильно;
+- не серо-безлико;
+- токены должны помогать собрать красивый экран дальше.

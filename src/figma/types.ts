@@ -10,6 +10,7 @@ import type { CompositionJsxStore } from "@/figma/composition-jsx-store";
 import type { CompileArtifactStore } from "@/figma/compile-artifact-store";
 import type { FigmaOrchestrationState } from "@/figma/orchestrator";
 import type { FigmaPluginSnapshot } from "@/figma/snapshot-types";
+import type { PreparedDesignBrief } from "@/figma/preprocess";
 
 export interface FigmaOp
 {
@@ -34,6 +35,11 @@ export interface FigmaSnapshotRequest
 {
     sessionId: string;
     snapshot: FigmaPluginSnapshot;
+}
+
+export interface FigmaPreparedBriefResponse
+{
+    brief: PreparedDesignBrief;
 }
 
 export interface FigmaSession

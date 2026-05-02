@@ -18,6 +18,7 @@ import { CompositionMetaStore } from "@/figma/composition-meta-store";
 import { CompositionJsxStore } from "@/figma/composition-jsx-store";
 import { CompileArtifactStore } from "@/figma/compile-artifact-store";
 import { planPatchExistingRoot } from "@/figma/patch-planner";
+import { formatPreparedBrief, prepareDesignBrief } from "@/figma/preprocess";
 import {
     applyRenderPolicyToOps,
     buildDerivedSnapshot,
@@ -44,6 +45,7 @@ export interface FigmaServerDeps
     toolsPrompt: string;
     figmaPrompt: string;
     figmaStagePrompts: {
+        preprocess: string;
         tokens: string;
         primitives: string;
         compose: string;
@@ -440,6 +442,9 @@ export class FigmaServerManager
     private syncSessionRuntimeState(session: FigmaSession): void
     {
         const snapshot = this.buildSnapshot(session);
+        const briefSummary = session.orchestration.currentBrief
+            ? `\n\n## CURRENT BRIEF\n${formatPreparedBrief(session.orchestration.currentBrief)}`
+            : "";
         session.contextManager.setFigmaContext(
             buildStageSystemContext({
                 basePrompt: this.resolveStagePrompt(session.orchestration.currentStage),
@@ -450,7 +455,7 @@ export class FigmaServerManager
                 snapshot,
                 layout: session.orchestration.layout,
                 availableSkillsHint: this.deps.getAvailableSkillsHint?.(),
-            }),
+            }) + briefSummary,
         );
         session.contextManager.setAvailableSkillsHint(this.deps.getAvailableSkillsHint?.() ?? "");
         session.contextManager.setWebToolsDoc(this.deps.getWebToolsDoc?.() ?? "");
@@ -472,6 +477,15 @@ export class FigmaServerManager
         session.orchestration.taskMode = inferTaskMode(session.orchestration.hasPresentedResult);
         session.orchestration.editIntent = inferEditIntent(userMessage, session.orchestration.hasPresentedResult);
         session.orchestration.layout = inferLayoutConstraints(userMessage, session.orchestration.layout);
+        session.orchestration.currentBrief = await prepareDesignBrief({
+            getProvider: this.deps.getProvider,
+            systemPrompt: this.deps.figmaStagePrompts.preprocess,
+            userPrompt: userMessage,
+            taskMode: session.orchestration.taskMode,
+            snapshotSummary: this.buildSnapshot(session).summary,
+            callOptions: this.deps.getCallOptions?.(),
+        });
+        session.orchestration.editIntent = session.orchestration.currentBrief.editStrategy;
 
         if (session.orchestration.taskMode === "initial")
             return this.runInitialFlow(session, userMessage);
@@ -582,6 +596,7 @@ export class FigmaServerManager
             buildStageUserMessage({
                 stage,
                 userPrompt: userMessage,
+                designBrief: session.orchestration.currentBrief,
                 snapshot: this.buildSnapshot(session),
                 layout: session.orchestration.layout,
                 repairError,

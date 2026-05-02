@@ -1521,6 +1521,19 @@ JSX-артефакты лучше хранить отдельно от metadata-
 
 - иначе даже валидный JSX даёт визуально слабый и непропорциональный layout.
 
+### ADR-011. Сырой пользовательский prompt не должен идти прямо в builder stage
+
+Решение:
+
+- перед staged flow должен выполняться preprocess step;
+- отдельный агент превращает сырой пользовательский запрос в короткий design brief;
+- builder получает уже не исходный шумный prompt, а подготовленную цель с constraints и anti-goals.
+
+Почему:
+
+- модель слишком легко теряется, когда одновременно должна интерпретировать vague prompt, придумывать direction и строить UI;
+- короткий brief лучше удерживает цель и повышает качество решений.
+
 ## TODO
 
 ### P0
@@ -1669,6 +1682,13 @@ JSX-артефакты лучше хранить отдельно от metadata-
   - старые дети root удаляются;
   - subtree создаётся заново уже внутри существующего root;
   - fallback path по-прежнему остаётся `delete root + rerender`.
+- добавлен preprocess layer перед staged flow:
+  - новый `assets/prompts/figma/preprocess.prompt.md`;
+  - новый `src/figma/preprocess.ts`;
+  - preprocess агент строит краткий `PreparedDesignBrief`;
+  - brief сохраняется в session orchestration state;
+  - все stage user messages теперь получают prepared brief вместо зависимости только от сырого user prompt.
+- stage prompts дополнительно ужаты: меньше шума, больше коротких целевых инструкций.
 
 Что не менялось:
 
@@ -1677,6 +1697,7 @@ JSX-артефакты лучше хранить отдельно от metadata-
 - low-level legacy tool files вне V2 registry не удалялись.
 - полноценный semantic patch planner ещё не реализован; текущая revision strategy пока основана на replace-current-screen policy.
 - полноценный deep tree diff planner ещё не реализован; текущий patch planner пока работает на уровне reuse root + rebuild children.
+- visual quality всё ещё может быть недостаточной даже при хорошем orchestration; если brief + short prompts не дадут скачка качества, следующим шагом нужен отдельный art-direction stage или dedicated visual sub-agent.
 
 Итог:
 
