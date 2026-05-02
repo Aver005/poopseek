@@ -4,9 +4,11 @@ import ContextManager from "@/agent/context-manager";
 import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
 import type { ILLMProvider, ProviderCallOptions } from "@/providers";
-import { figmaToolsRegistry, FIGMA_TOOLS_DOC } from "@/tools/defs/figma";
+import { createFigmaV2Registry, FIGMA_V2_TOOLS_DOC } from "@/tools/defs/figma/v2";
 import { webToolNames, webToolsRegistry } from "@/tools/web-tools";
 import type { VariableProcessor } from "@/variables";
+import { JsxBuffer } from "@/figma/jsx-buffer";
+import { VariableStore } from "@/figma/var-store";
 import type { FigmaChatRequest, FigmaChatResponse, FigmaOp, FigmaSession } from "./types";
 
 const DEFAULT_PORT = 7331;
@@ -31,7 +33,6 @@ export class FigmaServerManager
     private server: BunServer | null = null;
     private readonly sessions = new Map<string, FigmaSession>();
     private readonly pendingOps: FigmaOp[] = [];
-    private readonly toolExecutor: ToolExecutor;
     private cleanupTimer: ReturnType<typeof setInterval> | null = null;
     private readonly deps: FigmaServerDeps;
 
@@ -39,17 +40,6 @@ export class FigmaServerManager
     {
         this.deps = deps;
         this.port = port;
-        this.toolExecutor = new ToolExecutor(
-            process.cwd(),
-            undefined,
-            undefined,
-            (name) => figmaToolsRegistry[name]
-                ?? (this.deps.getWebToolsDoc?.().trim() ? webToolsRegistry[name] : undefined),
-            () => [
-                ...Object.keys(figmaToolsRegistry),
-                ...(this.deps.getWebToolsDoc?.().trim() ? webToolNames : []),
-            ],
-        );
     }
 
     get isRunning(): boolean
@@ -166,16 +156,6 @@ export class FigmaServerManager
         {
             await session.agentLoop.runTurn(body.message, {
                 onAssistantChunk: (chunk) => textChunks.push(chunk),
-                onToolDone: (_toolName, result) =>
-                {
-                    if (result.ok && result.data)
-                    {
-                        if (Array.isArray(result.data))
-                            this.pendingOps.push(...(result.data as FigmaOp[]));
-                        else
-                            this.pendingOps.push(result.data as FigmaOp);
-                    }
-                },
             });
         }
         catch (error)
@@ -203,6 +183,28 @@ export class FigmaServerManager
 
         const id = sessionId ?? crypto.randomUUID();
 
+        // Per-session buffer and variable store
+        const buffer = new JsxBuffer();
+        const varStore = new VariableStore();
+
+        // V2 registry closes over this session's buffer/varStore/enqueueOps
+        const enqueueOps = (ops: FigmaOp[]) => this.pendingOps.push(...ops);
+        const v2Registry = createFigmaV2Registry(buffer, varStore, enqueueOps);
+        const webDoc = this.deps.getWebToolsDoc?.() ?? "";
+
+        const toolExecutor = new ToolExecutor(
+            process.cwd(),
+            undefined,
+            undefined,
+            // Only V2 tools — old create-* tools are intentionally excluded
+            (name) => v2Registry[name]
+                ?? (webDoc.trim() ? webToolsRegistry[name] : undefined),
+            () => [
+                ...Object.keys(v2Registry),
+                ...(webDoc.trim() ? webToolNames : []),
+            ],
+        );
+
         const contextManager = new ContextManager(
             this.deps.basePrompt,
             this.deps.toolsPrompt,
@@ -210,15 +212,15 @@ export class FigmaServerManager
             this.deps.variableProcessor,
         );
         contextManager.setFigmaContext(this.buildFigmaSystemPrompt());
-        contextManager.setWebToolsDoc(this.deps.getWebToolsDoc?.() ?? "");
+        contextManager.setWebToolsDoc(webDoc);
 
         const agentLoop = new StreamingAgentLoop(
             () => this.deps.getProvider(),
             contextManager,
-            this.toolExecutor,
+            toolExecutor,
             {
                 maxStepsPerTurn: 64,
-                maxToolsPerStep: 1,
+                maxToolsPerStep: 24,
                 getCallOptions: () => this.deps.getCallOptions?.() ?? {},
                 getRequestDelay: () => this.deps.getRequestDelay?.() ?? 0,
             },
@@ -228,6 +230,8 @@ export class FigmaServerManager
             id,
             contextManager,
             agentLoop,
+            buffer,
+            varStore,
             createdAt: Date.now(),
             lastActivityAt: Date.now(),
         };
@@ -244,7 +248,7 @@ export class FigmaServerManager
 
     private buildFigmaSystemPrompt(): string
     {
-        return [this.deps.figmaPrompt, "", FIGMA_TOOLS_DOC].join("\n");
+        return [this.deps.figmaPrompt, "", FIGMA_V2_TOOLS_DOC].join("\n");
     }
 
     private cleanupSessions(): void

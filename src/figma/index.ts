@@ -9,3 +9,7 @@ export type { JsxNode, JsxPropValue, JsxSourceLocation } from "./jsx-parser";
 export { JsxParseError } from "./jsx-parser";
 export { compileJsx } from "./jsx-compiler";
 export { assertValidJsx, formatJsxValidationErrors, validateJsxTree } from "./jsx-validator";
+export { JsxBuffer } from "./jsx-buffer";
+export type { BufferNode } from "./jsx-buffer";
+export { VariableStore } from "./var-store";
+export type { VarEntry } from "./var-store";

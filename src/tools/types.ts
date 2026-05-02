@@ -1,7 +1,7 @@
 import type { ToolExecutionResult } from "@/agent/types";
 import type { SubAgentResult, SubAgentTask } from "@/agent/sub-agent";
 
-export type { SubAgentTask, SubAgentResult };
+export type { SubAgentTask, SubAgentResult, ToolExecutionResult };
 
 export interface CommandResult
 {

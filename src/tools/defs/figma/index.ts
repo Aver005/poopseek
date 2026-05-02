@@ -45,6 +45,8 @@ export const figmaToolsRegistry: Record<string, ToolHandler> = {
     [renameNodeName]: renameNodeHandler,
 };
 
+export { createFigmaV2Registry, FIGMA_V2_TOOLS_DOC } from "./v2";
+
 export const FIGMA_SYSTEM_ADDENDUM = [
     "## Figma Design Mode",
     "Ты работаешь в режиме Figma-дизайна.",
