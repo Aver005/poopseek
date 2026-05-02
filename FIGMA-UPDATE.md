@@ -169,6 +169,17 @@ Canonical flow:
 - `figma_compile` скрыто совмещает три стадии: theme materialization, AST compile и render dispatch.
 - Старые low-level инструменты всё ещё присутствуют в проекте и концептуально засоряют mental model, даже если V2 registry их не экспонирует в Figma server.
 
+### Подтверждено реальным тестом
+
+После реального ручного прогона выяснилось, что проблемы не только архитектурные "на бумаге", но и поведенческие:
+
+- дизайн-агент делает пресные, эмоционально слабые, шаблонные экраны;
+- агент не умеет нормально жить в режиме доработок и после нового промпта слишком легко создаёт новый frame вместо точечного редактирования;
+- агент плохо понимает ширину контента, контейнеры, безопасные размеры экрана и допустимые границы layout.
+
+Это значит, что staged tools сами по себе недостаточны.
+Нужен ещё и orchestration layer, который управляет тем, какой prompt, какой контекст и какие правила агент получает на каждом этапе.
+
 ### Архитектурная формулировка проблемы
 
 Сейчас есть compile pipeline, но нет design pipeline.
@@ -229,6 +240,207 @@ Canonical flow:
 - `figma_render` -> internally `figma.compose.meta` + `figma.compose.jsx` + `figma.compile`
 
 Но canonical path должен быть staged.
+
+## Целевая orchestration-модель
+
+### Главный принцип
+
+Один большой универсальный prompt для Figma mode - ошибка.
+
+Правильная система должна работать как orchestrated pipeline, где агент на каждом этапе получает:
+
+- только релевантные инструкции для текущей стадии;
+- только нужные инструменты для этой стадии;
+- только тот контекст, который нужен сейчас;
+- жёсткий критерий завершения этапа;
+- запрет перескакивать на следующий этап без успешного результата текущего.
+
+### Flow для первого запроса пользователя
+
+1. Пользователь отправляет первый запрос.
+2. Orchestrator запускает stage-1 prompt:
+   - только `figma.tokens`,
+   - только требования к visual direction,
+   - только правила по semantic tokens и quality bar.
+3. Если stage 1 успешен, orchestrator запускает stage-2 prompt:
+   - только `figma.primitives.plan` и `figma.primitives.jsx`,
+   - чёткие требования к reusable primitives,
+   - запрет рисовать финальный frame на этом этапе.
+4. Для stage 2 orchestrator может запускать sub-agents:
+   - один sub-agent на library planning,
+   - один или несколько sub-agents на JSX кирпичики,
+   - при желании отдельный sub-agent на art direction / visual polish.
+5. Когда primitives готовы, orchestrator запускает stage-3 prompt:
+   - `figma.compose.meta`,
+   - `figma.compose.jsx`,
+   - `figma.compile`,
+   - жёсткие правила по root frame, width, spacing rhythm и visual hierarchy.
+6. Система парсит JSX / compile errors.
+7. Если есть ошибки, агент получает repair prompt только на исправление ошибок.
+8. Только после успешной компиляции результат показывается пользователю.
+
+### Flow для доработок
+
+На N-ом пользовательском промпте система не должна вести себя как "новая задача с нуля".
+
+Правильный flow такой:
+
+1. Пользователь присылает доработку.
+2. Orchestrator определяет режим:
+   - `edit-existing`,
+   - `fork-variant`,
+   - `new-screen`.
+3. По умолчанию режим всегда `edit-existing`, если пользователь явно не попросил новый экран, альтернативу или вторую версию.
+4. Агент получает revision prompt, а не initial prompt.
+5. Вместе с revision prompt агент получает:
+   - актуальный snapshot JSX-дерева из Figma;
+   - сведения о существующих artifacts;
+   - краткую сводку, что именно пользователь попросил поменять;
+   - правила "редактируй существующее, не создавай новый frame без причины".
+6. Агент делает точечную правку:
+   - либо меняет composition,
+   - либо меняет primitives,
+   - либо в крайнем случае создаёт новый frame, но только с явным обоснованием.
+7. Система снова прогоняет compile / validation / render.
+
+### Обязательный orchestrator contract
+
+Orchestrator должен уметь:
+
+- выбирать prompt по стадии, а не держать один prompt на всё;
+- блокировать переход к следующей стадии, если текущая не завершена успешно;
+- хранить `taskMode`: `initial` | `revision`;
+- хранить `editIntent`: `edit-existing` | `fork-variant` | `new-screen`;
+- хранить `activeScreenId` / `activeCompositionArtifactId`;
+- решать, когда нужен sub-agent, а когда достаточно основного агента;
+- формировать repair prompt после parse/validation/compile ошибок;
+- подавать агенту не только историю чата, но и актуальное state summary.
+
+## Skill-aware генерация дизайна
+
+### Проблема
+
+Даже хороший staged pipeline будет выдавать посредственный дизайн, если сам агент не знает, какими навыками он может воспользоваться.
+
+Сейчас агенту не хватает design quality layer:
+
+- visual direction;
+- композиционной выразительности;
+- содержательной hierarchy;
+- эмоциональной подачи;
+- осознанной responsive-логики.
+
+### Решение
+
+На этапах, где агент принимает визуальные решения, orchestrator должен явно сообщать ему:
+
+- какие skills доступны;
+- какие из них рекомендуется использовать;
+- когда надо вызывать sub-agent с конкретной специализацией.
+
+Минимум система должна поддерживать skill-aware hints для:
+
+- `frontend-design`
+- `ui-design`
+- `responsive-design`
+- `tailwind`
+- `suggest-lucide-icons`
+
+Если skill доступен, orchestrator должен подталкивать агента использовать его.
+Если skill недоступен, агент должен продолжать работу без него, но не делать вид, что capability существует.
+
+### Где skill-awareness обязателен
+
+- stage 1: visual direction и theme quality;
+- stage 2: primitive quality и library completeness;
+- stage 3: final composition, hero treatment, hierarchy, visual polish;
+- revision mode: при сложных UX/layout правках.
+
+## Revision-first модель вместо render-first
+
+### Новое базовое правило
+
+После того как пользователю уже показан экран, следующий промпт по умолчанию трактуется как request на правку существующего результата.
+
+То есть default policy должна быть такой:
+
+- сначала попытайся изменить текущий screen/frame;
+- не создавай новый frame, если пользователь прямо не попросил:
+  - новую версию,
+  - альтернативный концепт,
+  - второй экран,
+  - полный redesign с сохранением старого.
+
+### Что для этого не хватает сейчас
+
+- нет актуального snapshot import из Figma в агентный контекст;
+- нет edit-policy на уровне orchestrator;
+- нет различия между initial prompt и revision prompt;
+- нет правил выбора между patch existing и create new;
+- нет достаточной памяти о том, какой frame уже является "актуальным".
+
+### Что должно появиться
+
+Нужен отдельный слой актуализации состояния, условно:
+
+- `figma.snapshot.get`
+  Возвращает актуальное JSX-like представление текущего frame/tree из Figma.
+
+Или альтернативно:
+
+- runtime-import step, который перед каждым revision mode читает состояние из plugin и подаёт его агенту как source-of-truth snapshot.
+
+Без этого агент всегда будет вести себя как генератор "с нуля", а не как редактор.
+
+## Явный контракт ширины и layout constraints
+
+### Проблема
+
+Сейчас агент слишком часто не понимает:
+
+- какого размера root screen;
+- где full-width, а где content-width;
+- как ограничивать ширину контента;
+- какой max-width у карточек, хедеров и секций;
+- какие размеры считать нормальными для mobile/tablet/desktop.
+
+Из-за этого layout выглядит сырым даже при формально валидном JSX.
+
+### Новое обязательное правило
+
+Каждый compose-stage обязан работать с явным layout contract:
+
+- `platform`: `mobile` | `tablet` | `desktop`;
+- `viewportWidth`;
+- `viewportHeight`;
+- `contentWidthPolicy`: `full-bleed` | `inset` | `centered` | `split`;
+- `maxContentWidth`;
+- `safeAreaInsets` при необходимости.
+
+### Практический baseline
+
+Если пользователь не задал размеры явно, система должна подставлять внятные defaults:
+
+- mobile:
+  - root width: `390`
+  - content max width: `390`
+  - horizontal padding: `20-24`
+- tablet:
+  - root width: `768`
+  - content max width: `680-720`
+- desktop:
+  - root width: `1440`
+  - content max width: `1120-1200`
+
+### Обязательные выводы для агента
+
+Агент должен не гадать про ширину, а получать её как constraint.
+
+Если этого constraint нет, orchestrator обязан:
+
+- либо вывести его автоматически из platform;
+- либо запросить его;
+- либо явно отметить default, который был применён.
 
 ## Этап 1: `figma.tokens`
 
@@ -1262,6 +1474,53 @@ JSX-артефакты лучше хранить отдельно от metadata-
 - так контракт становится машинно-проверяемым;
 - так легче строить UI и логи вокруг стадий пайплайна.
 
+### ADR-007. Prompt должен быть stage-specific, а не универсальным
+
+Решение:
+
+- initial flow, primitive flow, compose flow, repair flow и revision flow должны иметь разные системные промпты;
+- агент на каждом этапе получает только релевантный ему набор инструментов и правил.
+- это должно быть зафиксировано не только в коде orchestration, но и в отдельных prompt-файлах.
+
+Почему:
+
+- один универсальный prompt перегружает модель;
+- модель начинает преждевременно компилировать, пересоздавать frame и терять edit discipline;
+- stage-specific prompts повышают управляемость pipeline.
+
+### ADR-008. Revision mode по умолчанию редактирует существующий результат
+
+Решение:
+
+- после первого успешно показанного результата любой следующий пользовательский промпт по умолчанию считается запросом на правку текущего экрана;
+- новый frame создаётся только при явном `fork-variant` или `new-screen`.
+
+Почему:
+
+- это соответствует пользовательскому ожиданию;
+- это устраняет главную текущую проблему "каждый новый запрос = новый frame".
+
+### ADR-009. Snapshot из Figma обязателен для режима доработок
+
+Решение:
+
+- перед revision-mode агент должен получать актуальный snapshot текущего дерева/JSX из Figma или эквивалентного runtime state.
+
+Почему:
+
+- без актуального source of truth агент не может надёжно редактировать уже существующий результат.
+
+### ADR-010. Width policy не может оставаться неявной
+
+Решение:
+
+- compose-stage всегда работает с явными layout constraints;
+- root width, content width policy и max content width должны быть известны до финального compose.
+
+Почему:
+
+- иначе даже валидный JSX даёт визуально слабый и непропорциональный layout.
+
 ## TODO
 
 ### P0
@@ -1296,6 +1555,19 @@ JSX-артефакты лучше хранить отдельно от metadata-
 - [ ] Задеприкейтить старые mental-model подсказки в docs.
 - [ ] Решить судьбу legacy low-level figma tools вне Figma server runtime.
 - [ ] Добавить telemetry/trace по артефактам и стадиям.
+
+### P4
+
+- [x] Ввести orchestrator со stage-specific prompts вместо одного универсального prompt.
+- [x] Добавить `taskMode`: `initial` | `revision`.
+- [x] Добавить `editIntent`: `edit-existing` | `fork-variant` | `new-screen`.
+- [x] Научить систему блокировать переход между стадиями до успешного завершения предыдущей.
+- [x] Добавить repair flow после parse/validation/compile ошибок.
+- [x] Добавить sub-agent orchestration для primitives и visual polish.
+- [x] Сделать skill-aware routing/hints для visual-design стадий.
+- [x] Добавить snapshot import/current-tree export для режима доработок.
+- [x] Ввести width/layout constraints как обязательный input compose-stage.
+- [x] Добавить policy: новый frame создаётся только по явному разрешению или явному intent.
 
 ## Checklist для любого будущего изменения
 
@@ -1360,19 +1632,61 @@ JSX-артефакты лучше хранить отдельно от metadata-
 - `src/tools/defs/figma/v2/index.ts` упрощён до thin registry, staged-логика вынесена в `src/tools/defs/figma/v2/staged.ts`;
 - обновлён secondary doc layer в `src/tools/defs/figma/index.ts`, чтобы не конфликтовал с новым flow;
 - добавлены тесты на dotted tool names, staged materialization pipeline, introspection tools и `figma_render` alias.
+- после ручного UX-теста зафиксированы новые системные требования:
+  - staged tools недостаточны без stage-specific orchestration;
+  - revision mode должен быть default после первого рендера;
+  - агент должен получать snapshot текущего результата перед доработками;
+  - width/layout constraints должны быть first-class input;
+  - visual quality должна усиливаться через skill-aware prompting и sub-agent decomposition.
+- реализован первый runtime-слой orchestration:
+  - новый `src/figma/orchestrator.ts`;
+  - `FigmaSession` теперь хранит orchestration state;
+  - `FigmaServerManager` переведён на multi-pass pipeline;
+  - initial flow разбит на `tokens -> primitives -> compose -> repair`;
+  - revision flow теперь отдельный режим;
+  - stage prompts формируются динамически;
+  - stage-specific prompts вынесены в отдельные файлы:
+    - `assets/prompts/figma/tokens.prompt.md`
+    - `assets/prompts/figma/primitives.prompt.md`
+    - `assets/prompts/figma/compose.prompt.md`
+    - `assets/prompts/figma/repair.prompt.md`
+    - `assets/prompts/figma/revision.prompt.md`
+  - `assets/prompts/figma.prompt.md` теперь используется как overview/base prompt, а не как единственный prompt для всех стадий;
+  - stage gating ограничивает видимые `figma.*` tools по текущей стадии;
+  - `figma_render` / compile dispatch в revision `edit-existing` режиме удаляет предыдущий root frame перед новым рендером;
+  - в Figma mode начали прокидываться skill hints и sub-agent capability;
+  - layout constraints выводятся автоматически и подаются агенту как часть stage context.
+- реализован plugin snapshot round-trip:
+  - plugin main thread умеет сериализовать текущее дерево в snapshot + JSX-like representation;
+  - `plugins/figma/ui.html` синкает snapshot в сервер перед `/v1/chat` и после `OPS_DONE`;
+  - сервер принимает snapshot через `/v1/snapshot`;
+  - revision mode теперь предпочитает plugin snapshot перед derived artifacts.
+- добавлены tests для orchestration heuristics, width policy и replace-current-screen policy.
+- добавлены tests на приоритет plugin snapshot.
+- реализован минимальный patch planner для revision `edit-existing`:
+  - если доступен plugin snapshot root, система переиспользует текущий root frame;
+  - root патчится через rename/move/resize/fill/corner/clip ops;
+  - старые дети root удаляются;
+  - subtree создаётся заново уже внутри существующего root;
+  - fallback path по-прежнему остаётся `delete root + rerender`.
 
 Что не менялось:
 
 - plugin runtime Figma не менялся;
 - legacy buffer CRUD flow сохранён;
 - low-level legacy tool files вне V2 registry не удалялись.
+- полноценный semantic patch planner ещё не реализован; текущая revision strategy пока основана на replace-current-screen policy.
+- полноценный deep tree diff planner ещё не реализован; текущий patch planner пока работает на уровне reuse root + rebuild children.
 
 Итог:
 
 - staged runtime уже частично реализован;
 - canonical flow внедрён в prompt и V2 registry;
 - staged tools уже вынесены в отдельный модуль;
-- миграция не завершена полностью, но P0, P1 и значимая часть P2 уже сделаны.
+- миграция не завершена полностью, потому что поверх staged runtime теперь требуется полноценный orchestration layer;
+- P0, P1 и значимая часть P2 уже сделаны;
+- P4 частично реализован, включая plugin snapshot import;
+- главный оставшийся behavioural gap теперь в более умном patch/edit planner вместо current replace strategy и в усилении visual quality.
 
 ## Короткая инструкция будущему агенту
 

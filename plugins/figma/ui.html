@@ -234,6 +234,8 @@
   let sessionId = null;
   let busy = false;
   let connected = false;
+  let pendingSnapshotResolve = null;
+  let pendingSnapshotReject = null;
 
   const dot = document.getElementById('dot');
   const statusLabel = document.getElementById('statusLabel');
@@ -281,6 +283,47 @@
 
   function resetTurnOps() { totalOpsThisTurn = 0; }
 
+  function requestSnapshotFromPlugin() {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingSnapshotResolve = null;
+        pendingSnapshotReject = null;
+        reject(new Error('Snapshot timeout'));
+      }, 3000);
+
+      pendingSnapshotResolve = (snapshot) => {
+        clearTimeout(timeout);
+        pendingSnapshotResolve = null;
+        pendingSnapshotReject = null;
+        resolve(snapshot);
+      };
+      pendingSnapshotReject = (error) => {
+        clearTimeout(timeout);
+        pendingSnapshotResolve = null;
+        pendingSnapshotReject = null;
+        reject(error);
+      };
+
+      parent.postMessage({ pluginMessage: { type: 'REQUEST_SNAPSHOT' } }, '*');
+    });
+  }
+
+  async function syncSnapshotToServer() {
+    if (!connected || !sessionId) return;
+
+    try {
+      const snapshot = await requestSnapshotFromPlugin();
+      await fetch(serverUrl + '/v1/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, snapshot }),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      /* snapshot sync is best-effort */
+    }
+  }
+
   // ── Messages ─────────────────────────────────────────
   function addMsg(text, type) {
     const el = document.createElement('div');
@@ -320,6 +363,8 @@
     const thinkTimer = startThinking(thinkEl);
 
     try {
+      await syncSnapshotToServer();
+
       const resp = await fetch(serverUrl + '/v1/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -353,8 +398,12 @@
   window.onmessage = (event) => {
     const msg = event.data?.pluginMessage;
     if (!msg) return;
-    if (msg.type === 'OPS_DONE')  addMsg('✓ ' + msg.count + ' элемент(ов) на канвасе', 'system');
+    if (msg.type === 'OPS_DONE')  {
+      addMsg('✓ ' + msg.count + ' элемент(ов) на канвасе', 'system');
+      syncSnapshotToServer();
+    }
     if (msg.type === 'OPS_ERROR') addMsg('Ошибка холста: ' + msg.error, 'error');
+    if (msg.type === 'SNAPSHOT' && pendingSnapshotResolve) pendingSnapshotResolve(msg.snapshot);
   };
 
   // ── Input helpers ─────────────────────────────────────

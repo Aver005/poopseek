@@ -10,6 +10,13 @@ export type PromptFiles = {
     roleCreatorPrompt: string;
     poetPrompt: string;
     figmaPrompt: string;
+    figmaStagePrompts: {
+        tokens: string;
+        primitives: string;
+        compose: string;
+        repair: string;
+        revision: string;
+    };
 };
 
 function normalizeRelativeAssetPath(inputPath: string): string
@@ -61,8 +68,27 @@ export async function readPromptFiles(): Promise<PromptFiles>
     const roleCreatorPromptPath = resolveExistingAssetPath("assets/prompts/role-creator.prompt.md");
     const poetPromptPath = resolveExistingAssetPath("assets/prompts/poet.prompt.md");
     const figmaPromptPath = resolveExistingAssetPath("assets/prompts/figma.prompt.md");
+    const figmaTokensPromptPath = resolveExistingAssetPath("assets/prompts/figma/tokens.prompt.md");
+    const figmaPrimitivesPromptPath = resolveExistingAssetPath("assets/prompts/figma/primitives.prompt.md");
+    const figmaComposePromptPath = resolveExistingAssetPath("assets/prompts/figma/compose.prompt.md");
+    const figmaRepairPromptPath = resolveExistingAssetPath("assets/prompts/figma/repair.prompt.md");
+    const figmaRevisionPromptPath = resolveExistingAssetPath("assets/prompts/figma/revision.prompt.md");
 
-    const [basePrompt, toolsPrompt, compactPrompt, reviewPrompt, refactorPrompt, roleCreatorPrompt, poetPrompt, figmaPrompt] = await Promise.all([
+    const [
+        basePrompt,
+        toolsPrompt,
+        compactPrompt,
+        reviewPrompt,
+        refactorPrompt,
+        roleCreatorPrompt,
+        poetPrompt,
+        figmaPrompt,
+        figmaTokensPrompt,
+        figmaPrimitivesPrompt,
+        figmaComposePrompt,
+        figmaRepairPrompt,
+        figmaRevisionPrompt,
+    ] = await Promise.all([
         fs.promises.readFile(basePromptPath, "utf8"),
         fs.promises.readFile(toolsPromptPath, "utf8"),
         fs.promises.readFile(compactPromptPath, "utf8"),
@@ -71,6 +97,11 @@ export async function readPromptFiles(): Promise<PromptFiles>
         fs.promises.readFile(roleCreatorPromptPath, "utf8"),
         fs.promises.readFile(poetPromptPath, "utf8"),
         fs.promises.readFile(figmaPromptPath, "utf8"),
+        fs.promises.readFile(figmaTokensPromptPath, "utf8"),
+        fs.promises.readFile(figmaPrimitivesPromptPath, "utf8"),
+        fs.promises.readFile(figmaComposePromptPath, "utf8"),
+        fs.promises.readFile(figmaRepairPromptPath, "utf8"),
+        fs.promises.readFile(figmaRevisionPromptPath, "utf8"),
     ]);
 
     return {
@@ -82,5 +113,12 @@ export async function readPromptFiles(): Promise<PromptFiles>
         roleCreatorPrompt,
         poetPrompt,
         figmaPrompt,
+        figmaStagePrompts: {
+            tokens: figmaTokensPrompt,
+            primitives: figmaPrimitivesPrompt,
+            compose: figmaComposePrompt,
+            repair: figmaRepairPrompt,
+            revision: figmaRevisionPrompt,
+        },
     };
 }

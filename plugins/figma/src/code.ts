@@ -2,6 +2,31 @@ declare const __html__: string;
 
 figma.showUI(__html__, { width: 320, height: 480, title: "PoopSeek" });
 
+interface FigmaSnapshotNode
+{
+    id: string;
+    type: string;
+    name: string;
+    width?: number;
+    height?: number;
+    x?: number;
+    y?: number;
+    layoutMode?: string;
+    text?: string;
+    visible?: boolean;
+    children?: FigmaSnapshotNode[];
+}
+
+interface FigmaPluginSnapshot
+{
+    source: "plugin";
+    receivedAt: number;
+    nodeCount: number;
+    selectedNodeIds: string[];
+    tree: FigmaSnapshotNode[];
+    jsx: string;
+}
+
 interface FigmaOp
 {
     type: string;
@@ -52,6 +77,112 @@ interface EnsureThemeVariablesOp extends FigmaOp
 const nodeMap = new Map<string, string>();
 const collectionCache = new Map<string, VariableCollection>();
 const colorVariableCache = new Map<string, Variable>();
+
+function getLogicalId(figmaId: string): string
+{
+    for (const [logicalId, mappedId] of nodeMap.entries())
+    {
+        if (mappedId === figmaId) return logicalId;
+    }
+    return figmaId;
+}
+
+function serializeNode(node: BaseNode): FigmaSnapshotNode | null
+{
+    if ("type" in node === false) return null;
+
+    const base: FigmaSnapshotNode = {
+        id: getLogicalId(node.id),
+        type: node.type,
+        name: "name" in node && typeof node.name === "string" ? node.name : node.type,
+        visible: "visible" in node ? Boolean(node.visible) : true,
+    };
+
+    if ("width" in node && typeof node.width === "number") base.width = node.width;
+    if ("height" in node && typeof node.height === "number") base.height = node.height;
+    if ("x" in node && typeof node.x === "number") base.x = node.x;
+    if ("y" in node && typeof node.y === "number") base.y = node.y;
+    if ("layoutMode" in node && typeof node.layoutMode === "string") base.layoutMode = node.layoutMode;
+    if (node.type === "TEXT") base.text = (node as TextNode).characters;
+
+    if ("children" in node)
+    {
+        const children = (node as ChildrenMixin).children
+            .map((child) => serializeNode(child))
+            .filter((child): child is FigmaSnapshotNode => child !== null);
+        if (children.length > 0) base.children = children;
+    }
+
+    return base;
+}
+
+function nodeTag(node: FigmaSnapshotNode, isTopLevel: boolean): string
+{
+    if (node.type === "TEXT") return "Text";
+    if (node.type === "RECTANGLE") return "Rect";
+    if (node.type === "ELLIPSE") return "Ellipse";
+    if (node.type === "LINE") return "Line";
+    if (node.type === "FRAME")
+    {
+        if (isTopLevel) return "Screen";
+        if (node.layoutMode === "VERTICAL") return "VStack";
+        if (node.layoutMode === "HORIZONTAL") return "HStack";
+        return "Frame";
+    }
+    return node.type;
+}
+
+function escapeJsxText(value: string): string
+{
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function snapshotNodeToJsx(node: FigmaSnapshotNode, depth: number, isTopLevel: boolean): string
+{
+    const indent = "  ".repeat(depth);
+    const tag = nodeTag(node, isTopLevel);
+    const props: string[] = [];
+
+    if (node.name) props.push(`name="${node.name.replace(/"/g, "&quot;")}"`);
+    if (node.width !== undefined && isTopLevel) props.push(`width="${Math.round(node.width)}"`);
+    if (node.height !== undefined && isTopLevel) props.push(`height="${Math.round(node.height)}"`);
+
+    if (node.type === "TEXT")
+    {
+        const text = escapeJsxText(node.text ?? "");
+        return `${indent}<${tag}${props.length > 0 ? ` ${props.join(" ")}` : ""}>${text}</${tag}>`;
+    }
+
+    const children = node.children ?? [];
+    if (children.length === 0)
+        return `${indent}<${tag}${props.length > 0 ? ` ${props.join(" ")}` : ""} />`;
+
+    const childJsx = children.map((child) => snapshotNodeToJsx(child, depth + 1, false)).join("\n");
+    return `${indent}<${tag}${props.length > 0 ? ` ${props.join(" ")}` : ""}>\n${childJsx}\n${indent}</${tag}>`;
+}
+
+function countSnapshotNodes(nodes: FigmaSnapshotNode[]): number
+{
+    return nodes.reduce((total, node) => total + 1 + countSnapshotNodes(node.children ?? []), 0);
+}
+
+function buildPluginSnapshot(): FigmaPluginSnapshot
+{
+    const roots = (figma.currentPage.selection.length > 0
+        ? figma.currentPage.selection
+        : figma.currentPage.children)
+        .map((node) => serializeNode(node))
+        .filter((node): node is FigmaSnapshotNode => node !== null);
+
+    return {
+        source: "plugin",
+        receivedAt: Date.now(),
+        nodeCount: countSnapshotNodes(roots),
+        selectedNodeIds: figma.currentPage.selection.map((node) => getLogicalId(node.id)),
+        tree: roots,
+        jsx: roots.map((node) => snapshotNodeToJsx(node, 0, true)).join("\n"),
+    };
+}
 
 function parseColor(c: string): RGBA | null
 {
@@ -498,6 +629,27 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     break;
                 }
 
+                case "set_corner_radius":
+                {
+                    const node = resolveNode(op.nodeId);
+                    if (node && "cornerRadius" in node)
+                    {
+                        (node as SceneNode & { cornerRadius: number }).cornerRadius = Number(op.cornerRadius ?? 0);
+                        applyCornerRadii(node as SceneNode, op);
+                    }
+                    count++;
+                    break;
+                }
+
+                case "set_clip_content":
+                {
+                    const node = resolveNode(op.nodeId);
+                    if (node && node.type === "FRAME")
+                        (node as FrameNode).clipsContent = Boolean(op.clipContent);
+                    count++;
+                    break;
+                }
+
                 // ── Fill & Style ─────────────────────────────────────────
 
                 case "set_fill":
@@ -712,5 +864,13 @@ figma.ui.onmessage = async (msg: { type: string; ops?: FigmaOp[] }) =>
     if (msg.type === "CLOSE")
     {
         figma.closePlugin();
+    }
+
+    if (msg.type === "REQUEST_SNAPSHOT")
+    {
+        figma.ui.postMessage({
+            type: "SNAPSHOT",
+            snapshot: buildPluginSnapshot(),
+        });
     }
 };

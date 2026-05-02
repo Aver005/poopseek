@@ -8,6 +8,8 @@ import type { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
 import type { CompositionMetaStore } from "@/figma/composition-meta-store";
 import type { CompositionJsxStore } from "@/figma/composition-jsx-store";
 import type { CompileArtifactStore } from "@/figma/compile-artifact-store";
+import type { FigmaOrchestrationState } from "@/figma/orchestrator";
+import type { FigmaPluginSnapshot } from "@/figma/snapshot-types";
 
 export interface FigmaOp
 {
@@ -28,6 +30,12 @@ export interface FigmaChatResponse
     ops: FigmaOp[];
 }
 
+export interface FigmaSnapshotRequest
+{
+    sessionId: string;
+    snapshot: FigmaPluginSnapshot;
+}
+
 export interface FigmaSession
 {
     id: string;
@@ -41,6 +49,7 @@ export interface FigmaSession
     compositionMetaStore: CompositionMetaStore;
     compositionJsxStore: CompositionJsxStore;
     compileArtifactStore: CompileArtifactStore;
+    orchestration: FigmaOrchestrationState;
     createdAt: number;
     lastActivityAt: number;
 }

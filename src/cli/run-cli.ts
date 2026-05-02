@@ -294,10 +294,17 @@ export async function runCli(): Promise<void>
         basePrompt: prompts.basePrompt,
         toolsPrompt: prompts.toolsPrompt,
         figmaPrompt: prompts.figmaPrompt,
+        figmaStagePrompts: prompts.figmaStagePrompts,
         variableProcessor,
         getCallOptions,
         getRequestDelay: () => callOptionsStore.getRequestDelayMs(),
         getWebToolsDoc: () => callOptionsStore.getLocalSearchEnabled() ? WEB_TOOLS_PROMPT : "",
+        getAvailableSkillsHint: buildAvailableSkillsHint,
+        getSkillContent: (skillName: string) =>
+        {
+            const skill = skillManager.getSkills().find((s) => s.name === skillName);
+            return skill ? skill.body : null;
+        },
     });
 
     const agentLoop = new StreamingAgentLoop(() => providerStore.getProvider(), contextManager, toolExecutor, {
