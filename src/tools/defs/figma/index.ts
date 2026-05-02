@@ -50,83 +50,95 @@ export { createFigmaV2Registry, FIGMA_V2_TOOLS_DOC } from "./v2";
 export const FIGMA_SYSTEM_ADDENDUM = [
     "## Figma Design Mode",
     "Ты работаешь в режиме Figma-дизайна.",
-    "Используй инструменты figma_* для создания элементов прямо на канвасе.",
+    "Основной flow: figma.tokens -> figma.primitives.plan -> figma.primitives.jsx -> figma.compose.meta -> figma.compose.jsx -> figma.compile.",
+    "Используй legacy figma_* только для совместимости или buffer-режима.",
     "Всегда создавай дизайн через инструменты — не описывай его словами.",
-    "Создавай полноценные экраны: фреймы → фоны → UI-элементы → текст.",
-    "Для figma_render всегда отвечай fenced блоком ```json с валидным tool-call JSON.",
-    "Если нужно несколько экранов, делай несколько вызовов figma_render подряд: один вызов = один <Screen>.",
-    "Каждый figma_render автоматически начинает с подготовки/создания Figma Variables палитры.",
+    "Metadata tools и JSX tools не смешиваются: .plan/.meta дают metadata, .jsx дают JSX.",
+    "JSX не должен жить строкой внутри JSON-ответа staged tools.",
+    "Для tool-calls всегда отвечай fenced блоком ```json с валидным tool-call JSON.",
 ].join("\n");
 
 export const FIGMA_TOOLS_DOC = `
 ## Figma-инструменты
 
-### ШАГ 1 — figma_define_theme
+### Canonical staged flow
 
-Перед первым экраном вызови **figma_define_theme**.
-Это обязательный первый шаг для новой задачи на дизайн.
+1. \`figma.tokens\`
+2. \`figma.primitives.plan\`
+3. \`figma.primitives.jsx\`
+4. \`figma.compose.meta\`
+5. \`figma.compose.jsx\`
+6. \`figma.compile\`
 
-- Агент сам придумывает спокойную палитру под задачу.
-- Агент создаёт semantic variables и дальше использует их в JSX.
-- Не нужно просить пользователя выбирать конкретные hex, если он не просил.
+### ШАГ 1 — figma.tokens
 
 \`\`\`json
-{"tool":"figma_define_theme","args":{"name":"food-delivery","tokens":[{"token":"canvas","hex":"#F8FAFC"},{"token":"surface","hex":"#FFFFFF"},{"token":"brand","hex":"#46A758"},{"token":"brand-soft","hex":"#EAF8EE"},{"token":"accent","hex":"#7C5CC4"},{"token":"accent-soft","hex":"#F3EEFF"},{"token":"text","hex":"#142033"},{"token":"text-muted","hex":"#5B657A"},{"token":"text-on-brand","hex":"#FFFFFF"},{"token":"border","hex":"#E2E8F0"}]}}
+{"tool":"figma.tokens","args":{"name":"food-delivery","collections":{"color":{"canvas":"#F8FAFC","surface":"#FFFFFF","brand":"#46A758","brand-soft":"#EAF8EE","accent":"#7C5CC4","accent-soft":"#F3EEFF","text":"#142033","text-muted":"#5B657A","text-on-brand":"#FFFFFF","border":"#E2E8F0"}}}}
 \`\`\`
 
-После \`figma_define_theme\` используй semantic utility-классы вроде:
+После \`figma.tokens\` используй semantic utility-классы вроде:
 - \`bg-canvas\`, \`bg-surface\`, \`bg-surface-soft\`
 - \`bg-brand\`, \`bg-brand-soft\`, \`bg-accent\`, \`bg-accent-soft\`
 - \`text-text\`, \`text-muted\`, \`text-subtle\`, \`text-on-brand\`
 - \`border-border\`, \`border-border-strong\`
 
-### ШАГ 2 — figma_render
+### ШАГ 2 — figma.primitives.plan + figma.primitives.jsx
 
-Используй **figma_render** для создания экранов и сложных компонентов.
-Передавай **кастомный JSX** с пропом \`className\`. Компилятор маппит whitelist-утилиты в Figma Auto Layout, размеры, типографику, цвета и variables.
+\`figma.primitives.plan\` возвращает metadata примитивов.
+\`figma.primitives.jsx\` возвращает JSX кирпичиков отдельными fenced \`jsx\` блоками.
 
-Если инструмент вернул ошибку валидации или парсинга:
-- немедленно исправь JSX;
-- вызови \`figma_render\` повторно;
-- не переходи к другим действиям, пока JSX не станет валидным.
-- Первый ответ на задачу рендера должен быть именно fenced блок \`\`\`json с tool-call JSON. Не пиши объяснение до первого вызова инструмента.
-- Никогда не отдавай tool-call обычным текстом без \`\`\`json fence.
-- Один вызов \`figma_render\` = один корневой \`<Screen>\`.
-- По умолчанию делай ровно один \`figma_render\` за один модельный шаг, потом жди результат инструмента и только потом переходи к следующему экрану.
-- Между вызовами можно писать короткие пояснения, но каждый tool-call обязан быть в отдельном \`\`\`json fence.
-- После \`figma_define_theme\` не возвращайся к raw hex без причины: используй semantic tokens.
+### ШАГ 3 — figma.compose.meta + figma.compose.jsx
+
+\`figma.compose.meta\` собирает экран как metadata.
+\`figma.compose.jsx\` отдаёт invocation JSX отдельным fenced \`jsx\` блоком.
+
+### ШАГ 4 — figma.compile
+
+\`figma.compile\` компилирует composition artifact или raw JSX.
+\`figma.compile.jsx\` показывает expanded JSX для inspect/debug.
 
 \`\`\`json
-{"tool":"figma_render","args":{"jsx":"<Screen>...</Screen>"}}
+{"tool":"figma.compile","args":{"compositionArtifactId":"compose_home_v1","dispatch":true}}
 \`\`\`
 
 Правильная последовательность:
 
 \`\`\`json
-{"tool":"figma_define_theme","args":{"name":"food-delivery","tokens":[...]}}
+{"tool":"figma.tokens","args":{"name":"food-delivery","collections":{"color":{"canvas":"#F8FAFC","brand":"#46A758","text":"#142033"}}}}
 \`\`\`
 
 \`\`\`json
-{"tool":"figma_render","args":{"jsx":"<Screen name=\\"Home\\">...</Screen>"}}
+{"tool":"figma.primitives.plan","args":{"tokensArtifactId":"tokens_food_delivery_v1","entries":[{"name":"AppHeader","level":"molecule","props":["title","subtitle"]}]}}
 \`\`\`
 
 \`\`\`json
-{"tool":"figma_render","args":{"jsx":"<Screen name=\\"Restaurant\\">...</Screen>"}}
+{"tool":"figma.primitives.jsx","args":{"primitivesArtifactId":"primitives_home_v1","entries":[{"name":"AppHeader","jsx":"<HStack className=\\"items-center justify-between\\"><VStack className=\\"gap-1\\"><H2 className=\\"text-text\\">{title}</H2><BodySm className=\\"text-muted\\">{subtitle}</BodySm></VStack></HStack>"}]}}
 \`\`\`
 
 \`\`\`json
-{"tool":"figma_render","args":{"jsx":"<Screen name=\\"Menu\\">...</Screen>"}}
+{"tool":"figma.compose.meta","args":{"tokensArtifactId":"tokens_food_delivery_v1","primitivesArtifactId":"primitives_home_v1","primitivesJsxArtifactId":"primitives_home_jsx_v1","screenName":"Home","compositionNodes":[{"kind":"element","type":"Screen","props":{"name":"Home","className":"bg-canvas"},"children":[{"kind":"primitive","primitive":"AppHeader","props":{"title":"Привет","subtitle":"Что заказать?"}}]}]}}
 \`\`\`
 
-#### Основной контракт JSX
+\`\`\`json
+{"tool":"figma.compose.jsx","args":{"compositionArtifactId":"compose_home_v1"}}
+\`\`\`
 
-- Корневой JSX для одного \`figma_render\` вызова: только один \`<Screen>\`.
-- Несколько страниц не рендерятся в один \`<Screen>\` и не требуют рассуждений: просто делай несколько вызовов \`figma_render\`.
-- Для layout и визуальных свойств предпочитай \`className\`.
-- Числовые пропсы используй только там, где нужен точный контроль: \`x\`, \`y\`, иногда \`w\`, \`h\`.
+\`\`\`json
+{"tool":"figma.compile","args":{"compositionArtifactId":"compose_home_v1"}}
+\`\`\`
+
+#### Staged правила
+
+- \`.plan\` и \`.meta\` не возвращают JSX.
+- \`.jsx\` инструменты возвращают fenced \`jsx\`.
+- \`figma.compile\` вызывается после compose.
+- \`figma.compile.jsx\` не генерирует новый JSX, а показывает expanded результат.
+
+#### Legacy JSX контракт
 - Не используй \`div\`, \`span\`, HTML-теги, \`style\`, \`md:\`, \`hover:\`, \`sm:\`, arbitrary values типа \`w-[342px]\`.
 - Если LLM случайно сгенерировала URL как \`src=" \\\`https://...\\\` "\`, немедленно нормализуй в чистую строку URL без backticks и лишних пробелов.
 - Для новых макетов предпочитай semantic theme classes, а не жёстко зашитые \`green-500\`, \`purple-700\` и т.п.
+
 
 #### Разрешённые теги
 

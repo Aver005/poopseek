@@ -9,6 +9,12 @@ import { webToolNames, webToolsRegistry } from "@/tools/web-tools";
 import type { VariableProcessor } from "@/variables";
 import { JsxBuffer } from "@/figma/jsx-buffer";
 import { VariableStore } from "@/figma/var-store";
+import { TokensStore } from "@/figma/tokens-store";
+import { PrimitivePlanStore } from "@/figma/primitive-plan-store";
+import { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
+import { CompositionMetaStore } from "@/figma/composition-meta-store";
+import { CompositionJsxStore } from "@/figma/composition-jsx-store";
+import { CompileArtifactStore } from "@/figma/compile-artifact-store";
 import type { FigmaChatRequest, FigmaChatResponse, FigmaOp, FigmaSession } from "./types";
 
 const DEFAULT_PORT = 7331;
@@ -186,10 +192,26 @@ export class FigmaServerManager
         // Per-session buffer and variable store
         const buffer = new JsxBuffer();
         const varStore = new VariableStore();
+        const tokensStore = new TokensStore();
+        const primitivePlanStore = new PrimitivePlanStore();
+        const primitiveJsxStore = new PrimitiveJsxStore();
+        const compositionMetaStore = new CompositionMetaStore();
+        const compositionJsxStore = new CompositionJsxStore();
+        const compileArtifactStore = new CompileArtifactStore();
 
         // V2 registry closes over this session's buffer/varStore/enqueueOps
         const enqueueOps = (ops: FigmaOp[]) => this.pendingOps.push(...ops);
-        const v2Registry = createFigmaV2Registry(buffer, varStore, enqueueOps);
+        const v2Registry = createFigmaV2Registry(
+            buffer,
+            varStore,
+            tokensStore,
+            primitivePlanStore,
+            primitiveJsxStore,
+            compositionMetaStore,
+            compositionJsxStore,
+            compileArtifactStore,
+            enqueueOps,
+        );
         const webDoc = this.deps.getWebToolsDoc?.() ?? "";
 
         const toolExecutor = new ToolExecutor(
@@ -232,6 +254,12 @@ export class FigmaServerManager
             agentLoop,
             buffer,
             varStore,
+            tokensStore,
+            primitivePlanStore,
+            primitiveJsxStore,
+            compositionMetaStore,
+            compositionJsxStore,
+            compileArtifactStore,
             createdAt: Date.now(),
             lastActivityAt: Date.now(),
         };

@@ -145,9 +145,34 @@ export function validateJsxTree(nodes: JsxNode[]): JsxValidationError[]
     return errors;
 }
 
+export function validateJsxFragment(nodes: JsxNode[]): JsxValidationError[]
+{
+    const errors: JsxValidationError[] = [];
+
+    if (nodes.length === 0)
+        return [{
+            path: "fragment",
+            message: "JSX fragment is empty",
+            loc: { index: 0, line: 1, column: 1 },
+        }];
+
+    nodes.forEach((node, index) =>
+    {
+        validateNode(node, `${node.type}[${index}]`, null, errors);
+    });
+
+    return errors;
+}
+
 export function assertValidJsx(nodes: JsxNode[]): void
 {
     const errors = validateJsxTree(nodes);
+    if (errors.length > 0) throw new JsxValidationException(errors);
+}
+
+export function assertValidJsxFragment(nodes: JsxNode[]): void
+{
+    const errors = validateJsxFragment(nodes);
     if (errors.length > 0) throw new JsxValidationException(errors);
 }
 

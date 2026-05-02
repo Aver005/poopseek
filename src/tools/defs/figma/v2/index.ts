@@ -1,14 +1,16 @@
 import type { ToolHandler, ToolExecutionResult } from "@/tools/types";
 import { JsxBuffer } from "@/figma/jsx-buffer";
 import { VariableStore } from "@/figma/var-store";
-import { parseJsx, JsxParseError } from "@/figma/jsx-parser";
-import { compileJsx } from "@/figma/jsx-compiler";
-import { assertValidJsx, formatJsxValidationErrors, JsxValidationException } from "@/figma/jsx-validator";
 import { setActiveTheme, createEnsureThemeVariablesOp } from "@/figma/theme-state";
 import type { FigmaOp } from "@/figma/types";
 import type { BufferNode } from "@/figma/jsx-buffer";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+import { TokensStore } from "@/figma/tokens-store";
+import { PrimitivePlanStore } from "@/figma/primitive-plan-store";
+import { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
+import { CompositionMetaStore } from "@/figma/composition-meta-store";
+import { CompositionJsxStore } from "@/figma/composition-jsx-store";
+import { CompileArtifactStore } from "@/figma/compile-artifact-store";
+import { createStagedFigmaTools } from "./staged";
 
 function ok(output: string, data?: unknown): ToolExecutionResult
 {
@@ -40,8 +42,6 @@ function nodeSummary(n: BufferNode): string
     return label ? `${n.type}: "${label}"${cls}` : `${n.type}${cls}`;
 }
 
-// ─── figma_create ─────────────────────────────────────────────────────────────
-
 function makeCreate(buffer: JsxBuffer): ToolHandler
 {
     return async (args) =>
@@ -69,8 +69,6 @@ function makeCreate(buffer: JsxBuffer): ToolHandler
     };
 }
 
-// ─── figma_edit ───────────────────────────────────────────────────────────────
-
 function makeEdit(buffer: JsxBuffer): ToolHandler
 {
     return async (args) =>
@@ -94,8 +92,6 @@ function makeEdit(buffer: JsxBuffer): ToolHandler
     };
 }
 
-// ─── figma_info ───────────────────────────────────────────────────────────────
-
 function makeInfo(buffer: JsxBuffer): ToolHandler
 {
     return async (args) =>
@@ -116,8 +112,6 @@ function makeInfo(buffer: JsxBuffer): ToolHandler
     };
 }
 
-// ─── figma_delete ─────────────────────────────────────────────────────────────
-
 function makeDelete(buffer: JsxBuffer): ToolHandler
 {
     return async (args) =>
@@ -137,8 +131,6 @@ function makeDelete(buffer: JsxBuffer): ToolHandler
     };
 }
 
-// ─── figma_list ───────────────────────────────────────────────────────────────
-
 function makeList(buffer: JsxBuffer): ToolHandler
 {
     return async (args) =>
@@ -146,7 +138,7 @@ function makeList(buffer: JsxBuffer): ToolHandler
         const parentId = str(args.parentId);
         const nodes = buffer.list(parentId);
 
-        const items = nodes.map(n => ({
+        const items = nodes.map((n) => ({
             id: n.id,
             type: n.type,
             parentId: n.parentId,
@@ -161,8 +153,6 @@ function makeList(buffer: JsxBuffer): ToolHandler
     };
 }
 
-// ─── figma_find ───────────────────────────────────────────────────────────────
-
 function makeFind(buffer: JsxBuffer): ToolHandler
 {
     return async (args) =>
@@ -175,7 +165,7 @@ function makeFind(buffer: JsxBuffer): ToolHandler
             filter.parentId = args.parentId === null ? null : str(args.parentId);
 
         const results = buffer.find(filter);
-        const items = results.map(n => ({
+        const items = results.map((n) => ({
             id: n.id,
             type: n.type,
             parentId: n.parentId,
@@ -185,8 +175,6 @@ function makeFind(buffer: JsxBuffer): ToolHandler
         return ok(`Found ${items.length} node(s)`, items);
     };
 }
-
-// ─── figma_move ───────────────────────────────────────────────────────────────
 
 function makeMove(buffer: JsxBuffer): ToolHandler
 {
@@ -212,61 +200,6 @@ function makeMove(buffer: JsxBuffer): ToolHandler
     };
 }
 
-// ─── figma_compile ────────────────────────────────────────────────────────────
-// ВАЖНО: ops уходят напрямую в enqueueOps, НЕ в result.data
-// Модель видит только строку output — никаких Figma-сущностей
-
-function makeCompile(
-    buffer: JsxBuffer,
-    varStore: VariableStore,
-    enqueueOps: (ops: FigmaOp[]) => void,
-): ToolHandler
-{
-    return async (args) =>
-    {
-        const rawJsx = str(args.jsx)?.trim() ?? "";
-        const jsxSrc = rawJsx || buffer.toJsx();
-
-        if (!jsxSrc.trim())
-        {
-            return fail(
-                "Buffer is empty and no jsx provided. " +
-                "Build the tree first with figma_create, or pass jsx directly.",
-            );
-        }
-
-        const themeTokens = varStore.extractThemeTokens();
-        if (themeTokens.length > 0)
-            setActiveTheme({ tokens: themeTokens });
-
-        let ops: unknown[];
-        try
-        {
-            const nodes = parseJsx(jsxSrc);
-            assertValidJsx(nodes);
-            ops = compileJsx(nodes);
-        }
-        catch (err)
-        {
-            if (err instanceof JsxParseError)
-                return fail(`JSX parse error at ${err.loc.line}:${err.loc.column} — ${err.message}`);
-            if (err instanceof JsxValidationException)
-                return fail(formatJsxValidationErrors(err.errors));
-            return fail(`Compile error: ${err instanceof Error ? err.message : String(err)}`);
-        }
-
-        if (ops.length === 0)
-            return fail("No elements compiled — check JSX structure (tags must be PascalCase)");
-
-        // Ops идут напрямую в плагин, модель их не видит
-        enqueueOps(ops as FigmaOp[]);
-
-        return ok(`Compiled and sent ${ops.length} elements to Figma`);
-    };
-}
-
-// ─── figma_reset ──────────────────────────────────────────────────────────────
-
 function makeReset(buffer: JsxBuffer, varStore: VariableStore): ToolHandler
 {
     return async (args) =>
@@ -282,8 +215,6 @@ function makeReset(buffer: JsxBuffer, varStore: VariableStore): ToolHandler
     };
 }
 
-// ─── figma_var_set ────────────────────────────────────────────────────────────
-
 function makeVarSet(varStore: VariableStore): ToolHandler
 {
     return async (args) =>
@@ -298,8 +229,6 @@ function makeVarSet(varStore: VariableStore): ToolHandler
     };
 }
 
-// ─── figma_var_get ────────────────────────────────────────────────────────────
-
 function makeVarGet(varStore: VariableStore): ToolHandler
 {
     return async (args) =>
@@ -312,8 +241,6 @@ function makeVarGet(varStore: VariableStore): ToolHandler
         return ok(`"${name}" = ${entry.value}`, entry);
     };
 }
-
-// ─── figma_var_remove ─────────────────────────────────────────────────────────
 
 function makeVarRemove(varStore: VariableStore): ToolHandler
 {
@@ -328,8 +255,6 @@ function makeVarRemove(varStore: VariableStore): ToolHandler
     };
 }
 
-// ─── figma_var_list ───────────────────────────────────────────────────────────
-
 function makeVarList(varStore: VariableStore): ToolHandler
 {
     return async () =>
@@ -339,42 +264,9 @@ function makeVarList(varStore: VariableStore): ToolHandler
     };
 }
 
-// ─── figma_tokens ─────────────────────────────────────────────────────────────
-
-function makeTokens(varStore: VariableStore): ToolHandler
-{
-    return async (args) =>
-    {
-        if (!Array.isArray(args.tokens))
-            return fail("tokens must be an array of {name, value} objects");
-
-        type RawToken = { name: string; value: string | number; description?: string };
-        const valid = (args.tokens as unknown[]).filter(
-            (t): t is RawToken =>
-                typeof t === "object" && t !== null &&
-                "name" in t && typeof (t as Record<string, unknown>).name === "string" &&
-                "value" in t,
-        );
-
-        if (valid.length === 0) return fail("No valid tokens (each needs name + value)");
-
-        varStore.setTokens(valid.map(t => ({
-            name: t.name,
-            value: typeof t.value === "number" ? t.value : String(t.value),
-            description: typeof (t as Record<string, unknown>).description === "string"
-                ? String((t as Record<string, unknown>).description)
-                : undefined,
-        })));
-
-        return ok(`Set ${valid.length} token(s)`);
-    };
-}
-
-// ─── figma_define_theme (backward compat) ─────────────────────────────────────
-// Ops уходят через enqueueOps, модель видит только строку
-
 function makeDefineTheme(
     varStore: VariableStore,
+    tokensStore: TokensStore,
     enqueueOps: (ops: FigmaOp[]) => void,
 ): ToolHandler
 {
@@ -388,28 +280,41 @@ function makeDefineTheme(
         {
             tokens = (args.tokens as unknown[])
                 .filter((t): t is TokenInput => typeof t === "object" && t !== null)
-                .map(t => ({
+                .map((t) => ({
                     token: String(t.token ?? "").trim(),
                     hex: String(t.hex ?? "").trim(),
                     description: typeof t.description === "string" ? t.description.trim() : undefined,
                 }))
-                .filter(t => t.token.length > 0 && t.hex.length > 0);
+                .filter((t) => t.token.length > 0 && t.hex.length > 0);
         }
         else if (typeof args.palette === "object" && args.palette !== null)
         {
             tokens = Object.entries(args.palette as Record<string, unknown>)
-                .filter(([, v]) => typeof v === "string" && (v as string).trim().length > 0)
+                .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
                 .map(([token, hex]) => ({ token, hex: String(hex).trim() }));
         }
 
         if (tokens.length === 0)
             return fail("figma_define_theme requires tokens[] or palette with at least one entry");
 
-        varStore.setTokens(tokens.map(t => ({
+        varStore.setTokens(tokens.map((t) => ({
             name: `color/${t.token}`,
             value: t.hex,
             description: t.description,
         })));
+
+        tokensStore.create({
+            themeName: typeof args.name === "string" && args.name.trim().length > 0 ? args.name : "custom",
+            modes: ["light"],
+            collections: {
+                color: Object.fromEntries(tokens.map((token) => [token.token, token.hex])),
+                spacing: {},
+                radius: {},
+                typography: {},
+                shadow: {},
+            },
+            aliases: {},
+        });
 
         setActiveTheme({
             name: typeof args.name === "string" ? args.name : "custom",
@@ -423,27 +328,31 @@ function makeDefineTheme(
     };
 }
 
-// ─── figma_render (backward compat = alias for figma_compile) ─────────────────
-
-function makeRender(
-    buffer: JsxBuffer,
-    varStore: VariableStore,
-    enqueueOps: (ops: FigmaOp[]) => void,
-): ToolHandler
-{
-    return makeCompile(buffer, varStore, enqueueOps);
-}
-
-// ─── Registry factory ─────────────────────────────────────────────────────────
-
 export function createFigmaV2Registry(
     buffer: JsxBuffer,
     varStore: VariableStore,
+    tokensStore: TokensStore,
+    primitivePlanStore: PrimitivePlanStore,
+    primitiveJsxStore: PrimitiveJsxStore,
+    compositionMetaStore: CompositionMetaStore,
+    compositionJsxStore: CompositionJsxStore,
+    compileArtifactStore: CompileArtifactStore,
     enqueueOps: (ops: FigmaOp[]) => void,
 ): Record<string, ToolHandler>
 {
+    const stagedTools = createStagedFigmaTools({
+        buffer,
+        varStore,
+        tokensStore,
+        primitivePlanStore,
+        primitiveJsxStore,
+        compositionMetaStore,
+        compositionJsxStore,
+        compileArtifactStore,
+        enqueueOps,
+    });
+
     return {
-        // Buffer CRUD
         figma_create: makeCreate(buffer),
         figma_edit: makeEdit(buffer),
         figma_info: makeInfo(buffer),
@@ -451,49 +360,58 @@ export function createFigmaV2Registry(
         figma_list: makeList(buffer),
         figma_find: makeFind(buffer),
         figma_move: makeMove(buffer),
-        // Variables
         figma_var_set: makeVarSet(varStore),
         figma_var_get: makeVarGet(varStore),
         figma_var_remove: makeVarRemove(varStore),
         figma_var_list: makeVarList(varStore),
-        figma_tokens: makeTokens(varStore),
-        // Compile / reset
-        figma_compile: makeCompile(buffer, varStore, enqueueOps),
+        figma_tokens: stagedTools["figma.tokens"]!,
+        figma_compile: stagedTools["figma.compile"]!,
         figma_reset: makeReset(buffer, varStore),
-        // Backward compat (ops go via enqueueOps, never returned to model)
-        figma_define_theme: makeDefineTheme(varStore, enqueueOps),
-        figma_render: makeRender(buffer, varStore, enqueueOps),
+        figma_define_theme: makeDefineTheme(varStore, tokensStore, enqueueOps),
+        ...stagedTools,
     };
 }
 
-// ─── Tool documentation ───────────────────────────────────────────────────────
-
 export const FIGMA_V2_TOOLS_DOC = `
-## Figma V2 — Инструменты буфера
+## Figma V2 — staged + legacy tools
 
-### Принцип
-Буфер — in-memory JSX-дерево. Figma-ноды создаются **только при** \`figma_compile\`.
-Буфер живёт всю сессию. Созданные узлы не исчезают — их нужно редактировать через \`figma_edit\`, а не пересоздавать.
+### Canonical flow
+\`figma.tokens\` -> \`figma.primitives.plan\` -> \`figma.primitives.jsx\` -> \`figma.compose.meta\` -> \`figma.compose.jsx\` -> \`figma.compile\`
 
-### Переменные / токены
-**figma_tokens** \`{tokens:[{name,value}]}\` — пакетная установка цветовых токенов
-**figma_var_set** \`{name,value}\` — одна переменная (\`name\`: \`color/brand\`, \`color/canvas\` и т.д.)
-**figma_var_list** \`{}\` — список всех переменных
+### Staged tools
+**figma.tokens** \`{name?,modes?,collections,aliases?}\`
+**figma.tokens.get** \`{id?}\`
+**figma.tokens.list** \`{}\`
+**figma.primitives.plan** \`{tokensArtifactId,entries,target?,brief?,depth?}\`
+**figma.primitives.plan.get** \`{id}\`
+**figma.primitives.plan.list** \`{}\`
+**figma.primitives.jsx** \`{primitivesArtifactId,entries:[{name,jsx}]}\`
+**figma.primitives.jsx.get** \`{id}\`
+**figma.primitives.jsx.list** \`{}\`
+**figma.compose.meta** \`{tokensArtifactId,primitivesArtifactId,primitivesJsxArtifactId,screenName,compositionNodes}\`
+**figma.compose.meta.get** \`{id}\`
+**figma.compose.meta.list** \`{}\`
+**figma.compose.jsx** \`{compositionArtifactId}\`
+**figma.compose.jsx.get** \`{id}\`
+**figma.compose.jsx.list** \`{}\`
+**figma.compile** \`{compositionArtifactId?|jsx?,dispatch?}\`
+**figma.compile.get** \`{id}\`
+**figma.compile.list** \`{}\`
+**figma.compile.jsx** \`{compileArtifactId?|compositionArtifactId?}\`
 
-### CRUD буфера
-**figma_create** \`{type,className?,parentId?,...props}\` → \`{id,type,props,parentId}\`
-**figma_edit** \`{id,...props}\` — изменить пропсы (частично), \`parentId\` для перемещения
-**figma_info** \`{id}\` — тип, пропсы, список дочерних id
-**figma_delete** \`{id}\` — удалить узел и всех детей
-**figma_list** \`{parentId?}\` — список узлов (все / дети)
-**figma_find** \`{type?,className?,text?,parentId?}\` — поиск
-**figma_move** \`{id,newParentId,index?}\` — переместить
-
-### Компиляция
-**figma_compile** \`{jsx?}\` — компилировать буфер (или jsx) → Figma. Без аргументов = весь буфер.
-**figma_reset** \`{clearVars?}\` — очистить буфер
-
-### Обратная совместимость
-**figma_define_theme** \`{name,tokens:[{token,hex}]}\` — задать тему (ops уходят в Figma автоматически)
-**figma_render** — алиас \`figma_compile\`
+### Legacy tools
+**figma_tokens** \`{tokens:[{name,value}]}\`
+**figma_var_set** \`{name,value}\`
+**figma_var_list** \`{}\`
+**figma_create** \`{type,className?,parentId?,...props}\`
+**figma_edit** \`{id,...props}\`
+**figma_info** \`{id}\`
+**figma_delete** \`{id}\`
+**figma_list** \`{parentId?}\`
+**figma_find** \`{type?,className?,text?,parentId?}\`
+**figma_move** \`{id,newParentId,index?}\`
+**figma_compile** \`{jsx?}\`
+**figma_reset** \`{clearVars?}\`
+**figma_define_theme** \`{name,tokens:[{token,hex}]}\`
+**figma_render** — staged alias/dispatcher with legacy fallback
 `.trim();

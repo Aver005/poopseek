@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { compileJsx } from "@/figma/jsx-compiler";
 import { parseJsx, JsxParseError } from "@/figma/jsx-parser";
-import { formatJsxValidationErrors, validateJsxTree } from "@/figma/jsx-validator";
+import { assertCompositionUsesKnownSymbols, expandCompositionToJsx, renderCompositionInvocationJsx } from "@/figma/materializer";
+import { formatJsxValidationErrors, validateJsxFragment, validateJsxTree } from "@/figma/jsx-validator";
 import { setActiveTheme } from "@/figma/theme-state";
+import { JsxBuffer } from "@/figma/jsx-buffer";
+import { VariableStore } from "@/figma/var-store";
+import { TokensStore } from "@/figma/tokens-store";
+import { PrimitivePlanStore } from "@/figma/primitive-plan-store";
+import { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
+import { CompositionMetaStore } from "@/figma/composition-meta-store";
+import { CompositionJsxStore } from "@/figma/composition-jsx-store";
+import { CompileArtifactStore } from "@/figma/compile-artifact-store";
+import { createStagedFigmaTools } from "@/tools/defs/figma/v2/staged";
+import type { FigmaCompositionMetaArtifact, FigmaPrimitivesJsxArtifact } from "@/figma/artifact-types";
 
 describe("figma JSX pipeline", () =>
 {
@@ -140,5 +151,192 @@ describe("figma JSX pipeline", () =>
             && op.fill !== null
             && "variable" in op.fill
             && (op.fill as { variable: { name: string } }).variable.name === "color/purple/100")).toBe(true);
+    });
+
+    it("materializes staged composition from primitive JSX", () =>
+    {
+        const primitivesJsxArtifact: FigmaPrimitivesJsxArtifact = {
+            id: "primitives_home_jsx_v1",
+            type: "figma.primitives.jsx",
+            version: 1,
+            createdAt: Date.now(),
+            primitivesArtifactId: "primitives_home_v1",
+            entries: [
+                {
+                    name: "AppHeader",
+                    jsxArtifactId: "jsx_app_header_v1",
+                    jsx: "<HStack className=\"items-center justify-between\"><VStack className=\"gap-1\"><H2 className=\"text-text\">{title}</H2><BodySm className=\"text-muted\">{subtitle}</BodySm></VStack></HStack>",
+                },
+                {
+                    name: "PromoCard",
+                    jsxArtifactId: "jsx_promo_card_v1",
+                    jsx: "<Card className=\"bg-brand rounded-3xl p-5 gap-3\"><H3 className=\"text-on-brand\">{title}</H3><BodySm className=\"text-on-brand\">{description}</BodySm><Button label=\"{cta}\" className=\"bg-white text-brand rounded-xl\" /></Card>",
+                },
+            ],
+        };
+
+        const compositionArtifact: FigmaCompositionMetaArtifact = {
+            id: "compose_home_v1",
+            type: "figma.compose.meta",
+            version: 1,
+            createdAt: Date.now(),
+            screenName: "Home",
+            tokensArtifactId: "tokens_food_delivery_v1",
+            primitivesArtifactId: "primitives_home_v1",
+            primitivesJsxArtifactId: primitivesJsxArtifact.id,
+            jsxArtifactId: "compose_home_v1_jsx",
+            compositionNodes: [
+                {
+                    kind: "element",
+                    type: "Screen",
+                    props: { name: "Home", className: "bg-canvas" },
+                    children: [
+                        {
+                            kind: "element",
+                            type: "VStack",
+                            props: { className: "gap-6 p-6" },
+                            children: [
+                                { kind: "primitive", primitive: "AppHeader", props: { title: "Hello", subtitle: "What do you want today?" } },
+                                { kind: "primitive", primitive: "PromoCard", props: { title: "Free delivery", description: "Today only", cta: "Order now" } },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        expect(() => assertCompositionUsesKnownSymbols(compositionArtifact, primitivesJsxArtifact)).not.toThrow();
+
+        const invocationJsx = renderCompositionInvocationJsx(compositionArtifact);
+        expect(invocationJsx).toContain("<AppHeader");
+        expect(invocationJsx).toContain("<PromoCard");
+
+        const expandedJsx = expandCompositionToJsx(compositionArtifact, primitivesJsxArtifact);
+        expect(expandedJsx).toContain("<Screen");
+        expect(expandedJsx).toContain("Free delivery");
+        expect(expandedJsx).not.toContain("<AppHeader");
+
+        const expandedNodes = parseJsx(expandedJsx);
+        expect(validateJsxTree(expandedNodes)).toEqual([]);
+        expect(validateJsxFragment(parseJsx(primitivesJsxArtifact.entries[0]!.jsx))).toEqual([]);
+
+        const ops = compileJsx(expandedNodes);
+        expect(ops.some((op) => op.type === "create_frame" && op.name === "Home")).toBe(true);
+    });
+
+    it("supports staged tool runtime with introspection and figma_render alias", async () =>
+    {
+        const buffer = new JsxBuffer();
+        const varStore = new VariableStore();
+        const tokensStore = new TokensStore();
+        const primitivePlanStore = new PrimitivePlanStore();
+        const primitiveJsxStore = new PrimitiveJsxStore();
+        const compositionMetaStore = new CompositionMetaStore();
+        const compositionJsxStore = new CompositionJsxStore();
+        const compileArtifactStore = new CompileArtifactStore();
+        const queuedOps: Array<Record<string, unknown>> = [];
+
+        const tools = createStagedFigmaTools({
+            buffer,
+            varStore,
+            tokensStore,
+            primitivePlanStore,
+            primitiveJsxStore,
+            compositionMetaStore,
+            compositionJsxStore,
+            compileArtifactStore,
+            enqueueOps: (ops) => queuedOps.push(...ops as Array<Record<string, unknown>>),
+        });
+
+        const tokensResult = await tools["figma.tokens"]!(
+            {
+                name: "food-delivery",
+                collections: {
+                    color: {
+                        canvas: "#F8FAFC",
+                        brand: "#46A758",
+                        text: "#142033",
+                        "text-muted": "#5B657A",
+                    },
+                },
+            },
+            {} as never,
+        );
+        expect(tokensResult.ok).toBe(true);
+        const tokensArtifactId = (tokensResult.data as { id: string }).id;
+
+        const listTokensResult = await tools["figma.tokens.list"]!({}, {} as never);
+        expect(listTokensResult.ok).toBe(true);
+        expect(Array.isArray(listTokensResult.data)).toBe(true);
+        expect((listTokensResult.data as Array<{ id: string }>)[0]?.id).toBe(tokensArtifactId);
+
+        const primitivesPlanResult = await tools["figma.primitives.plan"]!(
+            {
+                tokensArtifactId,
+                entries: [
+                    { name: "AppHeader", level: "molecule", props: ["title", "subtitle"] },
+                ],
+            },
+            {} as never,
+        );
+        expect(primitivesPlanResult.ok).toBe(true);
+        const primitivesArtifactId = (primitivesPlanResult.data as { id: string }).id;
+
+        const primitivesJsxResult = await tools["figma.primitives.jsx"]!(
+            {
+                primitivesArtifactId,
+                entries: [
+                    {
+                        name: "AppHeader",
+                        jsx: "<HStack className=\"items-center justify-between\"><VStack className=\"gap-1\"><H2 className=\"text-text\">{title}</H2><BodySm className=\"text-muted\">{subtitle}</BodySm></VStack></HStack>",
+                    },
+                ],
+            },
+            {} as never,
+        );
+        expect(primitivesJsxResult.ok).toBe(true);
+        expect(primitivesJsxResult.output).toContain("```jsx");
+        const primitivesJsxArtifactId = (primitivesJsxResult.data as { id: string }).id;
+
+        const composeMetaResult = await tools["figma.compose.meta"]!(
+            {
+                tokensArtifactId,
+                primitivesArtifactId,
+                primitivesJsxArtifactId,
+                screenName: "Home",
+                compositionNodes: [
+                    {
+                        kind: "element",
+                        type: "Screen",
+                        props: { name: "Home", className: "bg-canvas" },
+                        children: [
+                            {
+                                kind: "primitive",
+                                primitive: "AppHeader",
+                                props: { title: "Hello", subtitle: "What do you want today?" },
+                            },
+                        ],
+                    },
+                ],
+            },
+            {} as never,
+        );
+        expect(composeMetaResult.ok).toBe(true);
+        const compositionArtifactId = (composeMetaResult.data as { id: string }).id;
+
+        const renderResult = await tools.figma_render!(
+            {
+                compositionArtifactId,
+                dispatch: true,
+            },
+            {} as never,
+        );
+        expect(renderResult.ok).toBe(true);
+        expect(renderResult.output).toContain("```jsx");
+        expect(queuedOps.length).toBeGreaterThan(0);
+
+        const compileListResult = await tools["figma.compile.list"]!({}, {} as never);
+        expect(compileListResult.ok).toBe(true);
+        expect((compileListResult.data as Array<{ compositionArtifactId: string }>)[0]?.compositionArtifactId).toBe(compositionArtifactId);
     });
 });

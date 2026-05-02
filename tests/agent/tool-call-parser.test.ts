@@ -46,4 +46,17 @@ describe("tool-call parser", () =>
         expect(events).toHaveLength(1);
         expect(events[0]?.envelope.tool).toBe("figma_define_theme");
     });
+
+    it("parses dotted staged tool names", () =>
+    {
+        const message = [
+            "```json",
+            "{\"tool\":\"figma.compose.jsx\",\"args\":{\"compositionArtifactId\":\"compose_home_v1\"}}",
+            "```",
+        ].join("\n");
+
+        const result = parseMessage(message);
+        expect(result.toolCalls).toHaveLength(1);
+        expect(result.toolCalls[0]?.envelope.tool).toBe("figma.compose.jsx");
+    });
 });
