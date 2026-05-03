@@ -181,3 +181,10 @@ export function getComponentSpec(tagName: string): ComponentSpec | undefined
 {
     return COMPONENT_SPECS[tagName];
 }
+
+export function describeComponentProps(tagName: string): string
+{
+    const spec = getComponentSpec(tagName);
+    if (!spec) return `${tagName}: unsupported`;
+    return `${tagName}: ${Array.from(spec.allowedProps).sort().join(", ")}`;
+}

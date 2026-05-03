@@ -2,7 +2,7 @@ import type ContextManager from "@/agent/context-manager";
 import type { AgentMessage } from "@/agent/types";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
 import type { FigmaSession } from "@/figma/application/session/session-types";
-import { ALLOWED_TAGS, getComponentSpec } from "@/figma/engine/jsx/jsx-spec";
+import { ALLOWED_TAGS, describeComponentProps, getComponentSpec } from "@/figma/engine/jsx/jsx-spec";
 import { describeAllowedUtilities } from "@/figma/engine/jsx/classname";
 import { JsxParseError, parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { assertValidJsxFragment, formatJsxValidationErrors, JsxValidationException } from "@/figma/engine/jsx/jsx-validator";
@@ -234,6 +234,10 @@ function normalizePrimitiveProps(value: unknown): PrimitivePropSpec[]
         const name = typeof record.name === "string" ? record.name.trim() : "";
         if (!name)
             throw new Error('Каждый primitive prop должен содержать непустое поле "name"');
+        if (/^on[A-Z]/.test(name) || /^on[a-z]/.test(name))
+            throw new Error(`Prop "${name}" запрещен: event-handler props не поддерживаются в Figma JSX`);
+        if (["style", "className", "children", "ref", "key", "href"].includes(name))
+            throw new Error(`Prop "${name}" запрещен для primitive contract`);
 
         return {
             name,
@@ -431,6 +435,16 @@ function extractStrictJsx(text: string): string
     return jsx;
 }
 
+function commonBuilderFailureHints(): string
+{
+    return [
+        "- Нельзя использовать CSS/DOM positioning utilities: `fixed`, `absolute`, `sticky`, `top-0`, `right-0`, `bottom-0`, `left-0`, `inset-*`, `z-*`.",
+        "- Нельзя придумывать utility names из design token names: `bg-accent-pasta`, `border-light`, `text-title-medium` и т.п.",
+        "- Нельзя передавать browser/event props: `onPress`, `onClick`, `href`, `style`.",
+        "- Используй только реальные Figma JSX props и только допустимые utility classes.",
+    ].join("\n");
+}
+
 async function runStructuredSession<T>(args: StructuredSessionArgs<T>): Promise<T>
 {
     const maxAttempts = args.maxAttempts ?? 3;
@@ -615,6 +629,8 @@ export async function runPlannerSession(
                 'Формат: { "screenName": string, "primitives": Array<{ "name": string, "level": "atom" | "molecule" | "section", "description"?: string, "props"?: Array<{ "name": string, "required"?: boolean, "description"?: string }>, "dependencies"?: string[] }> }',
                 "Primitives должны быть реальными кирпичиками, которые builder сможет собрать отдельно.",
                 "Не добавляй лишние вариации и не дублируй роли компонентов.",
+                "НЕ включай event/browser props: onPress, onClick, href, style, className, children, ref, key.",
+                "Если поведение интерактивное, описывай semantic prop без browser semantics, например `label`, `price`, `badgeText`, `subtitle`.",
             ].join("\n\n"),
             initialUserMessage: [
                 "Определи минимально-достаточный набор primitives для экрана.",
@@ -676,8 +692,21 @@ export async function runBuilderSession(args: {
                 [
                     args.deps.figmaStagePrompts.primitives,
                     "Ты пишешь только один JSX primitive за раз.",
+                    "Figma JSX НЕ равен HTML/CSS/Tailwind для веба.",
+                    "В этой dialect нет fixed/absolute/sticky positioning utilities.",
+                    "Нельзя выдумывать class tokens из названий design tokens.",
+                    "Нельзя передавать event-handler props вроде onPress/onClick/href/style.",
                     "Разрешены только Figma JSX теги:",
                     ALLOWED_TAGS.join(", "),
+                    "",
+                    "Критически важные prop contracts:",
+                    describeComponentProps("Frame"),
+                    describeComponentProps("VStack"),
+                    describeComponentProps("HStack"),
+                    describeComponentProps("Card"),
+                    describeComponentProps("Button"),
+                    describeComponentProps("Text"),
+                    describeComponentProps("Image"),
                     "",
                     `Разрешены только utility class tokens: ${describeAllowedUtilities()}`,
                     "Верни только один fenced ```jsx``` блок и ничего кроме него.",
@@ -702,6 +731,11 @@ export async function runBuilderSession(args: {
                 "## Primitive spec",
                 JSON.stringify(args.primitive, null, 2),
                 "",
+                "## Important interpretation rules",
+                "- Если описание говорит про fixed/sticky/bottom bar, не используй CSS positioning utilities.",
+                "- В таком случае собери semantic bottom CTA container, а само размещение на экране решает composer/main pipeline.",
+                "- Не превращай design token names в class tokens.",
+                "",
                 "## Already built primitives",
                 args.builtPrimitiveNames.length > 0 ? args.builtPrimitiveNames.join(", ") : "none",
             ].join("\n"),
@@ -709,6 +743,9 @@ export async function runBuilderSession(args: {
             formatRetryFeedback: (error) => [
                 "JSX не прошел валидацию.",
                 `Исправь: ${error.message}`,
+                "",
+                "Частые причины:",
+                commonBuilderFailureHints(),
                 "Верни только один fenced ```jsx``` блок для этого primitive.",
             ].join("\n"),
         });
