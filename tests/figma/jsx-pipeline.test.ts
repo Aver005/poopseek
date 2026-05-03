@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { compileJsx } from "@/figma/jsx-compiler";
-import { parseJsx, JsxParseError } from "@/figma/jsx-parser";
-import { assertCompositionUsesKnownSymbols, expandCompositionToJsx, renderCompositionInvocationJsx } from "@/figma/materializer";
-import { formatJsxValidationErrors, validateJsxFragment, validateJsxTree } from "@/figma/jsx-validator";
-import { setActiveTheme } from "@/figma/theme-state";
-import { JsxBuffer } from "@/figma/jsx-buffer";
-import { VariableStore } from "@/figma/var-store";
-import { TokensStore } from "@/figma/tokens-store";
-import { PrimitivePlanStore } from "@/figma/primitive-plan-store";
-import { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
-import { CompositionMetaStore } from "@/figma/composition-meta-store";
-import { CompositionJsxStore } from "@/figma/composition-jsx-store";
-import { CompileArtifactStore } from "@/figma/compile-artifact-store";
+import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
+import { parseJsx, JsxParseError } from "@/figma/engine/jsx/jsx-parser";
+import { assertCompositionUsesKnownSymbols, expandCompositionToJsx, renderCompositionInvocationJsx } from "@/figma/engine/composition/materializer";
+import { formatJsxValidationErrors, validateJsxFragment, validateJsxTree } from "@/figma/engine/jsx/jsx-validator";
+import { setActiveTheme } from "@/figma/engine/theme/theme-state";
+import { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
+import { VariableStore } from "@/figma/engine/theme/var-store";
+import { TokensStore } from "@/figma/domain/artifacts/stores/tokens-store";
+import { PrimitivePlanStore } from "@/figma/domain/artifacts/stores/primitive-plan-store";
+import { PrimitiveJsxStore } from "@/figma/domain/artifacts/stores/primitive-jsx-store";
+import { CompositionMetaStore } from "@/figma/domain/artifacts/stores/composition-meta-store";
+import { CompositionJsxStore } from "@/figma/domain/artifacts/stores/composition-jsx-store";
+import { CompileArtifactStore } from "@/figma/domain/artifacts/stores/compile-artifact-store";
 import { createStagedFigmaTools } from "@/tools/defs/figma/v2/staged";
-import type { FigmaCompositionMetaArtifact, FigmaPrimitivesJsxArtifact } from "@/figma/artifact-types";
+import type { FigmaCompositionMetaArtifact, FigmaPrimitivesJsxArtifact } from "@/figma/domain/artifacts/artifact-types";
 
 describe("figma JSX pipeline", () =>
 {

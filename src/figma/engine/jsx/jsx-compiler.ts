@@ -1,8 +1,8 @@
 import { resolveClassNameProps } from "./classname";
-import { createEnsureColorVariablesOp } from "./design-tokens";
-import { createEnsureThemeVariablesOp } from "./theme-state";
+import { createEnsureColorVariablesOp } from "../theme/design-tokens";
+import { createEnsureThemeVariablesOp } from "../theme/theme-state";
 import type { JsxNode } from "./jsx-parser";
-import type { FigmaOp } from "./types";
+import type { FigmaOp } from "../../types";
 
 interface TypoSpec
 {
@@ -825,3 +825,4 @@ export function compileJsx(nodes: JsxNode[]): FigmaOp[]
 
     return state.ops;
 }
+

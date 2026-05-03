@@ -1,5 +1,5 @@
-import type { FigmaPluginSnapshot, FigmaSnapshotNode } from "@/figma/snapshot-types";
-import type { FigmaOp } from "@/figma/types";
+import type { FigmaPluginSnapshot, FigmaSnapshotNode } from "./snapshot-types";
+import type { FigmaOp } from "@/figma/api/contracts";
 
 export interface PatchPlannerInput
 {
@@ -148,3 +148,5 @@ export function planPatchExistingRoot(input: PatchPlannerInput): PatchPlannerRes
         incomingRootId,
     };
 }
+
+

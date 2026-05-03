@@ -1,5 +1,5 @@
 import type { ToolHandler } from "@/tools/types";
-import { createEnsureThemeVariablesOp, setActiveTheme, type ThemeTokenDefinition } from "@/figma/theme-state";
+import { createEnsureThemeVariablesOp, setActiveTheme, type ThemeTokenDefinition } from "@/figma/engine/theme/theme-state";
 
 export const name = "figma_define_theme";
 
@@ -59,3 +59,4 @@ export const handler: ToolHandler = async (args) =>
         data: [op],
     };
 };
+

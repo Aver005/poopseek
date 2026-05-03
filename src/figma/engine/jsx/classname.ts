@@ -1,5 +1,5 @@
-import { COLOR_TOKEN_KEYS, createVariableColorValue } from "./design-tokens";
-import { getAllowedThemeColorKeys, resolveThemeColorValue } from "./theme-state";
+import { COLOR_TOKEN_KEYS, createVariableColorValue } from "../theme/design-tokens";
+import { getAllowedThemeColorKeys, resolveThemeColorValue } from "../theme/theme-state";
 
 export type ClassLayoutMode = "HORIZONTAL" | "VERTICAL";
 
@@ -465,3 +465,4 @@ export function describeAllowedUtilities(): string
         "misc: overflow-hidden",
     ].join("; ");
 }
+

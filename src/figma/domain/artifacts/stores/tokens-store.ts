@@ -1,4 +1,4 @@
-import type { FigmaTokensArtifact } from "./artifact-types";
+import type { FigmaTokensArtifact } from "../artifact-types";
 
 function slugify(value: string): string
 {
@@ -43,3 +43,4 @@ export class TokensStore
         return Array.from(this.items.values());
     }
 }
+

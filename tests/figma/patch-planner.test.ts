@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { planPatchExistingRoot } from "@/figma/patch-planner";
-import type { FigmaPluginSnapshot } from "@/figma/snapshot-types";
-import type { FigmaOp } from "@/figma/types";
+import { planPatchExistingRoot } from "@/figma/domain/plugin/patch-planner";
+import type { FigmaPluginSnapshot } from "@/figma/domain/plugin/snapshot-types";
+import type { FigmaOp } from "@/figma/api/contracts";
 
 describe("figma patch planner", () =>
 {

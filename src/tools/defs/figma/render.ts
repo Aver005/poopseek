@@ -1,8 +1,8 @@
 import type { ToolHandler } from "@/tools/types";
-import { parseJsx } from "@/figma/jsx-parser";
-import { compileJsx } from "@/figma/jsx-compiler";
-import { assertValidJsx, formatJsxValidationErrors, JsxValidationException } from "@/figma/jsx-validator";
-import { JsxParseError } from "@/figma/jsx-parser";
+import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
+import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
+import { assertValidJsx, formatJsxValidationErrors, JsxValidationException } from "@/figma/engine/jsx/jsx-validator";
+import { JsxParseError } from "@/figma/engine/jsx/jsx-parser";
 
 export const name = "figma_render";
 
@@ -36,3 +36,4 @@ export const handler: ToolHandler = async (args) =>
         data: ops,
     };
 };
+

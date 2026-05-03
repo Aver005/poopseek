@@ -1,22 +1,22 @@
 import type { ToolContext, ToolHandler, ToolExecutionResult } from "@/tools/types";
-import { parseJsx, JsxParseError } from "@/figma/jsx-parser";
-import { compileJsx } from "@/figma/jsx-compiler";
-import { assertValidJsx, assertValidJsxFragment, formatJsxValidationErrors, JsxValidationException } from "@/figma/jsx-validator";
-import { setActiveTheme } from "@/figma/theme-state";
-import type { FigmaOp } from "@/figma/types";
-import { TokensStore } from "@/figma/tokens-store";
-import { PrimitivePlanStore } from "@/figma/primitive-plan-store";
-import { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
-import { CompositionMetaStore } from "@/figma/composition-meta-store";
-import { CompositionJsxStore } from "@/figma/composition-jsx-store";
-import { CompileArtifactStore } from "@/figma/compile-artifact-store";
-import { VariableStore } from "@/figma/var-store";
-import { JsxBuffer } from "@/figma/jsx-buffer";
+import { parseJsx, JsxParseError } from "@/figma/engine/jsx/jsx-parser";
+import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
+import { assertValidJsx, assertValidJsxFragment, formatJsxValidationErrors, JsxValidationException } from "@/figma/engine/jsx/jsx-validator";
+import { setActiveTheme } from "@/figma/engine/theme/theme-state";
+import type { FigmaOp } from "@/figma/api/contracts";
+import { TokensStore } from "@/figma/domain/artifacts/stores/tokens-store";
+import { PrimitivePlanStore } from "@/figma/domain/artifacts/stores/primitive-plan-store";
+import { PrimitiveJsxStore } from "@/figma/domain/artifacts/stores/primitive-jsx-store";
+import { CompositionMetaStore } from "@/figma/domain/artifacts/stores/composition-meta-store";
+import { CompositionJsxStore } from "@/figma/domain/artifacts/stores/composition-jsx-store";
+import { CompileArtifactStore } from "@/figma/domain/artifacts/stores/compile-artifact-store";
+import { VariableStore } from "@/figma/engine/theme/var-store";
+import { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
 import {
     assertCompositionUsesKnownSymbols,
     expandCompositionToJsx,
     renderCompositionInvocationJsx,
-} from "@/figma/materializer";
+} from "@/figma/engine/composition/materializer";
 import type {
     ArtifactScalar,
     CompositionNode,
@@ -25,7 +25,7 @@ import type {
     PrimitivePropSpec,
     ShadowToken,
     TypographyToken,
-} from "@/figma/artifact-types";
+} from "@/figma/domain/artifacts/artifact-types";
 
 function ok(output: string, data?: unknown): ToolExecutionResult
 {
@@ -988,3 +988,5 @@ export function createStagedFigmaTools(deps: StagedFigmaDeps): Record<string, To
         figma_render: makeRenderAlias(deps),
     };
 }
+
+

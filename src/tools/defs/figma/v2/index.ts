@@ -1,15 +1,15 @@
 import type { ToolHandler, ToolExecutionResult } from "@/tools/types";
-import { JsxBuffer } from "@/figma/jsx-buffer";
-import { VariableStore } from "@/figma/var-store";
-import { setActiveTheme, createEnsureThemeVariablesOp } from "@/figma/theme-state";
-import type { FigmaOp } from "@/figma/types";
-import type { BufferNode } from "@/figma/jsx-buffer";
-import { TokensStore } from "@/figma/tokens-store";
-import { PrimitivePlanStore } from "@/figma/primitive-plan-store";
-import { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
-import { CompositionMetaStore } from "@/figma/composition-meta-store";
-import { CompositionJsxStore } from "@/figma/composition-jsx-store";
-import { CompileArtifactStore } from "@/figma/compile-artifact-store";
+import { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
+import { VariableStore } from "@/figma/engine/theme/var-store";
+import { setActiveTheme, createEnsureThemeVariablesOp } from "@/figma/engine/theme/theme-state";
+import type { FigmaOp } from "@/figma/api/contracts";
+import type { BufferNode } from "@/figma/engine/jsx/jsx-buffer";
+import { TokensStore } from "@/figma/domain/artifacts/stores/tokens-store";
+import { PrimitivePlanStore } from "@/figma/domain/artifacts/stores/primitive-plan-store";
+import { PrimitiveJsxStore } from "@/figma/domain/artifacts/stores/primitive-jsx-store";
+import { CompositionMetaStore } from "@/figma/domain/artifacts/stores/composition-meta-store";
+import { CompositionJsxStore } from "@/figma/domain/artifacts/stores/composition-jsx-store";
+import { CompileArtifactStore } from "@/figma/domain/artifacts/stores/compile-artifact-store";
 import { createCompileTool, createStagedFigmaTools } from "./staged";
 
 function ok(output: string, data?: unknown): ToolExecutionResult
@@ -428,3 +428,5 @@ ${FIGMA_V2_STAGED_TOOLS_DOC}
 **figma_define_theme** \`{name,tokens:[{token,hex}]}\`
 **figma_render** — staged alias/dispatcher with legacy fallback
 `.trim();
+
+

@@ -7,8 +7,8 @@ import {
     inferEditIntent,
     inferLayoutConstraints,
     inferTaskMode,
-} from "@/figma/orchestrator";
-import { JsxBuffer } from "@/figma/jsx-buffer";
+} from "@/figma/application/orchestration";
+import { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
 import type {
     FigmaCompileArtifact,
     FigmaCompositionJsxArtifact,
@@ -16,7 +16,7 @@ import type {
     FigmaPrimitivesJsxArtifact,
     FigmaPrimitivesPlanArtifact,
     FigmaTokensArtifact,
-} from "@/figma/artifact-types";
+} from "@/figma/domain/artifacts/artifact-types";
 
 describe("figma orchestrator", () =>
 {

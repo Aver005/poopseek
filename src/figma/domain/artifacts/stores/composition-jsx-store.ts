@@ -1,4 +1,4 @@
-import type { FigmaCompositionJsxArtifact } from "./artifact-types";
+import type { FigmaCompositionJsxArtifact } from "../artifact-types";
 
 function slugify(value: string): string
 {
@@ -44,3 +44,4 @@ export class CompositionJsxStore
         return Array.from(this.items.values());
     }
 }
+

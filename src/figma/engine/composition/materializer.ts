@@ -1,11 +1,11 @@
-import { getComponentSpec } from "./jsx-spec";
-import { parseJsx, type JsxNode, type JsxPropValue } from "./jsx-parser";
+import { getComponentSpec } from "../jsx/jsx-spec";
+import { parseJsx, type JsxNode, type JsxPropValue } from "../jsx/jsx-parser";
 import type {
     ArtifactScalar,
     CompositionNode,
     FigmaCompositionMetaArtifact,
     FigmaPrimitivesJsxArtifact,
-} from "./artifact-types";
+} from "../../domain/artifacts/artifact-types";
 
 function escapeAttr(value: string): string
 {
@@ -210,3 +210,4 @@ export function assertCompositionUsesKnownSymbols(
     for (const node of compositionArtifact.compositionNodes)
         visit(node);
 }
+

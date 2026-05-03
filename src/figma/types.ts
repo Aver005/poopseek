@@ -1,69 +1,13 @@
-import type ContextManager from "@/agent/context-manager";
-import type StreamingAgentLoop from "@/agent/streaming-loop";
-import type { JsxBuffer } from "@/figma/jsx-buffer";
-import type { VariableStore } from "@/figma/var-store";
-import type { TokensStore } from "@/figma/tokens-store";
-import type { PrimitivePlanStore } from "@/figma/primitive-plan-store";
-import type { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
-import type { CompositionMetaStore } from "@/figma/composition-meta-store";
-import type { CompositionJsxStore } from "@/figma/composition-jsx-store";
-import type { CompileArtifactStore } from "@/figma/compile-artifact-store";
-import type { FigmaOrchestrationState } from "@/figma/orchestrator";
-import type { FigmaPluginSnapshot } from "@/figma/snapshot-types";
-import type { PreparedDesignBrief } from "@/figma/preprocess";
+export type {
+    FigmaChatRequest,
+    FigmaChatResponse,
+    FigmaOp,
+    FigmaSnapshotRequest,
+} from "@/figma/api/contracts";
+export type {
+    FigmaPreparedBriefResponse,
+    FigmaRole,
+    FigmaRoleSession,
+    FigmaSession,
+} from "@/figma/application/session/session-types";
 
-export interface FigmaOp
-{
-    type: string;
-    [key: string]: unknown;
-}
-
-export interface FigmaChatRequest
-{
-    sessionId?: string;
-    message: string;
-}
-
-export interface FigmaChatResponse
-{
-    sessionId: string;
-    text: string;
-    ops: FigmaOp[];
-}
-
-export interface FigmaSnapshotRequest
-{
-    sessionId: string;
-    snapshot: FigmaPluginSnapshot;
-}
-
-export interface FigmaPreparedBriefResponse
-{
-    brief: PreparedDesignBrief;
-}
-
-export type FigmaRole = "enhancer" | "designer" | "builder" | "composer";
-
-export interface FigmaRoleSession
-{
-    role: FigmaRole;
-    contextManager: ContextManager;
-    agentLoop?: StreamingAgentLoop;
-}
-
-export interface FigmaSession
-{
-    id: string;
-    roleSessions: Record<FigmaRole, FigmaRoleSession>;
-    buffer: JsxBuffer;
-    varStore: VariableStore;
-    tokensStore: TokensStore;
-    primitivePlanStore: PrimitivePlanStore;
-    primitiveJsxStore: PrimitiveJsxStore;
-    compositionMetaStore: CompositionMetaStore;
-    compositionJsxStore: CompositionJsxStore;
-    compileArtifactStore: CompileArtifactStore;
-    orchestration: FigmaOrchestrationState;
-    createdAt: number;
-    lastActivityAt: number;
-}

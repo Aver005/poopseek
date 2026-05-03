@@ -1,4 +1,4 @@
-import type { FigmaPrimitivesPlanArtifact } from "./artifact-types";
+import type { FigmaPrimitivesPlanArtifact } from "../artifact-types";
 
 function slugify(value: string): string
 {
@@ -36,3 +36,4 @@ export class PrimitivePlanStore
         return Array.from(this.items.values());
     }
 }
+

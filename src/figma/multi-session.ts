@@ -1,7 +1,7 @@
 import type ContextManager from "@/agent/context-manager";
 import type StreamingAgentLoop from "@/agent/streaming-loop";
 import type { PreparedDesignBrief } from "@/figma/preprocess";
-import type { FigmaRole, FigmaRoleSession, FigmaSession } from "@/figma/types";
+import type { FigmaRole, FigmaRoleSession, FigmaSession } from "@/figma/application/session/session-types";
 
 export interface RoleRunResult
 {
@@ -74,3 +74,4 @@ export function buildRolePromptEnvelope(args: {
 
     return parts.join("\n");
 }
+

@@ -1,4 +1,4 @@
-import type { FigmaPrimitiveJsxUpsertInput, FigmaPrimitivesJsxArtifact } from "./artifact-types";
+import type { FigmaPrimitiveJsxUpsertInput, FigmaPrimitivesJsxArtifact } from "../artifact-types";
 
 function slugify(value: string): string
 {
@@ -60,3 +60,4 @@ export class PrimitiveJsxStore
             .at(-1);
     }
 }
+

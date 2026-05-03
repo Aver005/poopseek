@@ -1,4 +1,4 @@
-import type { FigmaCompileArtifact } from "./artifact-types";
+import type { FigmaCompileArtifact } from "../artifact-types";
 
 function slugify(value: string): string
 {
@@ -36,3 +36,4 @@ export class CompileArtifactStore
         return Array.from(this.items.values());
     }
 }
+
