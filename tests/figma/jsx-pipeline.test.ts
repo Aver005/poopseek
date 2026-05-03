@@ -285,14 +285,24 @@ describe("figma JSX pipeline", () =>
         const primitivesJsxResult = await tools["figma.primitives.jsx"]!(
             {
                 primitivesArtifactId,
-                entries: [
-                    {
-                        name: "AppHeader",
-                        jsx: "<HStack className=\"items-center justify-between\"><VStack className=\"gap-1\"><H2 className=\"text-text\">{title}</H2><BodySm className=\"text-muted\">{subtitle}</BodySm></VStack></HStack>",
-                    },
-                ],
+                names: ["AppHeader"],
             },
-            {} as never,
+            {
+                currentToolCall: {
+                    tool: "figma.primitives.jsx",
+                    args: {
+                        primitivesArtifactId,
+                        names: ["AppHeader"],
+                    },
+                    attachments: [
+                        {
+                            kind: "jsx",
+                            label: "AppHeader",
+                            content: "<HStack className=\"items-center justify-between\"><VStack className=\"gap-1\"><H2 className=\"text-text\">{title}</H2><BodySm className=\"text-muted\">{subtitle}</BodySm></VStack></HStack>",
+                        },
+                    ],
+                },
+            } as never,
         );
         expect(primitivesJsxResult.ok).toBe(true);
         expect(primitivesJsxResult.output).toContain("```jsx");
@@ -338,5 +348,309 @@ describe("figma JSX pipeline", () =>
         const compileListResult = await tools["figma.compile.list"]!({}, {} as never);
         expect(compileListResult.ok).toBe(true);
         expect((compileListResult.data as Array<{ compositionArtifactId: string }>)[0]?.compositionArtifactId).toBe(compositionArtifactId);
+    });
+
+    it("accepts primitive JSX from fenced jsx attachments instead of JSON entries", async () =>
+    {
+        const tools = createStagedFigmaTools({
+            buffer: new JsxBuffer(),
+            varStore: new VariableStore(),
+            tokensStore: new TokensStore(),
+            primitivePlanStore: new PrimitivePlanStore(),
+            primitiveJsxStore: new PrimitiveJsxStore(),
+            compositionMetaStore: new CompositionMetaStore(),
+            compositionJsxStore: new CompositionJsxStore(),
+            compileArtifactStore: new CompileArtifactStore(),
+            enqueueOps: () => {},
+        });
+
+        const tokensResult = await tools["figma.tokens"]!(
+            {
+                name: "food-delivery",
+                collections: {
+                    color: {
+                        canvas: "#F8FAFC",
+                        text: "#142033",
+                    },
+                },
+            },
+            {} as never,
+        );
+        expect(tokensResult.ok).toBe(true);
+        const tokensArtifactId = (tokensResult.data as { id: string }).id;
+
+        const primitivesPlanResult = await tools["figma.primitives.plan"]!(
+            {
+                tokensArtifactId,
+                entries: [{ name: "AppHeader", level: "molecule", props: ["title"] }],
+            },
+            {} as never,
+        );
+        expect(primitivesPlanResult.ok).toBe(true);
+        const primitivesArtifactId = (primitivesPlanResult.data as { id: string }).id;
+
+        const primitivesJsxResult = await tools["figma.primitives.jsx"]!(
+            {
+                primitivesArtifactId,
+                names: ["AppHeader"],
+            },
+            {
+                currentToolCall: {
+                    tool: "figma.primitives.jsx",
+                    args: {
+                        primitivesArtifactId,
+                        names: ["AppHeader"],
+                    },
+                    attachments: [
+                        {
+                            kind: "jsx",
+                            label: "AppHeader",
+                            content: "<HStack className=\"items-center\"><H2 className=\"text-text\">{title}</H2></HStack>",
+                        },
+                    ],
+                },
+            } as never,
+        );
+
+        expect(primitivesJsxResult.ok).toBe(true);
+        expect(primitivesJsxResult.output).toContain("```jsx");
+        expect((primitivesJsxResult.data as { entries: Array<{ name: string }> }).entries).toEqual([
+            expect.objectContaining({ name: "AppHeader" }),
+        ]);
+    });
+
+    it("rejects inline primitive JSX inside JSON args", async () =>
+    {
+        const tools = createStagedFigmaTools({
+            buffer: new JsxBuffer(),
+            varStore: new VariableStore(),
+            tokensStore: new TokensStore(),
+            primitivePlanStore: new PrimitivePlanStore(),
+            primitiveJsxStore: new PrimitiveJsxStore(),
+            compositionMetaStore: new CompositionMetaStore(),
+            compositionJsxStore: new CompositionJsxStore(),
+            compileArtifactStore: new CompileArtifactStore(),
+            enqueueOps: () => {},
+        });
+
+        const tokensResult = await tools["figma.tokens"]!(
+            {
+                collections: {
+                    color: { canvas: "#FFFFFF", text: "#111111" },
+                },
+            },
+            {} as never,
+        );
+        const tokensArtifactId = (tokensResult.data as { id: string }).id;
+
+        const planResult = await tools["figma.primitives.plan"]!(
+            {
+                tokensArtifactId,
+                entries: [{ name: "AppHeader", level: "molecule" }],
+            },
+            {} as never,
+        );
+        const primitivesArtifactId = (planResult.data as { id: string }).id;
+
+        const primitivesJsxResult = await tools["figma.primitives.jsx"]!(
+            {
+                primitivesArtifactId,
+                entries: [
+                    {
+                        name: "AppHeader",
+                        jsx: "<HStack><H1>Bad</H1></HStack>",
+                    },
+                ],
+            },
+            {
+                currentToolCall: {
+                    tool: "figma.primitives.jsx",
+                    args: {
+                        primitivesArtifactId,
+                        entries: [{ name: "AppHeader", jsx: "<HStack><H1>Bad</H1></HStack>" }],
+                    },
+                },
+            } as never,
+        );
+
+        expect(primitivesJsxResult.ok).toBe(false);
+        expect(primitivesJsxResult.output).toContain("Inline JSX in JSON is not allowed");
+    });
+
+    it("merges isolated primitive jsx builds into one latest artifact per plan", async () =>
+    {
+        const tools = createStagedFigmaTools({
+            buffer: new JsxBuffer(),
+            varStore: new VariableStore(),
+            tokensStore: new TokensStore(),
+            primitivePlanStore: new PrimitivePlanStore(),
+            primitiveJsxStore: new PrimitiveJsxStore(),
+            compositionMetaStore: new CompositionMetaStore(),
+            compositionJsxStore: new CompositionJsxStore(),
+            compileArtifactStore: new CompileArtifactStore(),
+            enqueueOps: () => {},
+        });
+
+        const tokensResult = await tools["figma.tokens"]!(
+            {
+                collections: {
+                    color: { canvas: "#0A0A0A", text: "#FFFFFF" },
+                },
+            },
+            {} as never,
+        );
+        const tokensArtifactId = (tokensResult.data as { id: string }).id;
+
+        const planResult = await tools["figma.primitives.plan"]!(
+            {
+                tokensArtifactId,
+                entries: [
+                    { name: "HeroTitle", level: "atom" },
+                    { name: "PrimaryButton", level: "molecule" },
+                ],
+            },
+            {} as never,
+        );
+        const primitivesArtifactId = (planResult.data as { id: string }).id;
+
+        const heroResult = await tools["figma.primitives.jsx"]!(
+            {
+                primitivesArtifactId,
+                names: ["HeroTitle"],
+            },
+            {
+                currentToolCall: {
+                    tool: "figma.primitives.jsx",
+                    args: { primitivesArtifactId, names: ["HeroTitle"] },
+                    attachments: [
+                        { kind: "jsx", label: "HeroTitle", content: "<H1 className=\"text-text text-4xl font-bold\">{title}</H1>" },
+                    ],
+                },
+            } as never,
+        );
+        expect(heroResult.ok).toBe(true);
+
+        const buttonResult = await tools["figma.primitives.jsx"]!(
+            {
+                primitivesArtifactId,
+                names: ["PrimaryButton"],
+            },
+            {
+                currentToolCall: {
+                    tool: "figma.primitives.jsx",
+                    args: { primitivesArtifactId, names: ["PrimaryButton"] },
+                    attachments: [
+                        { kind: "jsx", label: "PrimaryButton", content: "<Button className=\"bg-brand text-on-brand\">{label}</Button>" },
+                    ],
+                },
+            } as never,
+        );
+        expect(buttonResult.ok).toBe(true);
+
+        const latestArtifact = buttonResult.data as { entries: Array<{ name: string }> };
+        expect(latestArtifact.entries.map((entry) => entry.name)).toEqual(["HeroTitle", "PrimaryButton"]);
+    });
+
+    it("accepts nested token collections and normalizes primitive plan shorthands", async () =>
+    {
+        const tools = createStagedFigmaTools({
+            buffer: new JsxBuffer(),
+            varStore: new VariableStore(),
+            tokensStore: new TokensStore(),
+            primitivePlanStore: new PrimitivePlanStore(),
+            primitiveJsxStore: new PrimitiveJsxStore(),
+            compositionMetaStore: new CompositionMetaStore(),
+            compositionJsxStore: new CompositionJsxStore(),
+            compileArtifactStore: new CompileArtifactStore(),
+            enqueueOps: () => {},
+        });
+
+        const tokensResult = await tools["figma.tokens"]!(
+            {
+                name: "shaurma-dark-theme",
+                collections: {
+                    color: {
+                        background: {
+                            page: "#0A0A0A",
+                            surface: "#141414",
+                        },
+                        text: {
+                            primary: "#FFFFFF",
+                            secondary: "#A0A0A0",
+                        },
+                    },
+                    spacing: {
+                        4: "16px",
+                        6: "24px",
+                    },
+                },
+            },
+            {} as never,
+        );
+        expect(tokensResult.ok).toBe(true);
+
+        const tokensArtifact = tokensResult.data as { id: string; collections: { color: Record<string, string>; spacing: Record<string, number> } };
+        expect(tokensArtifact.collections.color).toMatchObject({
+            "background/page": "#0A0A0A",
+            "background/surface": "#141414",
+            "text/primary": "#FFFFFF",
+        });
+        expect(tokensArtifact.collections.spacing).toMatchObject({
+            "4": 16,
+            "6": 24,
+        });
+
+        const planResult = await tools["figma.primitives.plan"]!(
+            {
+                tokensArtifactId: tokensArtifact.id,
+                entries: [
+                    "Button",
+                    { name: "ProductCard", description: "Product card with image and CTA" },
+                    { name: "PromoBanner", description: "Hero promo section" },
+                ],
+            },
+            {} as never,
+        );
+        expect(planResult.ok).toBe(true);
+
+        const planArtifact = planResult.data as {
+            entries: Array<{
+                name: string;
+                level: string;
+                description?: string;
+                props: unknown[];
+                dependencies: unknown[];
+            }>;
+        };
+        expect(planArtifact.entries).toEqual(expect.arrayContaining([
+            expect.objectContaining({ name: "Button", level: "atom", props: [], dependencies: [] }),
+            expect.objectContaining({ name: "ProductCard", level: "molecule", description: "Product card with image and CTA" }),
+            expect.objectContaining({ name: "PromoBanner", level: "section", description: "Hero promo section" }),
+        ]));
+    });
+
+    it("rejects raw jsx in staged figma.compile", async () =>
+    {
+        const tools = createStagedFigmaTools({
+            buffer: new JsxBuffer(),
+            varStore: new VariableStore(),
+            tokensStore: new TokensStore(),
+            primitivePlanStore: new PrimitivePlanStore(),
+            primitiveJsxStore: new PrimitiveJsxStore(),
+            compositionMetaStore: new CompositionMetaStore(),
+            compositionJsxStore: new CompositionJsxStore(),
+            compileArtifactStore: new CompileArtifactStore(),
+            enqueueOps: () => {},
+        });
+
+        const result = await tools["figma.compile"]!(
+            {
+                jsx: "<Screen name=\"Home\" />",
+            },
+            {} as never,
+        );
+
+        expect(result.ok).toBe(false);
+        expect(result.output).toContain("does not accept raw jsx");
     });
 });

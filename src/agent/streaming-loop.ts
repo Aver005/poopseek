@@ -38,6 +38,7 @@ export interface StreamingAgentTurnCallbacks {
     onAssistantChunk?: (chunk: string) => void;
     onToolStart?: (toolName: string, toolArgs: Record<string, unknown>) => void;
     onToolDone?: (toolName: string, result: ToolExecutionResult) => void;
+    shouldStopLoop?: () => boolean;
     onModelRequestStart?: () => void;
     onModelRequestDone?: () => void;
     onToolParseError?: (content: string) => void;
@@ -109,6 +110,7 @@ export default class StreamingAgentLoop {
         };
         let lastAssistantText = "";
         let toolCallCount = 0;
+        let stopRequested = false;
 
         this.contextManager.addUser(userInput);
 
@@ -162,11 +164,17 @@ export default class StreamingAgentLoop {
                                     name: toolEvent.envelope.tool,
                                     content: buildToolResultPayload(toolEvent.envelope.tool, result),
                                 });
+                                if (callbacks.shouldStopLoop?.() === true)
+                                {
+                                    stopRequested = true;
+                                    break;
+                                }
                             }
                         }
+                        if (stopRequested) break;
                     }
 
-                    const finalTools = toolParser.finalize();
+                    const finalTools = stopRequested ? [] : toolParser.finalize();
                     for (const toolEvent of finalTools) {
                         if (toolEvent.preText.length > 0) {
                             callbacks.onAssistantChunk?.(toolEvent.preText);
@@ -178,6 +186,11 @@ export default class StreamingAgentLoop {
                             name: toolEvent.envelope.tool,
                             content: buildToolResultPayload(toolEvent.envelope.tool, result),
                         });
+                        if (callbacks.shouldStopLoop?.() === true)
+                        {
+                            stopRequested = true;
+                            break;
+                        }
                     }
 
                     for (const warning of toolParser.getWarnings()) {
@@ -196,6 +209,10 @@ export default class StreamingAgentLoop {
                     this.contextManager.addAssistant(assistantText);
                     for (const r of batchResults) {
                         this.contextManager.addTool(r.name, r.content);
+                    }
+                    if (stopRequested) {
+                        lastAssistantText = assistantText;
+                        break outerLoop;
                     }
                     break retryLoop;
                 } catch (error) {

@@ -15,6 +15,16 @@ export interface PreparedDesignBrief
     successCriteria: string[];
 }
 
+export interface PreprocessLayoutContext
+{
+    platform: "mobile" | "tablet" | "desktop";
+    viewportWidth: number;
+    viewportHeight: number;
+    contentWidthPolicy: "full-bleed" | "inset" | "centered" | "split";
+    maxContentWidth: number;
+    horizontalPadding: number;
+}
+
 function extractJson(text: string): unknown
 {
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -38,11 +48,111 @@ function normalizePlatform(value: unknown): "mobile" | "tablet" | "desktop"
     return value === "desktop" || value === "tablet" ? value : "mobile";
 }
 
-export function normalizePreparedBrief(value: unknown, fallbackPrompt: string): PreparedDesignBrief
+function collapseWhitespace(value: string): string
+{
+    return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeLayoutStrategyForPlatform(value: string, platform: PreparedDesignBrief["platform"]): string
+{
+    const trimmed = collapseWhitespace(value);
+    if (!trimmed) return trimmed;
+
+    if (platform === "mobile")
+    {
+        const hasDesktopHints = /\b(1200|1280|1366|1440|desktop|web\s+landing|centered content|centered layout)\b/i.test(trimmed);
+        if (hasDesktopHints)
+        {
+            return "Mobile-first single-column layout. Respect viewport width, keep content inset, use strong vertical rhythm, 24px horizontal padding and full-width sections that breathe without desktop-width assumptions.";
+        }
+    }
+
+    if (platform === "tablet")
+    {
+        const hasDesktopHints = /\b(1366|1440|desktop|web landing)\b/i.test(trimmed);
+        if (hasDesktopHints)
+        {
+            return "Tablet-first inset layout with strong section rhythm, readable content width, balanced two-column opportunities only where clearly useful.";
+        }
+    }
+
+    return trimmed;
+}
+
+function normalizeContentStrategy(value: string): string
+{
+    return collapseWhitespace(value);
+}
+
+function normalizeVisualDirection(value: string): string
+{
+    return collapseWhitespace(value);
+}
+
+function uniqueNormalizedStrings(values: string[]): string[]
+{
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const entry of values)
+    {
+        const normalized = collapseWhitespace(entry);
+        if (!normalized) continue;
+        const key = normalized.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(normalized);
+    }
+
+    return result;
+}
+
+export function alignBriefWithLayout(brief: PreparedDesignBrief, layout?: PreprocessLayoutContext): PreparedDesignBrief
+{
+    if (!layout) return {
+        ...brief,
+        visualDirection: normalizeVisualDirection(brief.visualDirection),
+        layoutStrategy: normalizeLayoutStrategyForPlatform(brief.layoutStrategy, brief.platform),
+        contentStrategy: normalizeContentStrategy(brief.contentStrategy),
+        mustHave: uniqueNormalizedStrings(brief.mustHave),
+        avoid: uniqueNormalizedStrings(brief.avoid),
+        successCriteria: uniqueNormalizedStrings(brief.successCriteria),
+    };
+
+    const platform = layout.platform;
+    const widthSummary = platform === "mobile"
+        ? `Respect mobile viewport ${layout.viewportWidth}x${layout.viewportHeight}, inset content width, max content width ${layout.maxContentWidth}px and horizontal padding ${layout.horizontalPadding}px.`
+        : platform === "tablet"
+            ? `Respect tablet viewport ${layout.viewportWidth}x${layout.viewportHeight}, inset content width and horizontal padding ${layout.horizontalPadding}px.`
+            : `Respect desktop viewport ${layout.viewportWidth}x${layout.viewportHeight}, centered content width up to ${layout.maxContentWidth}px and horizontal padding ${layout.horizontalPadding}px.`;
+
+    const layoutStrategy = normalizeLayoutStrategyForPlatform(brief.layoutStrategy, platform);
+    const normalizedAvoid = uniqueNormalizedStrings([
+        ...brief.avoid,
+        ...(platform === "mobile" ? ["Desktop-width layouts and 1200px+ content assumptions"] : []),
+    ]);
+
+    return {
+        ...brief,
+        platform,
+        visualDirection: normalizeVisualDirection(brief.visualDirection),
+        layoutStrategy: collapseWhitespace(`${layoutStrategy} ${widthSummary}`),
+        contentStrategy: normalizeContentStrategy(brief.contentStrategy),
+        mustHave: uniqueNormalizedStrings(brief.mustHave),
+        avoid: normalizedAvoid,
+        successCriteria: uniqueNormalizedStrings(brief.successCriteria),
+    };
+}
+
+export function normalizePreparedBrief(
+    value: unknown,
+    fallbackPrompt: string,
+    layout?: PreprocessLayoutContext,
+): PreparedDesignBrief
 {
     const record = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
 
-    return {
+    const normalized: PreparedDesignBrief = {
         rewrittenPrompt: typeof record.rewrittenPrompt === "string" && record.rewrittenPrompt.trim().length > 0
             ? record.rewrittenPrompt.trim()
             : fallbackPrompt,
@@ -66,6 +176,8 @@ export function normalizePreparedBrief(value: unknown, fallbackPrompt: string): 
             : "edit-existing",
         successCriteria: normalizeArray(record.successCriteria),
     };
+
+    return alignBriefWithLayout(normalized, layout);
 }
 
 export function formatPreparedBrief(brief: PreparedDesignBrief): string
@@ -96,6 +208,7 @@ export function buildPreprocessUserMessage(args: {
     userPrompt: string;
     taskMode: "initial" | "revision";
     snapshotSummary: string;
+    layout: PreprocessLayoutContext;
 }): string
 {
     return [
@@ -106,6 +219,18 @@ export function buildPreprocessUserMessage(args: {
         "",
         "## Current snapshot summary",
         args.snapshotSummary,
+        "",
+        "## Target layout constraints",
+        `- platform: ${args.layout.platform}`,
+        `- viewport: ${args.layout.viewportWidth}x${args.layout.viewportHeight}`,
+        `- contentWidthPolicy: ${args.layout.contentWidthPolicy}`,
+        `- maxContentWidth: ${args.layout.maxContentWidth}`,
+        `- horizontalPadding: ${args.layout.horizontalPadding}`,
+        "",
+        "## Normalization rules",
+        "- If platform is mobile, do not output desktop widths like 1200-1440px.",
+        "- Keep the brief aligned with the provided layout constraints.",
+        "- Resolve contradictions instead of preserving them.",
     ].join("\n");
 }
 
@@ -115,6 +240,7 @@ export async function prepareDesignBrief(args: {
     userPrompt: string;
     taskMode: "initial" | "revision";
     snapshotSummary: string;
+    layout: PreprocessLayoutContext;
     callOptions?: ProviderCallOptions;
 }): Promise<PreparedDesignBrief>
 {
@@ -125,6 +251,7 @@ export async function prepareDesignBrief(args: {
             userPrompt: args.userPrompt,
             taskMode: args.taskMode,
             snapshotSummary: args.snapshotSummary,
+            layout: args.layout,
         }),
     }];
 
@@ -139,12 +266,21 @@ export async function prepareDesignBrief(args: {
     }
 
     const text = chunks.join("").trim();
+    return parsePreparedBriefText(text, args.userPrompt, args.layout);
+}
+
+export function parsePreparedBriefText(
+    text: string,
+    fallbackPrompt: string,
+    layout?: PreprocessLayoutContext,
+): PreparedDesignBrief
+{
     try
     {
-        return normalizePreparedBrief(extractJson(text), args.userPrompt);
+        return normalizePreparedBrief(extractJson(text), fallbackPrompt, layout);
     }
     catch
     {
-        return normalizePreparedBrief(null, args.userPrompt);
+        return normalizePreparedBrief(null, fallbackPrompt, layout);
     }
 }

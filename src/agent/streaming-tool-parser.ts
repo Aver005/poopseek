@@ -1,5 +1,12 @@
-import type { ToolCallEnvelope } from "./types";
-import { parseMessage, tryParseEnvelope, extractJsonLikeBlocks } from "./tool-call-parser";
+import type { ToolCallAttachment, ToolCallEnvelope } from "./types";
+import {
+  extractJsonLikeBlocks,
+  parseMessage,
+  stripLeadingLanguageTag,
+  toolNeedsJsxAttachments,
+  toolSupportsJsxAttachments,
+  tryParseEnvelope,
+} from "./tool-call-parser";
 
 export interface StreamingToolParserOptions {
   maxTools?: number;
@@ -18,6 +25,7 @@ export interface ToolParseWarning {
 // Languages that a model plausibly uses to wrap a tool-call JSON block.
 // Everything else (python, bash, yaml, xml…) is skipped without parsing.
 const TOOL_FENCE_LANGUAGES = new Set(["", "json", "javascript", "js", "typescript", "ts"]);
+const JSX_FENCE_LANGUAGES = new Set(["jsx", "tsx"]);
 
 export class StreamingToolParser {
   private buffer = "";
@@ -34,6 +42,12 @@ export class StreamingToolParser {
     fenceStart: number;
     contentStart: number;
     skip: boolean;
+  } | null = null;
+  private pendingAttachmentTool: {
+    preText: string;
+    envelope: ToolCallEnvelope;
+    attachments: ToolCallAttachment[];
+    spanEnd: number;
   } | null = null;
 
   constructor(options: StreamingToolParserOptions = {}) {
@@ -80,6 +94,25 @@ export class StreamingToolParser {
 
       const blockEnd = closeFenceIdx + 3;
 
+      if (
+        this.pendingAttachmentTool !== null
+        && JSX_FENCE_LANGUAGES.has(language)
+        && toolSupportsJsxAttachments(this.pendingAttachmentTool.envelope.tool)
+      ) {
+        const raw = this.buffer.slice(contentStart, closeFenceIdx).trim();
+        const content = stripLeadingLanguageTag(raw);
+        if (content.length > 0) {
+          const label = extractAttachmentLabel(
+            this.buffer.slice(this.pendingAttachmentTool.spanEnd, fenceStart).trim(),
+          );
+          this.pendingAttachmentTool.attachments.push({ kind: "jsx", content, label });
+          this.pendingAttachmentTool.spanEnd = blockEnd;
+        }
+        this.lastProcessedLength = blockEnd;
+        fencedRegex.lastIndex = blockEnd;
+        continue;
+      }
+
       if (!isToolLang) {
         // Non-tool language — skip the whole block
         this.lastProcessedLength = blockEnd;
@@ -92,8 +125,18 @@ export class StreamingToolParser {
       const envelope = tryParseEnvelope(content);
 
       if (envelope) {
+        this.flushPendingAttachmentTool(completedTools);
         const preText = this.buffer.slice(this.lastProcessedLength, fenceStart).trim();
-        completedTools.push({ type: "tool", preText, envelope });
+        if (toolNeedsJsxAttachments(envelope)) {
+          this.pendingAttachmentTool = {
+            preText,
+            envelope,
+            attachments: [],
+            spanEnd: blockEnd,
+          };
+        } else {
+          completedTools.push({ type: "tool", preText, envelope });
+        }
       } else if (/["']?tool["']?\s*:/.test(content)) {
         this.warnings.push({ content: content.slice(0, 500) });
       }
@@ -125,13 +168,37 @@ export class StreamingToolParser {
     if (!fence.skip) {
       const raw = this.buffer.slice(fence.contentStart, closeFenceIdx).trim();
       const content = stripLeadingLanguageTag(raw);
-      const envelope = tryParseEnvelope(content);
+      if (
+        this.pendingAttachmentTool !== null
+        && JSX_FENCE_LANGUAGES.has(fence.language)
+        && toolSupportsJsxAttachments(this.pendingAttachmentTool.envelope.tool)
+      ) {
+        if (content.length > 0) {
+          const label = extractAttachmentLabel(
+            this.buffer.slice(this.pendingAttachmentTool.spanEnd, fence.fenceStart).trim(),
+          );
+          this.pendingAttachmentTool.attachments.push({ kind: "jsx", content, label });
+          this.pendingAttachmentTool.spanEnd = blockEnd;
+        }
+      } else {
+        const envelope = tryParseEnvelope(content);
 
-      if (envelope) {
-        const preText = this.buffer.slice(this.lastProcessedLength, fence.fenceStart).trim();
-        completedTools.push({ type: "tool", preText, envelope });
-      } else if (/["']?tool["']?\s*:/.test(content)) {
-        this.warnings.push({ content: content.slice(0, 500) });
+        if (envelope) {
+          this.flushPendingAttachmentTool(completedTools);
+          const preText = this.buffer.slice(this.lastProcessedLength, fence.fenceStart).trim();
+          if (toolNeedsJsxAttachments(envelope)) {
+            this.pendingAttachmentTool = {
+              preText,
+              envelope,
+              attachments: [],
+              spanEnd: blockEnd,
+            };
+          } else {
+            completedTools.push({ type: "tool", preText, envelope });
+          }
+        } else if (/["']?tool["']?\s*:/.test(content)) {
+          this.warnings.push({ content: content.slice(0, 500) });
+        }
       }
     }
 
@@ -172,10 +239,33 @@ export class StreamingToolParser {
       if (!this.pendingFence.skip) {
         const raw = this.buffer.slice(this.pendingFence.contentStart).trim();
         const content = stripLeadingLanguageTag(raw);
-        const envelope = tryParseEnvelope(content);
-        if (envelope) {
-          const preText = this.buffer.slice(this.lastProcessedLength, this.pendingFence.fenceStart).trim();
-          completedTools.push({ type: "tool", preText, envelope });
+        if (
+          this.pendingAttachmentTool !== null
+          && JSX_FENCE_LANGUAGES.has(this.pendingFence.language)
+          && toolSupportsJsxAttachments(this.pendingAttachmentTool.envelope.tool)
+          && content.length > 0
+        ) {
+          const label = extractAttachmentLabel(
+            this.buffer.slice(this.pendingAttachmentTool.spanEnd, this.pendingFence.fenceStart).trim(),
+          );
+          this.pendingAttachmentTool.attachments.push({ kind: "jsx", content, label });
+          this.pendingAttachmentTool.spanEnd = this.buffer.length;
+        } else {
+          const envelope = tryParseEnvelope(content);
+          if (envelope) {
+            this.flushPendingAttachmentTool(completedTools);
+            const preText = this.buffer.slice(this.lastProcessedLength, this.pendingFence.fenceStart).trim();
+            if (toolNeedsJsxAttachments(envelope)) {
+              this.pendingAttachmentTool = {
+                preText,
+                envelope,
+                attachments: [],
+                spanEnd: this.buffer.length,
+              };
+            } else {
+              completedTools.push({ type: "tool", preText, envelope });
+            }
+          }
         }
       }
       if (completedTools.length > 0) {
@@ -185,6 +275,7 @@ export class StreamingToolParser {
     }
 
     // Fallback: let parseMessage (full regex + bare-JSON) sweep the remainder
+    this.flushPendingAttachmentTool(completedTools);
     const remaining = this.buffer.slice(
       completedTools.length > 0 ? this.lastProcessedLength : unresolvedTailStart,
     );
@@ -238,6 +329,7 @@ export class StreamingToolParser {
     this.pendingTools = [];
     this.warnings = [];
     this.pendingFence = null;
+    this.pendingAttachmentTool = null;
   }
 
   private isStrayClosingFence(fenceStart: number, contentStart: number, language: string): boolean {
@@ -262,17 +354,46 @@ export class StreamingToolParser {
 
     return tryParseEnvelope(text.slice(start).trim());
   }
+
+  private flushPendingAttachmentTool(completedTools: ParsedToolEvent[]): void {
+    if (!this.pendingAttachmentTool) return;
+    if (
+      toolNeedsJsxAttachments(this.pendingAttachmentTool.envelope)
+      && this.pendingAttachmentTool.attachments.length === 0
+    ) {
+      this.warnings.push({
+        content: JSON.stringify(this.pendingAttachmentTool.envelope, null, 2).slice(0, 500),
+      });
+      this.pendingAttachmentTool = null;
+      return;
+    }
+    completedTools.push({
+      type: "tool",
+      preText: this.pendingAttachmentTool.preText,
+      envelope: this.pendingAttachmentTool.attachments.length > 0
+        ? {
+            ...this.pendingAttachmentTool.envelope,
+            attachments: [...this.pendingAttachmentTool.attachments],
+          }
+        : this.pendingAttachmentTool.envelope,
+    });
+    this.pendingAttachmentTool = null;
+  }
 }
 
-// When the opening ``` and its language tag arrive in different streaming chunks,
-// the language tag ends up as the first line of the content.  Strip it.
-// e.g. "json\n{...}" → "{...}"
-function stripLeadingLanguageTag(content: string): string {
-  const newline = content.indexOf("\n");
-  if (newline === -1) return content;
-  const firstLine = content.slice(0, newline).trim();
-  if (firstLine.length > 0 && /^[A-Za-z0-9_-]+$/.test(firstLine)) {
-    return content.slice(newline + 1).trim();
-  }
-  return content;
+function extractAttachmentLabel(text: string): string | undefined {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const candidate = lines.at(-1);
+  if (!candidate) return undefined;
+
+  const normalized = candidate
+    .replace(/^[-*]\s*/, "")
+    .replace(/^`(.+)`$/, "$1")
+    .replace(/:$/, "")
+    .trim();
+
+  return normalized.length > 0 ? normalized : undefined;
 }

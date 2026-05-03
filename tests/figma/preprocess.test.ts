@@ -37,4 +37,30 @@ describe("figma preprocess", () =>
         expect(text).toContain("avoid");
         expect(text).toContain("successCriteria");
     });
+
+    it("removes desktop-width hints when runtime layout is mobile", () =>
+    {
+        const brief = normalizePreparedBrief(
+            {
+                rewrittenPrompt: "Сайт в стиле OpenAI",
+                platform: "desktop",
+                layoutStrategy: "Centered landing page with width limited to 1200-1440px and large desktop sections.",
+                avoid: ["loud gradients"],
+            },
+            "сайт в стиле OpenAI",
+            {
+                platform: "mobile",
+                viewportWidth: 390,
+                viewportHeight: 844,
+                contentWidthPolicy: "inset",
+                maxContentWidth: 390,
+                horizontalPadding: 24,
+            },
+        );
+
+        expect(brief.platform).toBe("mobile");
+        expect(brief.layoutStrategy).toContain("Mobile-first single-column layout");
+        expect(brief.layoutStrategy).toContain("390x844");
+        expect(brief.avoid).toContain("Desktop-width layouts and 1200px+ content assumptions");
+    });
 });

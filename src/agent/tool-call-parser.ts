@@ -1,4 +1,8 @@
-import type { ToolCallEnvelope } from "./types";
+import type { ToolCallAttachment, ToolCallEnvelope } from "./types";
+
+const TOOL_FENCE_LANGUAGES = new Set(["", "json", "javascript", "js", "typescript", "ts"]);
+const JSX_FENCE_LANGUAGES = new Set(["jsx", "tsx"]);
+const FENCED_BLOCK_REGEX = /```([A-Za-z0-9_-]*)\s*\r?\n?([\s\S]*?)\s*```/g;
 
 function isRecord(value: unknown): value is Record<string, unknown>
 {
@@ -13,6 +17,68 @@ function toEnvelope(value: unknown): ToolCallEnvelope | null
     const args = isRecord(value.args) ? value.args : {};
 
     return { tool: value.tool, args };
+}
+
+function hasLegacyInlineJsxArgs(envelope: ToolCallEnvelope): boolean
+{
+    if (envelope.tool === "figma.primitives.jsx") return false;
+
+    if (typeof envelope.args.jsx === "string" && envelope.args.jsx.trim().length > 0)
+        return true;
+    return false;
+}
+
+export function toolSupportsJsxAttachments(toolName: string): boolean
+{
+    return toolName === "figma.primitives.jsx"
+        || toolName === "figma.compile"
+        || toolName === "figma_compile"
+        || toolName === "figma_render";
+}
+
+export function toolNeedsJsxAttachments(envelope: ToolCallEnvelope): boolean
+{
+    return toolSupportsJsxAttachments(envelope.tool) && !hasLegacyInlineJsxArgs(envelope);
+}
+
+function attachToolBlocks(envelope: ToolCallEnvelope, attachments: ToolCallAttachment[]): ToolCallEnvelope
+{
+    if (attachments.length === 0) return envelope;
+    return {
+        ...envelope,
+        attachments,
+    };
+}
+
+export function stripLeadingLanguageTag(content: string): string
+{
+    const newline = content.indexOf("\n");
+    if (newline === -1) return content;
+    const firstLine = content.slice(0, newline).trim();
+    if (firstLine.length > 0 && /^[A-Za-z0-9_-]+$/.test(firstLine))
+    {
+        return content.slice(newline + 1).trim();
+    }
+    return content;
+}
+
+function extractAttachmentLabel(text: string): string | undefined
+{
+    const lines = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    const candidate = lines.at(-1);
+    if (!candidate) return undefined;
+
+    const normalized = candidate
+        .replace(/^[-*]\s*/, "")
+        .replace(/^`(.+)`$/, "$1")
+        .replace(/:$/, "")
+        .trim();
+
+    return normalized.length > 0 ? normalized : undefined;
 }
 
 function extractJsonLikeBlocks(text: string): string[]
@@ -266,28 +332,80 @@ export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
     if (text.trim().length === 0) return { toolCalls: [], postText: "" };
     const toolCalls: ToolCallSegment[] = [];
     let lastEnd = 0;
+    let current:
+        | {
+            toolStart: number;
+            spanEnd: number;
+            envelope: ToolCallEnvelope;
+            attachments: ToolCallAttachment[];
+        }
+        | null = null;
 
-    const fencedRegex = /```([A-Za-z0-9_-]*)\s*\r?\n?([\s\S]*?)\s*```/g;
+    const finalizeCurrent = (): void =>
+    {
+        if (!current || toolCalls.length >= maxTools) return;
+        if (toolNeedsJsxAttachments(current.envelope) && current.attachments.length === 0)
+        {
+            current = null;
+            return;
+        }
 
-    for (const match of text.matchAll(fencedRegex))
+        const preText = text.slice(lastEnd, current.toolStart).trim();
+        toolCalls.push({
+            preText,
+            envelope: attachToolBlocks(current.envelope, current.attachments),
+        });
+        lastEnd = current.spanEnd;
+        current = null;
+    };
+
+    for (const match of text.matchAll(FENCED_BLOCK_REGEX))
     {
         if (toolCalls.length >= maxTools) break;
 
         const language = match[1]?.trim().toLowerCase() ?? "";
-        if (language === "yaml" || language === "yml") continue;
-
         const content = match[2]?.trim();
+        const start = match.index ?? 0;
+        const end = start + match[0].length;
+
         if (!content) continue;
 
-        const envelope = tryParseEnvelope(content);
-        if (!envelope) continue;
+        if (TOOL_FENCE_LANGUAGES.has(language))
+        {
+            const envelope = tryParseEnvelope(content);
+            if (envelope)
+            {
+                finalizeCurrent();
+                current = {
+                    toolStart: start,
+                    spanEnd: end,
+                    envelope,
+                    attachments: [],
+                };
+                continue;
+            }
+        }
 
-        const start = match.index ?? 0;
-        const preText = text.slice(lastEnd, start).trim();
+        if (
+            current
+            && JSX_FENCE_LANGUAGES.has(language)
+            && toolSupportsJsxAttachments(current.envelope.tool)
+        )
+        {
+            const rawJsx = stripLeadingLanguageTag(content).trim();
+            if (rawJsx.length === 0) continue;
 
-        toolCalls.push({ preText, envelope });
-        lastEnd = start + match[0].length;
+            const labelText = text.slice(current.spanEnd, start).trim();
+            current.attachments.push({
+                kind: "jsx",
+                content: rawJsx,
+                label: extractAttachmentLabel(labelText),
+            });
+            current.spanEnd = end;
+        }
     }
+
+    finalizeCurrent();
 
     const postText = text.slice(lastEnd).trim();
 
@@ -301,6 +419,8 @@ export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
 
         if (bareResult)
         {
+            if (toolNeedsJsxAttachments(bareResult))
+                return { toolCalls: [], postText: "" };
             return { toolCalls: [{ preText: "", envelope: bareResult }], postText: "" };
         }
 
@@ -308,6 +428,8 @@ export function parseMessage(text: string, maxTools = 10): ParsedAgentMessage
         const anchoredResult = anchoredCandidate ? tryParseEnvelope(anchoredCandidate) : null;
         if (anchoredResult)
         {
+            if (toolNeedsJsxAttachments(anchoredResult))
+                return { toolCalls: [], postText: "" };
             return { toolCalls: [{ preText: "", envelope: anchoredResult }], postText: "" };
         }
     }

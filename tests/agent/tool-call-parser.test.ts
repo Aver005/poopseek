@@ -37,9 +37,14 @@ describe("tool-call parser", () =>
         expect(events[1]?.envelope.tool).toBe("figma_render");
     });
 
-    it("parses bare tool json when the model leaves only a stray closing fence", async () =>
+    it("parses bare tool json when the model leaves only a stray closing fence", () =>
     {
-        const text = await Bun.file("e:/Projects/Me/poopseek/session-2026-04-30T14-38-44-837Z-sp1tbo.md").text();
+        const text = [
+            "```",
+            "{\"tool\":\"figma_define_theme\",\"args\":{\"name\":\"dark\",\"tokens\":[{\"token\":\"canvas\",\"hex\":\"#000000\"}]}}",
+            "```",
+            "```",
+        ].join("\n");
         const parser = new StreamingToolParser();
         const events = [...parser.feed(text), ...parser.finalize()];
 
@@ -58,5 +63,72 @@ describe("tool-call parser", () =>
         const result = parseMessage(message);
         expect(result.toolCalls).toHaveLength(1);
         expect(result.toolCalls[0]?.envelope.tool).toBe("figma.compose.jsx");
+    });
+
+    it("attaches fenced jsx blocks to figma.primitives.jsx tool calls", () =>
+    {
+        const message = [
+            "```json",
+            "{\"tool\":\"figma.primitives.jsx\",\"args\":{\"primitivesArtifactId\":\"primitives_home_v1\",\"names\":[\"AppHeader\",\"SearchField\"]}}",
+            "```",
+            "",
+            "AppHeader",
+            "```jsx",
+            "<HStack><Text>{title}</Text></HStack>",
+            "```",
+            "",
+            "SearchField",
+            "```jsx",
+            "<Input placeholder=\"{placeholder}\" />",
+            "```",
+        ].join("\n");
+
+        const result = parseMessage(message);
+        expect(result.toolCalls).toHaveLength(1);
+        expect(result.toolCalls[0]?.envelope.tool).toBe("figma.primitives.jsx");
+        expect(result.toolCalls[0]?.envelope.attachments).toEqual([
+            { kind: "jsx", label: "AppHeader", content: "<HStack><Text>{title}</Text></HStack>" },
+            { kind: "jsx", label: "SearchField", content: "<Input placeholder=\"{placeholder}\" />" },
+        ]);
+    });
+
+    it("waits for fenced jsx attachments in streaming mode", () =>
+    {
+        const parser = new StreamingToolParser();
+        const first = parser.feed([
+            "```json",
+            "{\"tool\":\"figma.primitives.jsx\",\"args\":{\"primitivesArtifactId\":\"primitives_home_v1\",\"names\":[\"AppHeader\"]}}",
+            "```",
+        ].join("\n"));
+        const second = parser.feed([
+            "",
+            "AppHeader",
+            "```jsx",
+            "<HStack><Text>{title}</Text></HStack>",
+            "```",
+        ].join("\n"));
+        const final = parser.finalize();
+
+        expect(first).toHaveLength(0);
+        expect(second).toHaveLength(0);
+        expect(final).toHaveLength(1);
+        expect(final[0]?.envelope.attachments).toEqual([
+            { kind: "jsx", label: "AppHeader", content: "<HStack><Text>{title}</Text></HStack>" },
+        ]);
+    });
+
+    it("does not treat inline primitives JSX JSON as attachment-complete", () =>
+    {
+        const parser = new StreamingToolParser();
+        const events = [
+            ...parser.feed([
+                "```json",
+                "{\"tool\":\"figma.primitives.jsx\",\"args\":{\"primitivesArtifactId\":\"primitives_home_v1\",\"entries\":[{\"name\":\"AppHeader\",\"jsx\":\"<HStack><Text>{title}</Text></HStack>\"}]}}",
+                "```",
+            ].join("\n")),
+            ...parser.finalize(),
+        ];
+
+        expect(events).toHaveLength(0);
     });
 });

@@ -10,7 +10,7 @@ import { PrimitiveJsxStore } from "@/figma/primitive-jsx-store";
 import { CompositionMetaStore } from "@/figma/composition-meta-store";
 import { CompositionJsxStore } from "@/figma/composition-jsx-store";
 import { CompileArtifactStore } from "@/figma/compile-artifact-store";
-import { createStagedFigmaTools } from "./staged";
+import { createCompileTool, createStagedFigmaTools } from "./staged";
 
 function ok(output: string, data?: unknown): ToolExecutionResult
 {
@@ -351,6 +351,15 @@ export function createFigmaV2Registry(
         compileArtifactStore,
         enqueueOps,
     });
+    const legacyCompile = createCompileTool({
+        buffer,
+        varStore,
+        compositionMetaStore,
+        primitiveJsxStore,
+        compositionJsxStore,
+        compileArtifactStore,
+        enqueueOps,
+    }, { allowRawJsx: true });
 
     return {
         figma_create: makeCreate(buffer),
@@ -365,15 +374,15 @@ export function createFigmaV2Registry(
         figma_var_remove: makeVarRemove(varStore),
         figma_var_list: makeVarList(varStore),
         figma_tokens: stagedTools["figma.tokens"]!,
-        figma_compile: stagedTools["figma.compile"]!,
+        figma_compile: legacyCompile,
         figma_reset: makeReset(buffer, varStore),
         figma_define_theme: makeDefineTheme(varStore, tokensStore, enqueueOps),
         ...stagedTools,
     };
 }
 
-export const FIGMA_V2_TOOLS_DOC = `
-## Figma V2 — staged + legacy tools
+export const FIGMA_V2_STAGED_TOOLS_DOC = `
+## Figma V2 — staged tools only
 
 ### Canonical flow
 \`figma.tokens\` -> \`figma.primitives.plan\` -> \`figma.primitives.jsx\` -> \`figma.compose.meta\` -> \`figma.compose.jsx\` -> \`figma.compile\`
@@ -382,10 +391,10 @@ export const FIGMA_V2_TOOLS_DOC = `
 **figma.tokens** \`{name?,modes?,collections,aliases?}\`
 **figma.tokens.get** \`{id?}\`
 **figma.tokens.list** \`{}\`
-**figma.primitives.plan** \`{tokensArtifactId,entries,target?,brief?,depth?}\`
+**figma.primitives.plan** \`{tokensArtifactId,entries:[{name,level,description?,props?,dependencies?}],target?,brief?,depth?}\`
 **figma.primitives.plan.get** \`{id}\`
 **figma.primitives.plan.list** \`{}\`
-**figma.primitives.jsx** \`{primitivesArtifactId,entries:[{name,jsx}]}\`
+**figma.primitives.jsx** \`{primitivesArtifactId,names?}\` + matching fenced \`jsx\` blocks after the tool JSON
 **figma.primitives.jsx.get** \`{id}\`
 **figma.primitives.jsx.list** \`{}\`
 **figma.compose.meta** \`{tokensArtifactId,primitivesArtifactId,primitivesJsxArtifactId,screenName,compositionNodes}\`
@@ -394,10 +403,14 @@ export const FIGMA_V2_TOOLS_DOC = `
 **figma.compose.jsx** \`{compositionArtifactId}\`
 **figma.compose.jsx.get** \`{id}\`
 **figma.compose.jsx.list** \`{}\`
-**figma.compile** \`{compositionArtifactId?|jsx?,dispatch?}\`
+**figma.compile** \`{compositionArtifactId,dispatch?}\`
 **figma.compile.get** \`{id}\`
 **figma.compile.list** \`{}\`
 **figma.compile.jsx** \`{compileArtifactId?|compositionArtifactId?}\`
+`.trim();
+
+export const FIGMA_V2_TOOLS_DOC = `
+${FIGMA_V2_STAGED_TOOLS_DOC}
 
 ### Legacy tools
 **figma_tokens** \`{tokens:[{name,value}]}\`

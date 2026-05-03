@@ -13,7 +13,15 @@ import type {
 
 export type FigmaTaskMode = "initial" | "revision";
 export type FigmaEditIntent = "edit-existing" | "fork-variant" | "new-screen";
-export type FigmaStage = "idle" | "tokens" | "primitives" | "compose" | "repair" | "revision";
+export type FigmaStage =
+    | "idle"
+    | "tokens"
+    | "primitives"
+    | "primitives-plan"
+    | "primitive-jsx"
+    | "compose"
+    | "repair"
+    | "revision";
 export type FigmaPlatform = "mobile" | "tablet" | "desktop";
 export type ContentWidthPolicy = "full-bleed" | "inset" | "centered" | "split";
 
@@ -33,7 +41,11 @@ export interface FigmaDerivedSnapshot
     summary: string;
     invocationJsx?: string;
     expandedJsx?: string;
+    activeTokensArtifactId?: string;
+    activePrimitivePlanArtifactId?: string;
+    activePrimitivesJsxArtifactId?: string;
     activeCompositionArtifactId?: string;
+    activeCompositionJsxArtifactId?: string;
     activeCompileArtifactId?: string;
     activeRootNodeId?: string;
 }
@@ -187,6 +199,38 @@ export function getStageConfig(stage: FigmaStage, mode: FigmaTaskMode): StageCon
         };
     }
 
+    if (stage === "primitives-plan")
+    {
+        return {
+            stage,
+            allowedTools: [
+                "figma.tokens.get",
+                "figma.tokens.list",
+                "figma.primitives.plan",
+                "figma.primitives.plan.get",
+                "figma.primitives.plan.list",
+            ],
+            requiredTools: ["figma.primitives.plan"],
+        };
+    }
+
+    if (stage === "primitive-jsx")
+    {
+        return {
+            stage,
+            allowedTools: [
+                "figma.tokens.get",
+                "figma.tokens.list",
+                "figma.primitives.plan.get",
+                "figma.primitives.plan.list",
+                "figma.primitives.jsx",
+                "figma.primitives.jsx.get",
+                "figma.primitives.jsx.list",
+            ],
+            requiredTools: ["figma.primitives.jsx"],
+        };
+    }
+
     if (stage === "compose")
     {
         return {
@@ -209,7 +253,7 @@ export function getStageConfig(stage: FigmaStage, mode: FigmaTaskMode): StageCon
                 "figma.compile.list",
                 "figma.compile.jsx",
             ],
-            requiredTools: ["figma.compose.meta", "figma.compile"],
+            requiredTools: ["figma.compose.meta", "figma.compose.jsx", "figma.compile"],
         };
     }
 
@@ -290,6 +334,18 @@ export function buildDerivedSnapshot(
     orchestration: FigmaOrchestrationState,
 ): FigmaDerivedSnapshot
 {
+    const latestTokens: FigmaTokensArtifact | undefined = lastOf(stores.tokens);
+    const latestPlan: FigmaPrimitivesPlanArtifact | undefined = lastOf(stores.primitivePlans);
+    const latestPrimitivesJsx: FigmaPrimitivesJsxArtifact | undefined = lastOf(stores.primitiveJsx);
+    const latestCompositionMeta: FigmaCompositionMetaArtifact | undefined = lastOf(stores.compositionMeta);
+    const latestCompositionJsx: FigmaCompositionJsxArtifact | undefined = lastOf(stores.compositionJsx);
+    const latestCompile: FigmaCompileArtifact | undefined = lastOf(stores.compileArtifacts);
+    const latestTokensId = latestTokens?.id;
+    const latestPlanId = latestPlan?.id;
+    const latestPrimitivesJsxId = latestPrimitivesJsx?.id;
+    const latestCompositionMetaId = latestCompositionMeta?.id;
+    const latestCompositionJsxId = latestCompositionJsx?.id;
+    const latestCompileId = latestCompile?.id;
     const pluginSnapshot = orchestration.pluginSnapshot;
     if (pluginSnapshot)
     {
@@ -302,21 +358,18 @@ export function buildDerivedSnapshot(
                 `- activeRootNodeId: ${orchestration.activeRootNodeId ?? "none"}`,
             ].join("\n"),
             invocationJsx: pluginSnapshot.jsx,
+            activeTokensArtifactId: latestTokensId,
+            activePrimitivePlanArtifactId: latestPlanId,
+            activePrimitivesJsxArtifactId: latestPrimitivesJsxId,
             activeCompositionArtifactId: orchestration.activeCompositionArtifactId,
+            activeCompositionJsxArtifactId: latestCompositionJsxId,
             activeCompileArtifactId: orchestration.activeCompileArtifactId,
             activeRootNodeId: orchestration.activeRootNodeId,
         };
     }
 
-    const latestCompositionMeta = lastOf(stores.compositionMeta);
-    const latestCompile = lastOf(stores.compileArtifacts);
-
     if (latestCompositionMeta || latestCompile)
     {
-        const latestTokens = lastOf(stores.tokens);
-        const latestPlan = lastOf(stores.primitivePlans);
-        const latestPrimitivesJsx = lastOf(stores.primitiveJsx);
-        const latestCompositionJsx = lastOf(stores.compositionJsx);
         const invocationJsx = latestCompositionJsx?.jsx ?? (latestCompositionMeta ? renderCompositionInvocationJsx(latestCompositionMeta) : undefined);
 
         return {
@@ -332,8 +385,12 @@ export function buildDerivedSnapshot(
             ].join("\n"),
             invocationJsx,
             expandedJsx: latestCompile?.expandedJsx,
-            activeCompositionArtifactId: latestCompositionMeta?.id,
-            activeCompileArtifactId: latestCompile?.id,
+            activeTokensArtifactId: latestTokensId,
+            activePrimitivePlanArtifactId: latestPlanId,
+            activePrimitivesJsxArtifactId: latestPrimitivesJsxId,
+            activeCompositionArtifactId: latestCompositionMetaId,
+            activeCompositionJsxArtifactId: latestCompositionJsxId,
+            activeCompileArtifactId: latestCompileId,
             activeRootNodeId: orchestration.activeRootNodeId,
         };
     }
@@ -345,13 +402,33 @@ export function buildDerivedSnapshot(
             source: "buffer",
             summary: `- buffer has ${stores.buffer.size} node(s)`,
             invocationJsx: bufferJsx,
+            activeTokensArtifactId: latestTokensId,
+            activePrimitivePlanArtifactId: latestPlanId,
+            activePrimitivesJsxArtifactId: latestPrimitivesJsxId,
+            activeCompositionArtifactId: latestCompositionMetaId,
+            activeCompositionJsxArtifactId: latestCompositionJsxId,
+            activeCompileArtifactId: latestCompileId,
             activeRootNodeId: orchestration.activeRootNodeId,
         };
     }
 
     return {
         source: "empty",
-        summary: "- no current screen/artifacts",
+        summary: [
+            "- no current screen/artifacts",
+            `- tokens: ${latestTokensId ?? "none"}`,
+            `- primitives.plan: ${latestPlanId ?? "none"}`,
+            `- primitives.jsx: ${latestPrimitivesJsxId ?? "none"}`,
+            `- compose.meta: ${latestCompositionMetaId ?? "none"}`,
+            `- compose.jsx: ${latestCompositionJsxId ?? "none"}`,
+            `- compile: ${latestCompileId ?? "none"}`,
+        ].join("\n"),
+        activeTokensArtifactId: latestTokensId,
+        activePrimitivePlanArtifactId: latestPlanId,
+        activePrimitivesJsxArtifactId: latestPrimitivesJsxId,
+        activeCompositionArtifactId: latestCompositionMetaId,
+        activeCompositionJsxArtifactId: latestCompositionJsxId,
+        activeCompileArtifactId: latestCompileId,
         activeRootNodeId: orchestration.activeRootNodeId,
     };
 }
@@ -422,13 +499,30 @@ function buildStageRules(
         ];
     }
 
-    if (stage === "primitives")
+    if (stage === "primitives" || stage === "primitives-plan")
     {
         return [
             "- Декомпозируй задачу в reusable primitives.",
-            "- Если доступны sub-agents, можешь использовать `agent.parallel` или `agent.ask` для проработки кирпичиков.",
-            "- Сначала обязателен `figma.primitives.plan`, потом `figma.primitives.jsx`.",
+            "- `figma.primitives.plan` принимает только metadata entries: `{name, level, description?, props?, dependencies?}`.",
+            "- Каждый primitive обязан иметь `level`: `atom`, `molecule` или `section`.",
+            "- INVALID levels: `component`, `layout`, `block`, `element`.",
+            "- В этом чате делай только plan, без JSX.",
+            "- JSX нельзя класть в `figma.primitives.plan`.",
             "- Не компилируй экран и не создавай финальный frame.",
+        ];
+    }
+
+    if (stage === "primitive-jsx")
+    {
+        return [
+            "- В этом чате делай JSX только для одного primitive.",
+            "- Если доступны sub-agents, можешь использовать `agent.parallel` или `agent.ask` для проработки кирпичиков.",
+            "- В `figma.primitives.jsx` JSON содержит только ids/names, а сам JSX идёт следующими fenced `jsx` блоками.",
+            "- Используй только Figma JSX теги и semantic utility classes, а не HTML (`div`, `span`, `button`, `section`, `h1`, `p`, `svg`) и не inline styles.",
+            "- INVALID JSX patterns: `import React`, `React.createElement`, DOM tags, `style={{...}}`, CSS objects, raw hex colors, browser event handlers.",
+            "- VALID primitives должны быть короткими, декларативными и похожими на canonical Figma JSX examples.",
+            "- Если validator ругается, чини dialect и schema, а не переходи на React/DOM-парадигму.",
+            "- Не генерируй сразу весь набор primitives в одном ответе.",
         ];
     }
 
@@ -438,6 +532,11 @@ function buildStageRules(
             "- Собирай один актуальный экран с учётом layout constraints.",
             "- Root Screen обязан уважать viewport и width policy.",
             "- Сначала `figma.compose.meta`, затем `figma.compose.jsx`, затем `figma.compile`.",
+            "- `figma.compose.meta` принимает только metadata graph из `compositionNodes` и ссылок на уже существующие artifact ids.",
+            "- Каждый node в `compositionNodes` обязан быть либо `{ kind: \"element\", type, props?, text?, children? }`, либо `{ kind: \"primitive\", primitive, props? }`.",
+            "- INVALID compose patterns: raw DOM nodes (`div`, `section`, `button`), inline styles, `content` вместо `text`, пропуск `kind`, выдуманные artifact ids.",
+            "- `figma.compile` в staged flow принимает только `compositionArtifactId`, а не raw JSX.",
+            "- Не используй legacy `figma_*` инструменты, HTML-теги или inline styles.",
             "- Не создавай альтернативный screen, если это не требуется задачей.",
         ];
     }
@@ -447,6 +546,7 @@ function buildStageRules(
         return [
             "- Исправляй только ошибки parse/validation/compile.",
             "- Не меняй тему или primitive library без крайней необходимости.",
+            "- Для починки переиспользуй существующий `compositionArtifactId` и пересобирай staged flow, а не уходи в legacy tools.",
             "- Обязательно доведи до успешного `figma.compile`.",
         ];
     }
@@ -458,6 +558,7 @@ function buildStageRules(
             `- Текущая политика: \`${editIntent}\`. Если editIntent = \`edit-existing\`, нельзя создавать новый frame без явного обоснования.`,
             "- Используй current snapshot как source of truth.",
             "- Старайся переиспользовать существующие tokens, primitives и composition, меняя только нужные слои.",
+            "- Не переключайся на legacy `figma_*` инструменты, если задача решается staged artifacts.",
             "- После правок обязательно получи успешный `figma.compile`.",
         ];
     }
@@ -476,13 +577,18 @@ export function buildStageUserMessage(args: {
     snapshot: FigmaDerivedSnapshot;
     layout: LayoutConstraints;
     repairError?: string;
+    extraContext?: string;
 }): string
 {
     const header = args.stage === "revision"
         ? "РЕЖИМ ДОРАБОТКИ"
         : args.stage === "repair"
             ? "РЕЖИМ ПОЧИНКИ"
-            : `ЭТАП ${args.stage.toUpperCase()}`;
+            : args.stage === "primitives-plan"
+                ? "ЭТАП PRIMITIVES PLAN"
+                : args.stage === "primitive-jsx"
+                    ? "ЭТАП PRIMITIVE JSX"
+                    : `ЭТАП ${args.stage.toUpperCase()}`;
 
     const parts = [
         header,
@@ -513,6 +619,16 @@ export function buildStageUserMessage(args: {
 
     parts.push(
         "",
+        "## Current artifact ids",
+        [
+            `- tokensArtifactId: ${args.snapshot.activeTokensArtifactId ?? "none"}`,
+            `- primitivesArtifactId: ${args.snapshot.activePrimitivePlanArtifactId ?? "none"}`,
+            `- primitivesJsxArtifactId: ${args.snapshot.activePrimitivesJsxArtifactId ?? "none"}`,
+            `- compositionArtifactId: ${args.snapshot.activeCompositionArtifactId ?? "none"}`,
+            `- compositionJsxArtifactId: ${args.snapshot.activeCompositionJsxArtifactId ?? "none"}`,
+            `- compileArtifactId: ${args.snapshot.activeCompileArtifactId ?? "none"}`,
+        ].join("\n"),
+        "",
         "## Snapshot",
         args.snapshot.summary,
         "",
@@ -533,6 +649,33 @@ export function buildStageUserMessage(args: {
     if (args.repairError)
         parts.push("", "## Ошибка для исправления", args.repairError);
 
+    if (args.extraContext?.trim())
+        parts.push("", "## Stage-specific context", args.extraContext.trim());
+
+    if (args.stage === "primitives" || args.stage === "primitives-plan" || args.stage === "primitive-jsx")
+    {
+        parts.push(
+            "",
+            "## Primitive schema reminders",
+            "- VALID `level`: `atom`, `molecule`, `section`",
+            "- INVALID `level`: `component`, `layout`, `block`",
+            "- VALID JSX: Figma JSX tags + className-based styling",
+            "- INVALID JSX: DOM tags, inline styles, imports, React runtime code",
+        );
+    }
+
+    if (args.stage === "compose" || args.stage === "revision" || args.stage === "repair")
+    {
+        parts.push(
+            "",
+            "## Composition schema reminders",
+            "- VALID node kinds: `element`, `primitive`",
+            "- Use `text`, not `content`",
+            "- Reference real artifact ids from the section above",
+            "- Do not invent `tokensArtifactId`, `primitivesArtifactId` or `primitivesJsxArtifactId`",
+        );
+    }
+
     return parts.join("\n");
 }
 
@@ -540,6 +683,8 @@ export function summarizeStageSuccess(stage: FigmaStage): string
 {
     if (stage === "tokens") return "Тема и токены подготовлены.";
     if (stage === "primitives") return "Primitive library подготовлена.";
+    if (stage === "primitives-plan") return "Primitive plan подготовлен.";
+    if (stage === "primitive-jsx") return "Primitive JSX подготовлен.";
     if (stage === "compose") return "Экран собран и скомпилирован.";
     if (stage === "repair") return "Ошибки исправлены и компиляция завершена.";
     if (stage === "revision") return "Доработки применены.";

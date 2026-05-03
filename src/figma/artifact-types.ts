@@ -84,6 +84,12 @@ export interface FigmaPrimitivesJsxArtifact extends ArtifactBase
     entries: FigmaPrimitiveJsxEntry[];
 }
 
+export interface FigmaPrimitiveJsxUpsertInput
+{
+    primitivesArtifactId: string;
+    entries: FigmaPrimitiveJsxEntry[];
+}
+
 export interface CompositionPrimitiveNode
 {
     kind: "primitive";

@@ -42,11 +42,19 @@ export interface FigmaPreparedBriefResponse
     brief: PreparedDesignBrief;
 }
 
+export type FigmaRole = "enhancer" | "designer" | "builder" | "composer";
+
+export interface FigmaRoleSession
+{
+    role: FigmaRole;
+    contextManager: ContextManager;
+    agentLoop?: StreamingAgentLoop;
+}
+
 export interface FigmaSession
 {
     id: string;
-    contextManager: ContextManager;
-    agentLoop: StreamingAgentLoop;
+    roleSessions: Record<FigmaRole, FigmaRoleSession>;
     buffer: JsxBuffer;
     varStore: VariableStore;
     tokensStore: TokensStore;

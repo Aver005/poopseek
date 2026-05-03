@@ -1,4 +1,4 @@
-import type { ToolExecutionResult } from "@/agent/types";
+import type { ToolCallEnvelope, ToolExecutionResult } from "@/agent/types";
 import type { SubAgentResult, SubAgentTask } from "@/agent/sub-agent";
 
 export type { SubAgentTask, SubAgentResult, ToolExecutionResult };
@@ -20,6 +20,7 @@ export type AskUserFn = (request: UserInputRequest) => Promise<string | null>;
 export interface ToolContext
 {
     workspaceRoot: string;
+    currentToolCall?: ToolCallEnvelope;
     getToolNames: () => string[];
     resolvePath: (inputPath: string) => string;
     runCommand: (

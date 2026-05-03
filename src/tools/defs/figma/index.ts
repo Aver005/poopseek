@@ -56,6 +56,7 @@ export const FIGMA_SYSTEM_ADDENDUM = [
     "Metadata tools и JSX tools не смешиваются: .plan/.meta дают metadata, .jsx дают JSX.",
     "JSX не должен жить строкой внутри JSON-ответа staged tools.",
     "Для tool-calls всегда отвечай fenced блоком ```json с валидным tool-call JSON.",
+    "Если tool принимает JSX input, JSON содержит только ids/names/metadata, а JSX идёт следующими fenced блоками ```jsx.",
 ].join("\n");
 
 export const FIGMA_TOOLS_DOC = `
@@ -85,7 +86,7 @@ export const FIGMA_TOOLS_DOC = `
 ### ШАГ 2 — figma.primitives.plan + figma.primitives.jsx
 
 \`figma.primitives.plan\` возвращает metadata примитивов.
-\`figma.primitives.jsx\` возвращает JSX кирпичиков отдельными fenced \`jsx\` блоками.
+\`figma.primitives.jsx\` принимает JSON c \`primitivesArtifactId\` + \`names[]\`, а JSX кирпичиков идёт следующими fenced \`jsx\` блоками.
 
 ### ШАГ 3 — figma.compose.meta + figma.compose.jsx
 
@@ -94,7 +95,7 @@ export const FIGMA_TOOLS_DOC = `
 
 ### ШАГ 4 — figma.compile
 
-\`figma.compile\` компилирует composition artifact или raw JSX.
+\`figma.compile\` компилирует composition artifact.
 \`figma.compile.jsx\` показывает expanded JSX для inspect/debug.
 
 \`\`\`json
@@ -112,7 +113,13 @@ export const FIGMA_TOOLS_DOC = `
 \`\`\`
 
 \`\`\`json
-{"tool":"figma.primitives.jsx","args":{"primitivesArtifactId":"primitives_home_v1","entries":[{"name":"AppHeader","jsx":"<HStack className=\\"items-center justify-between\\"><VStack className=\\"gap-1\\"><H2 className=\\"text-text\\">{title}</H2><BodySm className=\\"text-muted\\">{subtitle}</BodySm></VStack></HStack>"}]}}
+{"tool":"figma.primitives.jsx","args":{"primitivesArtifactId":"primitives_home_v1","names":["AppHeader"]}}
+\`\`\`
+
+\`AppHeader\`
+
+\`\`\`jsx
+<HStack className="items-center justify-between"><VStack className="gap-1"><H2 className="text-text">{title}</H2><BodySm className="text-muted">{subtitle}</BodySm></VStack></HStack>
 \`\`\`
 
 \`\`\`json
@@ -130,6 +137,7 @@ export const FIGMA_TOOLS_DOC = `
 #### Staged правила
 
 - \`.plan\` и \`.meta\` не возвращают JSX.
+- input JSX передаётся через fenced \`jsx\`, а не через JSON string fields.
 - \`.jsx\` инструменты возвращают fenced \`jsx\`.
 - \`figma.compile\` вызывается после compose.
 - \`figma.compile.jsx\` не генерирует новый JSX, а показывает expanded результат.

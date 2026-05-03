@@ -61,6 +61,34 @@
 - инструменты, которые возвращают metadata, не должны возвращать JSX вообще;
 - инструменты, которые возвращают JSX, не должны возвращать тяжёлый metadata-payload кроме минимальных ссылок и заголовков.
 
+### Новое правило protocol parser
+
+Старой формулировки "JSX не должен жить в JSON" недостаточно, если сам parser ждёт `args.entries[].jsx`.
+Поэтому runtime-contract теперь такой:
+
+- tool-call по-прежнему начинается fenced блоком `json`;
+- этот JSON содержит только:
+  - имя tool;
+  - ids;
+  - names;
+  - metadata;
+  - flags вроде `dispatch`;
+- если tool требует JSX input, JSX передаётся не в `args`, а следующими fenced блоками `jsx`;
+- parser обязан приклеить эти fenced `jsx` блоки к ближайшему поддерживаемому tool-call envelope как attachments;
+- tool handler получает attachments уже не через JSON, а через runtime context текущего tool call;
+- user-facing dump и session dump больше не должны содержать JSX как JSON string field для strict staged flow.
+
+Поддерживаемые strict attachment-path tools:
+
+- `figma.primitives.jsx`
+- `figma.compose.jsx` как output tool
+- `figma.compile.jsx` как inspect/output tool
+
+Совместимость на переходный период:
+
+- legacy inline `jsx` в JSON ещё можно распознать как fallback для старых сценариев;
+- canonical staged path больше не должен его генерировать.
+
 ## Жёсткое разделение tool surface
 
 Новая canonical-конвенция по именованию:
@@ -125,6 +153,28 @@ Canonical flow:
    - компилирует в `FigmaOp[]`,
    - кладёт ops в очередь плагина.
 5. Плагин применяет ops напрямую к Figma canvas.
+
+### 4. Реальный parser/runtime contract
+
+Новый strict staged runtime теперь должен опираться не только на tool handlers, но и на parser layer:
+
+- `src/agent/tool-call-parser.ts`
+- `src/agent/streaming-tool-parser.ts`
+- `src/agent/tool-executor.ts`
+- `src/tools/types.ts`
+
+Именно этот слой отвечает за то, как текст модели становится tool-calls.
+
+Новая обязанность parser-а:
+
+1. найти fenced `json` tool-call;
+2. определить, требует ли этот tool JSX attachments;
+3. собрать следующие fenced `jsx` блоки;
+4. прикрепить их к `ToolCallEnvelope.attachments`;
+5. передать envelope в `ToolExecutor`;
+6. дать tool handler-у доступ к attachments через `ToolContext.currentToolCall`.
+
+Без этого staged docs были бы декоративными: prompt запрещал бы JSX в JSON, а runtime всё равно требовал бы его внутри `args`.
 
 ### 3. Что уже сделано хорошо
 
@@ -254,6 +304,48 @@ Canonical flow:
 - только тот контекст, который нужен сейчас;
 - жёсткий критерий завершения этапа;
 - запрет перескакивать на следующий этап без успешного результата текущего.
+
+### Multi-session core
+
+Ключевой architectural shift: staged runtime больше не должен жить как один чат с меняющимся prompt.
+
+Нужен отдельный role-session на каждую функцию:
+
+1. `enhancer`
+   Улучшает сырой пользовательский prompt, убирает шум, усиливает goal и формирует prepared brief.
+
+2. `designer`
+   Работает только над visual system:
+   - цвета;
+   - spacing;
+   - radius;
+   - typography;
+   - shadow;
+   - semantic aliases;
+   - токены для Figma.
+
+3. `builder`
+   Работает только над primitive library:
+   - metadata plan;
+   - JSX кирпичики;
+   - reusable contracts.
+
+4. `composer`
+   Работает только над финальной сборкой:
+   - composition graph;
+   - final composition JSX;
+   - compile/repair/revision path.
+
+Обязательные инварианты multi-session core:
+
+- у каждой роли своя история сообщений;
+- у каждой роли свой системный prompt;
+- enhancer не вызывает Figma tools;
+- designer не собирает экран;
+- builder не занимается темой;
+- composer не должен заново изобретать primitive library;
+- один пользовательский prompt проходит через все role sessions независимо;
+- orchestrator синхронизирует между role sessions только artifacts/state summary, а не смешивает все мысли в одну общую chat-history.
 
 ### Flow для первого запроса пользователя
 
@@ -709,7 +801,7 @@ Orchestrator должен уметь:
 `figma.primitives.jsx` должен:
 
 - принять `primitivesArtifactId`;
-- принять список имён кирпичиков или вернуть все;
+- принять список имён кирпичиков в JSON (`names[]`) или вывести их из labels у fenced `jsx` blocks;
 - вернуть JSX каждого кирпичика отдельным fenced `jsx` блоком;
 - не придумывать новые primitive names;
 - сохранить JSX как отдельные JSX-артефакты.
@@ -803,6 +895,8 @@ Orchestrator должен уметь:
 - JSX primitive не должен использовать raw hex.
 - JSX primitive должен проходить тот же validator, что и финальный compose JSX.
 - Primitive library должна быть сериализуемой и пригодной для повторного использования в той же сессии.
+- Parser/runtime не должен требовать `entries[].jsx` внутри JSON для canonical staged path.
+- JSON tool payload и JSX attachments должны жить раздельно.
 
 ### Рекомендуемая структура данных
 
@@ -843,6 +937,7 @@ interface FigmaPrimitivesJsxArtifact {
 - добавить `PrimitiveJsxStore`;
 - добавить validator для named primitive JSX;
 - добавить парсер placeholder/slot syntax;
+- научить parser приклеивать fenced `jsx` blocks к `figma.primitives.jsx` как runtime attachments;
 - научить систему прогонять каждый primitive через `parseJsx` + `validateJsxTree`;
 - завести новый tool handler `figma.primitives.plan`;
 - завести новый tool handler `figma.primitives.jsx`.
@@ -1534,6 +1629,75 @@ JSX-артефакты лучше хранить отдельно от metadata-
 - модель слишком легко теряется, когда одновременно должна интерпретировать vague prompt, придумывать direction и строить UI;
 - короткий brief лучше удерживает цель и повышает качество решений.
 
+### ADR-012. Prepared brief обязан быть согласован с runtime layout constraints
+
+Решение:
+
+- preprocess/enhancer не должен сохранять противоречия вида:
+  - `platform = mobile`
+  - `viewport = 390x844`
+  - и одновременно `content width = 1200-1440px`;
+- brief после preprocess должен быть нормализован относительно runtime layout constraints;
+- для mobile-first режима enhancer обязан удалять desktop-width hints и переписывать layout strategy в mobile-first терминах;
+- builder/composer должны получать уже согласованный brief, а не взаимоисключающие подсказки.
+
+Почему:
+
+- конфликтующий brief ломает композицию ещё до первого tool call;
+- модель начинает проектировать desktop landing внутри mobile viewport;
+- дальнейшие stage prompts уже не могут reliably исправить эту ошибку.
+
+### ADR-013. Builder и composer должны видеть реальные active artifact ids
+
+Решение:
+
+- stage user message обязан явно инжектить:
+  - `tokensArtifactId`
+  - `primitivesArtifactId`
+  - `primitivesJsxArtifactId`
+  - `compositionArtifactId`
+  - `compositionJsxArtifactId`
+  - `compileArtifactId`;
+- модель не должна угадывать ids вроде `tokens_custom_v1` или `primitives_plan_v1`;
+- orchestrator обязан прокидывать latest active artifacts как часть current runtime state.
+
+Почему:
+
+- без этого model invents state instead of using state;
+- выдуманные ids ломают continuity между стадиями;
+- compose/revision начинают ссылаться на несуществующие artifacts.
+
+### ADR-014. Для builder/composer нужен operational contract, а не общие пожелания
+
+Решение:
+
+- prompts должны содержать не только high-level intent, но и:
+  - valid schema;
+  - invalid schema;
+  - valid dialect;
+  - invalid dialect;
+  - repair rules;
+- builder должен видеть:
+  - valid `level`: `atom`, `molecule`, `section`;
+  - invalid `level`: `component`, `layout`, `block`, `element`;
+  - invalid JSX patterns:
+    - `import React`
+    - `React.createElement`
+    - DOM tags
+    - inline styles
+    - raw hex colors
+    - browser event handlers;
+- composer должен видеть:
+  - valid `compositionNodes` shapes;
+  - запрет на `content` вместо `text`;
+  - запрет на пропуск `kind`;
+  - запрет на DOM-style nodes.
+
+Почему:
+
+- без safe path модель паникует при validation error и меняет парадигму;
+- именно это ведёт к деградации в React/DOM/inline-style мусор вместо Figma JSX.
+
 ## TODO
 
 ### P0
@@ -1561,6 +1725,7 @@ JSX-артефакты лучше хранить отдельно от metadata-
 - [x] Добавить compile artifacts и dry-run режим.
 - [x] Перевести `figma_render` на новую внутреннюю реализацию.
 - [x] Добавить introspection tools для artifact stores.
+- [x] Переписать protocol parser под `tool json + fenced jsx blocks`, чтобы staged JSX input не жил в JSON args.
 - [ ] Добавить snapshot tests на expanded JSX и ops.
 
 ### P3
@@ -1572,6 +1737,7 @@ JSX-артефакты лучше хранить отдельно от metadata-
 ### P4
 
 - [x] Ввести orchestrator со stage-specific prompts вместо одного универсального prompt.
+- [x] Вынести Figma runtime в multi-session role architecture: `enhancer` / `designer` / `builder` / `composer`.
 - [x] Добавить `taskMode`: `initial` | `revision`.
 - [x] Добавить `editIntent`: `edit-existing` | `fork-variant` | `new-screen`.
 - [x] Научить систему блокировать переход между стадиями до успешного завершения предыдущей.
@@ -1689,6 +1855,47 @@ JSX-артефакты лучше хранить отдельно от metadata-
   - brief сохраняется в session orchestration state;
   - все stage user messages теперь получают prepared brief вместо зависимости только от сырого user prompt.
 - stage prompts дополнительно ужаты: меньше шума, больше коротких целевых инструкций.
+- Figma runtime переведён на multi-session role model:
+  - `FigmaSession` теперь держит отдельные role sessions для `enhancer`, `designer`, `builder`, `composer`;
+  - у designer/builder/composer отдельные `ContextManager` + `StreamingAgentLoop`;
+  - enhancer работает отдельным provider-pass и пишет свой собственный chat history;
+  - role prompts вынесены в отдельные файлы:
+    - `assets/prompts/figma/enhancer.prompt.md`
+    - `assets/prompts/figma/designer.prompt.md`
+    - `assets/prompts/figma/builder.prompt.md`
+    - `assets/prompts/figma/composer.prompt.md`
+  - `prompt-files.ts` и `run-cli.ts` прокидывают role prompts в `FigmaServerManager`;
+  - `server.ts` распределяет стадии по ролям:
+    - enhancer -> preprocess brief
+    - designer -> `figma.tokens`
+    - builder -> `figma.primitives.plan` + `figma.primitives.jsx`
+    - composer -> `figma.compose.meta` + `figma.compose.jsx` + `figma.compile` + repair/revision
+- protocol parser переведён на strict JSX attachment model:
+  - `src/agent/tool-call-parser.ts` и `src/agent/streaming-tool-parser.ts` теперь умеют приклеивать fenced `jsx` blocks к tool envelope как attachments;
+  - `ToolCallEnvelope` расширен полем `attachments`;
+  - `ToolContext` теперь получает `currentToolCall`;
+  - `ToolExecutor` передаёт текущий envelope в tool context;
+  - `figma.primitives.jsx` теперь принимает canonical protocol:
+    - JSON с `primitivesArtifactId` + `names[]`
+    - следующие fenced `jsx` blocks как runtime attachments;
+  - legacy inline `entries[].jsx` оставлен только как compatibility fallback, но больше не является canonical staged path.
+- обновлены prompt/doc layers под новый protocol:
+  - `assets/prompts/figma/primitives.prompt.md`
+  - `assets/prompts/figma/builder.prompt.md`
+  - `src/tools/defs/figma/index.ts`
+  - `src/tools/defs/figma/v2/index.ts`
+- runtime/prompt contract дополнительно ужесточён после анализа реального session dump:
+  - `src/figma/preprocess.ts` теперь нормализует brief относительно runtime layout constraints;
+  - mobile-first brief больше не должен тащить desktop-width hints вроде `1200-1440px`;
+  - `src/figma/server.ts` передаёт enhancer-агенту реальные layout constraints для preprocess;
+  - `src/figma/orchestrator.ts` теперь инжектит в stage user messages явные active artifact ids;
+  - builder/composer prompts получили hard rules с valid/invalid schema и dialect;
+  - builder repair path теперь формулируется как "чини Figma JSX dialect", а не "переключайся на React/DOM".
+- добавлены tests:
+  - parser test на `tool json + fenced jsx blocks`;
+  - streaming parser test на deferred JSX attachments.
+  - preprocess test на conflict normalization для mobile layout;
+  - orchestrator test на injection active artifact ids и schema reminders.
 
 Что не менялось:
 
@@ -1698,15 +1905,18 @@ JSX-артефакты лучше хранить отдельно от metadata-
 - полноценный semantic patch planner ещё не реализован; текущая revision strategy пока основана на replace-current-screen policy.
 - полноценный deep tree diff planner ещё не реализован; текущий patch planner пока работает на уровне reuse root + rebuild children.
 - visual quality всё ещё может быть недостаточной даже при хорошем orchestration; если brief + short prompts не дадут скачка качества, следующим шагом нужен отдельный art-direction stage или dedicated visual sub-agent.
+- `figma.compose.jsx` пока остаётся materializer/output tool, а не parser-driven JSX input tool; strict attachment protocol сейчас в первую очередь покрывает `figma.primitives.jsx` и совместимость parser layer.
 
 Итог:
 
 - staged runtime уже частично реализован;
 - canonical flow внедрён в prompt и V2 registry;
 - staged tools уже вынесены в отдельный модуль;
-- миграция не завершена полностью, потому что поверх staged runtime теперь требуется полноценный orchestration layer;
+- multi-session orchestration core уже внедрён;
+- parser/runtime contract наконец синхронизирован с правилом "JSX не живёт в JSON";
+- миграция не завершена полностью, потому что теперь нужно добить visual quality, patch intelligence и snapshot coverage;
 - P0, P1 и значимая часть P2 уже сделаны;
-- P4 частично реализован, включая plugin snapshot import;
+- P4 существенно продвинут, включая plugin snapshot import и role-session split;
 - главный оставшийся behavioural gap теперь в более умном patch/edit planner вместо current replace strategy и в усилении visual quality.
 
 ## Короткая инструкция будущему агенту

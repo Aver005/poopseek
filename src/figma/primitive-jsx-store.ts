@@ -1,4 +1,4 @@
-import type { FigmaPrimitivesJsxArtifact } from "./artifact-types";
+import type { FigmaPrimitiveJsxUpsertInput, FigmaPrimitivesJsxArtifact } from "./artifact-types";
 
 function slugify(value: string): string
 {
@@ -26,6 +26,23 @@ export class PrimitiveJsxStore
         return artifact;
     }
 
+    upsert(input: FigmaPrimitiveJsxUpsertInput): FigmaPrimitivesJsxArtifact
+    {
+        const existing = this.findLatestByPlanId(input.primitivesArtifactId);
+        const mergedEntries = new Map<string, FigmaPrimitivesJsxArtifact["entries"][number]>();
+
+        for (const entry of existing?.entries ?? [])
+            mergedEntries.set(entry.name, entry);
+
+        for (const entry of input.entries)
+            mergedEntries.set(entry.name, entry);
+
+        return this.create({
+            primitivesArtifactId: input.primitivesArtifactId,
+            entries: Array.from(mergedEntries.values()),
+        });
+    }
+
     get(id: string): FigmaPrimitivesJsxArtifact | undefined
     {
         return this.items.get(id);
@@ -34,5 +51,12 @@ export class PrimitiveJsxStore
     list(): FigmaPrimitivesJsxArtifact[]
     {
         return Array.from(this.items.values());
+    }
+
+    findLatestByPlanId(primitivesArtifactId: string): FigmaPrimitivesJsxArtifact | undefined
+    {
+        return this.list()
+            .filter((artifact) => artifact.primitivesArtifactId === primitivesArtifactId)
+            .at(-1);
     }
 }

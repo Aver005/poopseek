@@ -1,4 +1,4 @@
-import type { ToolHandler, ToolExecutionResult } from "@/tools/types";
+import type { ToolContext, ToolHandler, ToolExecutionResult } from "@/tools/types";
 import { parseJsx, JsxParseError } from "@/figma/jsx-parser";
 import { compileJsx } from "@/figma/jsx-compiler";
 import { assertValidJsx, assertValidJsxFragment, formatJsxValidationErrors, JsxValidationException } from "@/figma/jsx-validator";
@@ -42,10 +42,30 @@ function str(v: unknown): string | undefined
     return v === undefined || v === null ? undefined : String(v);
 }
 
+function joinTokenPath(prefix: string, key: string): string
+{
+    return prefix ? `${prefix}/${key}` : key;
+}
+
 function num(v: unknown): number | undefined
 {
     const n = Number(v);
     return v !== undefined && !Number.isNaN(n) ? n : undefined;
+}
+
+function parseNumberish(value: unknown): number | undefined
+{
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value !== "string") return undefined;
+
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return undefined;
+
+    const match = trimmed.match(/-?\d+(?:\.\d+)?/);
+    if (!match) return undefined;
+
+    const parsed = Number.parseFloat(match[0]);
+    return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function normalizeThemeName(value: unknown): string
@@ -64,6 +84,25 @@ function normalizeStringMap(value: unknown): Record<string, string>
     );
 }
 
+function flattenStringLeaves(value: unknown, prefix: string = ""): Record<string, string>
+{
+    if (typeof value === "string")
+    {
+        const resolved = value.trim();
+        return resolved.length > 0 && prefix
+            ? { [prefix]: resolved }
+            : {};
+    }
+
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+
+    return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) =>
+            Object.entries(flattenStringLeaves(entry, joinTokenPath(prefix, key))),
+        ),
+    );
+}
+
 function normalizeNumberMap(value: unknown): Record<string, number>
 {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
@@ -71,6 +110,21 @@ function normalizeNumberMap(value: unknown): Record<string, number>
         Object.entries(value)
             .map(([key, entry]) => [key, Number(entry)] as const)
             .filter(([, entry]) => !Number.isNaN(entry)),
+    );
+}
+
+function flattenNumberishLeaves(value: unknown, prefix: string = ""): Record<string, number>
+{
+    const parsedLeaf = parseNumberish(value);
+    if (parsedLeaf !== undefined && prefix)
+        return { [prefix]: parsedLeaf };
+
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+
+    return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) =>
+            Object.entries(flattenNumberishLeaves(entry, joinTokenPath(prefix, key))),
+        ),
     );
 }
 
@@ -97,6 +151,37 @@ function normalizeTypographyMap(value: unknown): Record<string, TypographyToken>
     );
 }
 
+function flattenTypographyMap(value: unknown, prefix: string = ""): Record<string, TypographyToken>
+{
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+
+    const record = value as Record<string, unknown>;
+    const fontFamily = str(record.fontFamily);
+    const fontSize = parseNumberish(record.fontSize);
+    const lineHeight = parseNumberish(record.lineHeight);
+    const fontWeight = parseNumberish(record.fontWeight);
+    const letterSpacing = parseNumberish(record.letterSpacing) ?? 0;
+
+    if (prefix && fontFamily && fontSize !== undefined && lineHeight !== undefined && fontWeight !== undefined)
+    {
+        return {
+            [prefix]: {
+                fontFamily,
+                fontSize,
+                lineHeight,
+                fontWeight,
+                letterSpacing,
+            } satisfies TypographyToken,
+        };
+    }
+
+    return Object.fromEntries(
+        Object.entries(record).flatMap(([key, entry]) =>
+            Object.entries(flattenTypographyMap(entry, joinTokenPath(prefix, key))),
+        ),
+    );
+}
+
 function normalizeShadowMap(value: unknown): Record<string, ShadowToken>
 {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
@@ -120,6 +205,47 @@ function normalizeShadowMap(value: unknown): Record<string, ShadowToken>
 
             return [[key, { x, y, blur, spread, color, opacity } satisfies ShadowToken] as const];
         }),
+    );
+}
+
+function flattenShadowMap(value: unknown, prefix: string = ""): Record<string, ShadowToken>
+{
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+
+    const record = value as Record<string, unknown>;
+    const x = parseNumberish(record.x);
+    const y = parseNumberish(record.y);
+    const blur = parseNumberish(record.blur);
+    const spread = parseNumberish(record.spread);
+    const color = str(record.color);
+    const opacity = parseNumberish(record.opacity);
+
+    if (
+        prefix
+        && x !== undefined
+        && y !== undefined
+        && blur !== undefined
+        && spread !== undefined
+        && color !== undefined
+        && opacity !== undefined
+    )
+    {
+        return {
+            [prefix]: {
+                x,
+                y,
+                blur,
+                spread,
+                color,
+                opacity,
+            } satisfies ShadowToken,
+        };
+    }
+
+    return Object.fromEntries(
+        Object.entries(record).flatMap(([key, entry]) =>
+            Object.entries(flattenShadowMap(entry, joinTokenPath(prefix, key))),
+        ),
     );
 }
 
@@ -156,11 +282,27 @@ function normalizeCollections(args: Record<string, unknown>): {
         : {};
 
     return {
-        color: { ...normalizeLegacyColorTokens(args), ...normalizeStringMap(collections.color) },
-        spacing: normalizeNumberMap(collections.spacing),
-        radius: normalizeNumberMap(collections.radius),
-        typography: normalizeTypographyMap(collections.typography),
-        shadow: normalizeShadowMap(collections.shadow),
+        color: {
+            ...normalizeLegacyColorTokens(args),
+            ...normalizeStringMap(collections.color),
+            ...flattenStringLeaves(collections.color),
+        },
+        spacing: {
+            ...normalizeNumberMap(collections.spacing),
+            ...flattenNumberishLeaves(collections.spacing),
+        },
+        radius: {
+            ...normalizeNumberMap(collections.radius),
+            ...flattenNumberishLeaves(collections.radius),
+        },
+        typography: {
+            ...normalizeTypographyMap(collections.typography),
+            ...flattenTypographyMap(collections.typography),
+        },
+        shadow: {
+            ...normalizeShadowMap(collections.shadow),
+            ...flattenShadowMap(collections.shadow),
+        },
     };
 }
 
@@ -204,13 +346,30 @@ function normalizePrimitiveEntries(value: unknown): FigmaPrimitiveDefinition[]
 {
     if (!Array.isArray(value)) return [];
 
-    return value.flatMap((entry) =>
+    return value.flatMap<FigmaPrimitiveDefinition>((entry) =>
     {
+        if (typeof entry === "string")
+        {
+            const name = entry.trim();
+            if (!name) return [];
+            return [{
+                name,
+                level: inferPrimitiveLevel(name),
+                props: [],
+                dependencies: [],
+            } satisfies FigmaPrimitiveDefinition];
+        }
+
         if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return [];
         const record = entry as Record<string, unknown>;
         const name = str(record.name)?.trim();
-        const level = str(record.level) as PrimitiveLevel | undefined;
-        if (!name || !level || !["atom", "molecule", "section"].includes(level)) return [];
+        const rawLevel = str(record.level);
+        const level = rawLevel === "atom" || rawLevel === "molecule" || rawLevel === "section"
+            ? rawLevel
+            : name
+                ? inferPrimitiveLevel(name)
+                : undefined;
+        if (!name || !level) return [];
 
         const dependencies = Array.isArray(record.dependencies)
             ? record.dependencies.map((item) => str(item)?.trim()).filter((item): item is string => !!item)
@@ -226,18 +385,70 @@ function normalizePrimitiveEntries(value: unknown): FigmaPrimitiveDefinition[]
     });
 }
 
-function normalizeJsxEntryValue(value: unknown): Array<{ name: string; jsx: string }>
+function inferPrimitiveLevel(name: string): PrimitiveLevel
+{
+    const normalized = name.toLowerCase();
+
+    if (
+        normalized.includes("section")
+        || normalized.includes("hero")
+        || normalized.includes("banner")
+        || normalized.includes("form")
+        || normalized.includes("block")
+        || normalized.includes("footer")
+    )
+        return "section";
+
+    if (
+        normalized.includes("card")
+        || normalized.includes("header")
+        || normalized.includes("navbar")
+        || normalized.includes("cta")
+        || normalized.includes("modal")
+        || normalized.includes("sheet")
+        || normalized.includes("panel")
+    )
+        return "molecule";
+
+    return "atom";
+}
+
+function normalizeStringArray(value: unknown): string[]
 {
     if (!Array.isArray(value)) return [];
-    return value.flatMap((entry) =>
-    {
-        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return [];
-        const record = entry as Record<string, unknown>;
-        const name = str(record.name)?.trim();
-        const jsx = str(record.jsx)?.trim();
-        if (!name || !jsx) return [];
-        return [{ name, jsx }];
-    });
+    return value
+        .map((entry) => str(entry)?.trim())
+        .filter((entry): entry is string => Boolean(entry));
+}
+
+function resolvePrimitiveJsxEntries(
+    args: Record<string, unknown>,
+    planArtifact: { entries: Array<{ name: string }> },
+    context: ToolContext,
+): Array<{ name: string; jsx: string }>
+{
+    const attachments = context.currentToolCall?.attachments?.filter((attachment) => attachment.kind === "jsx") ?? [];
+    if (attachments.length === 0) return [];
+
+    const explicitNames = normalizeStringArray(args.names);
+    const labeledNames = attachments
+        .map((attachment) => attachment.label?.trim())
+        .filter((label): label is string => Boolean(label));
+
+    const names = explicitNames.length > 0
+        ? explicitNames
+        : labeledNames.length === attachments.length
+            ? labeledNames
+            : attachments.length === planArtifact.entries.length
+                ? planArtifact.entries.map((entry) => entry.name)
+                : [];
+
+    if (names.length !== attachments.length) return [];
+
+    return names.map((name, index) => ({
+        name,
+        jsx: attachments[index]!.content.trim(),
+    }));
 }
 
 function isScalar(value: unknown): value is ArtifactScalar
@@ -379,7 +590,7 @@ function makePrimitivesJsx(
     primitiveJsxStore: PrimitiveJsxStore,
 ): ToolHandler
 {
-    return async (args) =>
+    return async (args, context) =>
     {
         const primitivesArtifactId = str(args.primitivesArtifactId);
         if (!primitivesArtifactId) return fail("primitivesArtifactId is required");
@@ -387,8 +598,12 @@ function makePrimitivesJsx(
         const planArtifact = primitivePlanStore.get(primitivesArtifactId);
         if (!planArtifact) return fail(`Primitives plan "${primitivesArtifactId}" not found`);
 
-        const entries = normalizeJsxEntryValue(args.entries);
-        if (entries.length === 0) return fail("figma.primitives.jsx requires entries[] with {name, jsx}");
+        const entries = resolvePrimitiveJsxEntries(args, planArtifact, context);
+        if (entries.length === 0)
+            return fail(
+                "figma.primitives.jsx requires JSON args with names[] " +
+                "plus matching fenced jsx blocks after the tool JSON. Inline JSX in JSON is not allowed.",
+            );
 
         const knownNames = new Set(planArtifact.entries.map((entry) => entry.name));
         for (const entry of entries)
@@ -411,7 +626,7 @@ function makePrimitivesJsx(
             }
         }
 
-        const artifact = primitiveJsxStore.create({
+        const artifact = primitiveJsxStore.upsert({
             primitivesArtifactId,
             entries: entries.map((entry, index) => ({
                 name: entry.name,
@@ -497,6 +712,11 @@ function makeComposeJsx(
     };
 }
 
+interface CompileToolOptions
+{
+    allowRawJsx: boolean;
+}
+
 function makeCompile(
     buffer: JsxBuffer,
     varStore: VariableStore,
@@ -505,12 +725,21 @@ function makeCompile(
     compositionJsxStore: CompositionJsxStore,
     compileArtifactStore: CompileArtifactStore,
     enqueueOps: (ops: FigmaOp[]) => void,
+    options: CompileToolOptions,
 ): ToolHandler
 {
     return async (args) =>
     {
         const compositionArtifactId = str(args.compositionArtifactId);
         const rawJsx = str(args.jsx)?.trim() ?? "";
+
+        if (!options.allowRawJsx && rawJsx)
+        {
+            return fail(
+                "figma.compile does not accept raw jsx in staged mode. " +
+                "Use figma.compose.meta -> figma.compose.jsx -> figma.compile with compositionArtifactId.",
+            );
+        }
 
         let jsxSrc = rawJsx;
         if (!jsxSrc && compositionArtifactId)
@@ -544,14 +773,17 @@ function makeCompile(
             }
         }
 
-        if (!jsxSrc)
+        if (!jsxSrc && options.allowRawJsx)
             jsxSrc = buffer.toJsx();
 
         if (!jsxSrc.trim())
         {
             return fail(
-                "Buffer is empty and no jsx/compositionArtifactId provided. " +
-                "Build the tree first with figma_create, pass jsx directly, or use figma.compose.meta + figma.compose.jsx.",
+                options.allowRawJsx
+                    ? "Buffer is empty and no jsx/compositionArtifactId provided. " +
+                    "Build the tree first with figma_create, pass jsx directly, or use figma.compose.meta + figma.compose.jsx."
+                    : "compositionArtifactId is required for figma.compile in staged mode. " +
+                    "First create figma.compose.meta and figma.compose.jsx artifacts.",
             );
         }
 
@@ -599,6 +831,30 @@ function makeCompile(
             artifact,
         );
     };
+}
+
+export function createCompileTool(deps: {
+    buffer: JsxBuffer;
+    varStore: VariableStore;
+    compositionMetaStore: CompositionMetaStore;
+    primitiveJsxStore: PrimitiveJsxStore;
+    compositionJsxStore: CompositionJsxStore;
+    compileArtifactStore: CompileArtifactStore;
+    enqueueOps: (ops: FigmaOp[]) => void;
+}, options: Partial<CompileToolOptions> = {}): ToolHandler
+{
+    return makeCompile(
+        deps.buffer,
+        deps.varStore,
+        deps.compositionMetaStore,
+        deps.primitiveJsxStore,
+        deps.compositionJsxStore,
+        deps.compileArtifactStore,
+        deps.enqueueOps,
+        {
+            allowRawJsx: options.allowRawJsx === true,
+        },
+    );
 }
 
 function makeCompileJsxArtifact(
@@ -676,15 +932,8 @@ function makeRenderAlias(deps: StagedFigmaDeps): ToolHandler
         deps.compositionMetaStore,
     );
     const composeJsx = makeComposeJsx(deps.compositionMetaStore, deps.compositionJsxStore);
-    const compile = makeCompile(
-        deps.buffer,
-        deps.varStore,
-        deps.compositionMetaStore,
-        deps.primitiveJsxStore,
-        deps.compositionJsxStore,
-        deps.compileArtifactStore,
-        deps.enqueueOps,
-    );
+    const compile = createCompileTool(deps);
+    const compileLegacy = createCompileTool(deps, { allowRawJsx: true });
 
     return async (args) =>
     {
@@ -710,7 +959,7 @@ function makeRenderAlias(deps: StagedFigmaDeps): ToolHandler
         if (compositionArtifactId)
             return compile(args, {} as never);
 
-        return compile(args, {} as never);
+        return compileLegacy(args, {} as never);
     };
 }
 
@@ -732,15 +981,7 @@ export function createStagedFigmaTools(deps: StagedFigmaDeps): Record<string, To
         "figma.compose.jsx": makeComposeJsx(deps.compositionMetaStore, deps.compositionJsxStore),
         "figma.compose.jsx.get": makeGetTool("composition jsx", (id) => deps.compositionJsxStore.get(id)),
         "figma.compose.jsx.list": makeListTool("composition jsx", () => deps.compositionJsxStore.list()),
-        "figma.compile": makeCompile(
-            deps.buffer,
-            deps.varStore,
-            deps.compositionMetaStore,
-            deps.primitiveJsxStore,
-            deps.compositionJsxStore,
-            deps.compileArtifactStore,
-            deps.enqueueOps,
-        ),
+        "figma.compile": createCompileTool(deps),
         "figma.compile.get": makeGetTool("compile artifact", (id) => deps.compileArtifactStore.get(id)),
         "figma.compile.list": makeListTool("compile", () => deps.compileArtifactStore.list()),
         "figma.compile.jsx": makeCompileJsxArtifact(deps.compileArtifactStore, deps.compositionMetaStore, deps.primitiveJsxStore),

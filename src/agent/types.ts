@@ -11,6 +11,14 @@ export interface ToolCallEnvelope
 {
     tool: string;
     args: Record<string, unknown>;
+    attachments?: ToolCallAttachment[];
+}
+
+export interface ToolCallAttachment
+{
+    kind: "jsx";
+    content: string;
+    label?: string;
 }
 
 export interface ToolExecutionResult

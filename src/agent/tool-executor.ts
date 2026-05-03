@@ -115,10 +115,11 @@ export default class ToolExecutor
         };
     }
 
-    private getContext(): ToolContext
+    private getContext(currentToolCall?: ToolCallEnvelope): ToolContext
     {
         return {
             workspaceRoot: this.workspaceRoot,
+            currentToolCall,
             getToolNames: () => [
                 ...getToolNames(),
                 ...(this.getDynamicToolNames?.() ?? []),
@@ -161,7 +162,7 @@ export default class ToolExecutor
 
             if (toolHandler)
             {
-                return await toolHandler(args, this.getContext());
+                return await toolHandler(args, this.getContext(toolCall));
             }
 
             const allNames = [...getToolNames(), ...(this.getDynamicToolNames?.() ?? [])];

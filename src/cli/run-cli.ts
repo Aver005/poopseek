@@ -295,6 +295,7 @@ export async function runCli(): Promise<void>
         toolsPrompt: prompts.toolsPrompt,
         figmaPrompt: prompts.figmaPrompt,
         figmaStagePrompts: prompts.figmaStagePrompts,
+        figmaRolePrompts: prompts.figmaRolePrompts,
         variableProcessor,
         getCallOptions,
         getRequestDelay: () => callOptionsStore.getRequestDelayMs(),
