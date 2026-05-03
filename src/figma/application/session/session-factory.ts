@@ -1,9 +1,4 @@
 import ContextManager from "@/agent/context-manager";
-import StreamingAgentLoop from "@/agent/streaming-loop";
-import ToolExecutor from "@/agent/tool-executor";
-import { SubAgentRunner } from "@/agent/sub-agent";
-import { createFigmaV2Registry } from "@/tools/defs/figma/v2";
-import { webToolNames, webToolsRegistry } from "@/tools/web-tools";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
 import type { FigmaRuntimeSync } from "@/figma/application/session/runtime-sync";
 import { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
@@ -57,44 +52,12 @@ export function createFigmaSession(args: {
     const orchestration = createInitialOrchestrationState();
 
     const sessionRef: { current: FigmaSession | null } = { current: null };
-    const enqueueOps = (ops: FigmaOp[]) =>
+    const dispatchOps = (ops: FigmaOp[]) =>
     {
         const session = sessionRef.current;
         const transformed = args.runtime.applyRenderPolicy(session, ops);
         args.pendingOps.push(...transformed);
     };
-
-    const v2Registry = createFigmaV2Registry(
-        buffer,
-        varStore,
-        tokensStore,
-        primitivePlanStore,
-        primitiveJsxStore,
-        compositionMetaStore,
-        compositionJsxStore,
-        compileArtifactStore,
-        enqueueOps,
-    );
-
-    const webDoc = args.deps.getWebToolsDoc?.() ?? "";
-    const subAgentRunner = new SubAgentRunner(() => args.deps.getProvider(), process.cwd());
-    const toolExecutor = new ToolExecutor(
-        process.cwd(),
-        undefined,
-        args.deps.getSkillContent,
-        (name) =>
-        {
-            if (name in v2Registry && !args.runtime.isToolAllowedForStage(sessionRef.current, name))
-                return undefined;
-            return v2Registry[name]
-                ?? (webDoc.trim() ? webToolsRegistry[name] : undefined);
-        },
-        () => [
-            ...args.runtime.getVisibleFigmaToolNames(sessionRef.current, Object.keys(v2Registry)),
-            ...(webDoc.trim() ? webToolNames : []),
-        ],
-        subAgentRunner,
-    );
 
     const createRoleContextManager = (): ContextManager =>
         new ContextManager(
@@ -103,20 +66,7 @@ export function createFigmaSession(args: {
             { maxMessages: 64 },
             args.deps.variableProcessor,
         );
-
-    const createRoleLoop = (contextManager: ContextManager): StreamingAgentLoop =>
-        new StreamingAgentLoop(
-            () => args.deps.getProvider(),
-            contextManager,
-            toolExecutor,
-            {
-                maxStepsPerTurn: 64,
-                maxToolsPerStep: 24,
-                getCallOptions: () => args.deps.getCallOptions?.() ?? {},
-                getRequestDelay: () => args.deps.getRequestDelay?.() ?? 0,
-            },
-        );
-
+    const plannerContext = createRoleContextManager();
     const enhancerContext = createRoleContextManager();
     const designerContext = createRoleContextManager();
     const builderContext = createRoleContextManager();
@@ -125,27 +75,30 @@ export function createFigmaSession(args: {
     const roleSessions: Record<FigmaRole, FigmaRoleSession> = {
         enhancer: {
             role: "enhancer",
+            sessionId: `${id}:enhancer`,
             contextManager: enhancerContext,
         },
         designer: {
             role: "designer",
+            sessionId: `${id}:designer`,
             contextManager: designerContext,
-            agentLoop: createRoleLoop(designerContext),
         },
         builder: {
             role: "builder",
+            sessionId: `${id}:builder`,
             contextManager: builderContext,
-            agentLoop: createRoleLoop(builderContext),
         },
         composer: {
             role: "composer",
+            sessionId: `${id}:composer`,
             contextManager: composerContext,
-            agentLoop: createRoleLoop(composerContext),
         },
     };
 
     const session: FigmaSession = {
         id,
+        plannerSessionId: `${id}:planner`,
+        plannerContextManager: plannerContext,
         roleSessions,
         buffer,
         varStore,
@@ -156,6 +109,7 @@ export function createFigmaSession(args: {
         compositionJsxStore,
         compileArtifactStore,
         orchestration,
+        dispatchOps,
         createdAt: Date.now(),
         lastActivityAt: Date.now(),
     };

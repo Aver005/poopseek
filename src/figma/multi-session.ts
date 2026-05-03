@@ -1,5 +1,4 @@
 import type ContextManager from "@/agent/context-manager";
-import type StreamingAgentLoop from "@/agent/streaming-loop";
 import type { PreparedDesignBrief } from "@/figma/preprocess";
 import type { FigmaRole, FigmaRoleSession, FigmaSession } from "@/figma/application/session/session-types";
 
@@ -19,11 +18,9 @@ export function getRoleContextManager(session: FigmaSession, role: FigmaRole): C
     return getRoleSession(session, role).contextManager;
 }
 
-export function getRoleLoop(session: FigmaSession, role: Exclude<FigmaRole, "enhancer">): StreamingAgentLoop
+export function getPlannerContextManager(session: FigmaSession): ContextManager
 {
-    const loop = getRoleSession(session, role).agentLoop;
-    if (!loop) throw new Error(`Role ${role} has no agent loop`);
-    return loop;
+    return session.plannerContextManager;
 }
 
 export function roleHeader(role: FigmaRole): string

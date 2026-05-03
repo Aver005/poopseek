@@ -309,6 +309,7 @@ function makeDefineTheme(
             collections: {
                 color: Object.fromEntries(tokens.map((token) => [token.token, token.hex])),
                 spacing: {},
+                size: {},
                 radius: {},
                 typography: {},
                 shadow: {},

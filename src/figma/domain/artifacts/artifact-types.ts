@@ -35,6 +35,7 @@ export interface FigmaTokensArtifact extends ArtifactBase
     collections: {
         color: Record<string, string>;
         spacing: Record<string, number>;
+        size: Record<string, number>;
         radius: Record<string, number>;
         typography: Record<string, TypographyToken>;
         shadow: Record<string, ShadowToken>;

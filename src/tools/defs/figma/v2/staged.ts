@@ -272,6 +272,7 @@ function normalizeLegacyColorTokens(args: Record<string, unknown>): Record<strin
 function normalizeCollections(args: Record<string, unknown>): {
     color: Record<string, string>;
     spacing: Record<string, number>;
+    size: Record<string, number>;
     radius: Record<string, number>;
     typography: Record<string, TypographyToken>;
     shadow: Record<string, ShadowToken>;
@@ -290,6 +291,10 @@ function normalizeCollections(args: Record<string, unknown>): {
         spacing: {
             ...normalizeNumberMap(collections.spacing),
             ...flattenNumberishLeaves(collections.spacing),
+        },
+        size: {
+            ...normalizeNumberMap(collections.size),
+            ...flattenNumberishLeaves(collections.size),
         },
         radius: {
             ...normalizeNumberMap(collections.radius),

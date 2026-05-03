@@ -1,22 +1,12 @@
-import { FIGMA_V2_STAGED_TOOLS_DOC } from "@/tools/defs/figma/v2";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
 import {
     applyRenderPolicyToOps,
     buildDerivedSnapshot,
-    buildStageSystemContext,
-    getStageConfig,
     type FigmaDerivedSnapshot,
-    type FigmaStage,
 } from "@/figma/application/orchestration";
 import { planPatchExistingRoot } from "@/figma/domain/plugin/patch-planner";
-import { formatPreparedBrief } from "@/figma/preprocess";
 import type { FigmaOp } from "@/figma/api/contracts";
 import type { FigmaRole, FigmaSession } from "@/figma/application/session/session-types";
-
-export function isFigmaToolName(name: string): boolean
-{
-    return name.startsWith("figma.") || name.startsWith("figma_");
-}
 
 export class FigmaRuntimeSync
 {
@@ -71,78 +61,43 @@ export class FigmaRuntimeSync
         );
     }
 
-    getVisibleFigmaToolNames(session: FigmaSession | null, allNames: string[]): string[]
-    {
-        if (!session) return allNames;
-        const allowed = new Set(getStageConfig(
-            session.orchestration.currentStage,
-            session.orchestration.taskMode,
-        ).allowedTools);
-        if (session.orchestration.currentStage === "idle")
-            return allNames;
-
-        return allNames.filter((name) =>
-            !isFigmaToolName(name) || allowed.has(name),
-        );
-    }
-
-    isToolAllowedForStage(session: FigmaSession | null, name: string): boolean
-    {
-        if (!session) return true;
-        if (!isFigmaToolName(name)) return true;
-        if (session.orchestration.currentStage === "idle") return true;
-
-        const allowed = new Set(getStageConfig(
-            session.orchestration.currentStage,
-            session.orchestration.taskMode,
-        ).allowedTools);
-
-        return allowed.has(name);
-    }
-
     syncSessionRuntimeState(session: FigmaSession): void
     {
         const snapshot = this.buildSnapshot(session);
-        const briefSummary = session.orchestration.currentBrief
-            ? `\n\n## CURRENT BRIEF\n${formatPreparedBrief(session.orchestration.currentBrief)}`
+        const enhancedPromptSummary = session.orchestration.currentEnhancedPrompt?.trim()
+            ? `\n\n## ENHANCED PROMPT\n${session.orchestration.currentEnhancedPrompt.trim()}`
             : "";
-        const rolePromptByStage: Record<Exclude<FigmaRole, "enhancer">, string> = {
+        const rolePromptMap: Record<Exclude<FigmaRole, "enhancer">, string> = {
             designer: this.deps.figmaRolePrompts.designer,
             builder: this.deps.figmaRolePrompts.builder,
             composer: this.deps.figmaRolePrompts.composer,
-        };
-        const roleStageByRole: Record<Exclude<FigmaRole, "enhancer">, FigmaStage> = {
-            designer: "tokens",
-            builder: session.orchestration.currentStage === "primitive-jsx"
-                ? "primitive-jsx"
-                : session.orchestration.currentStage === "primitives-plan"
-                    ? "primitives-plan"
-                    : "primitives-plan",
-            composer: session.orchestration.currentStage === "repair"
-                ? "repair"
-                : session.orchestration.taskMode === "revision"
-                    ? "revision"
-                    : "compose",
         };
 
         for (const role of ["designer", "builder", "composer"] as const)
         {
             const roleSession = session.roleSessions[role];
-            const roleStage = roleStageByRole[role];
             roleSession.contextManager.setFigmaContext(
-                buildStageSystemContext({
-                    basePrompt: `${rolePromptByStage[role].trim()}\n\n${this.resolveStagePrompt(roleStage).trim()}`,
-                    toolsDoc: FIGMA_V2_STAGED_TOOLS_DOC,
-                    stage: roleStage,
-                    mode: session.orchestration.taskMode,
-                    editIntent: session.orchestration.editIntent,
-                    snapshot,
-                    layout: session.orchestration.layout,
-                    availableSkillsHint: this.deps.getAvailableSkillsHint?.(),
-                }) + briefSummary,
+                [
+                    rolePromptMap[role].trim(),
+                    "",
+                    `## TASK MODE\n- taskMode: \`${session.orchestration.taskMode}\`\n- editIntent: \`${session.orchestration.editIntent}\`\n- stage: \`${session.orchestration.currentStage}\``,
+                    "",
+                    "## LAYOUT",
+                    [
+                        `- platform: ${session.orchestration.layout.platform}`,
+                        `- viewport: ${session.orchestration.layout.viewportWidth}x${session.orchestration.layout.viewportHeight}`,
+                        `- contentWidthPolicy: ${session.orchestration.layout.contentWidthPolicy}`,
+                        `- maxContentWidth: ${session.orchestration.layout.maxContentWidth}`,
+                        `- horizontalPadding: ${session.orchestration.layout.horizontalPadding}`,
+                    ].join("\n"),
+                    "",
+                    "## SNAPSHOT",
+                    snapshot.summary,
+                    enhancedPromptSummary,
+                ].join("\n"),
             );
             roleSession.contextManager.setAvailableSkillsHint(this.deps.getAvailableSkillsHint?.() ?? "");
-            roleSession.contextManager.setWebToolsDoc(this.deps.getWebToolsDoc?.() ?? "");
+            roleSession.contextManager.setWebToolsDoc("");
         }
 
         session.roleSessions.enhancer.contextManager.setFigmaContext(
@@ -150,18 +105,6 @@ export class FigmaRuntimeSync
         );
         session.roleSessions.enhancer.contextManager.setAvailableSkillsHint(this.deps.getAvailableSkillsHint?.() ?? "");
         session.roleSessions.enhancer.contextManager.setWebToolsDoc("");
-    }
-
-    resolveStagePrompt(stage: FigmaStage): string
-    {
-        if (stage === "tokens") return this.deps.figmaStagePrompts.tokens;
-        if (stage === "primitives") return this.deps.figmaStagePrompts.primitives;
-        if (stage === "primitives-plan") return this.deps.figmaStagePrompts.primitives;
-        if (stage === "primitive-jsx") return this.deps.figmaStagePrompts.primitives;
-        if (stage === "compose") return this.deps.figmaStagePrompts.compose;
-        if (stage === "repair") return this.deps.figmaStagePrompts.repair;
-        if (stage === "revision") return this.deps.figmaStagePrompts.revision;
-        return this.deps.figmaPrompt;
     }
 }
 

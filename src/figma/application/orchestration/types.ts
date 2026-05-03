@@ -58,6 +58,7 @@ export interface FigmaOrchestrationState
     revisionCount: number;
     lastUserPrompt: string;
     layout: LayoutConstraints;
+    currentEnhancedPrompt?: string;
     currentBrief?: PreparedDesignBrief;
     pluginSnapshot?: FigmaPluginSnapshot;
     activeRootNodeId?: string;
@@ -74,13 +75,6 @@ export interface FigmaOrchestratorStores
     compositionMeta: FigmaCompositionMetaArtifact[];
     compositionJsx: FigmaCompositionJsxArtifact[];
     compileArtifacts: FigmaCompileArtifact[];
-}
-
-export interface StageConfig
-{
-    stage: FigmaStage;
-    allowedTools: string[];
-    requiredTools: string[];
 }
 
 export interface FigmaOpLike

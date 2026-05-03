@@ -1,4 +1,5 @@
 import type { FigmaChatRequest, FigmaChatResponse } from "@/figma/api/contracts";
+import { FigmaUserFacingError } from "@/figma/application/sub-agents/figma-sub-agents";
 import { chatResponse, invalidJson, jsonWithCors, stringifyError, type FigmaHttpContext } from "./common";
 
 export async function handleChat(req: Request, context: FigmaHttpContext): Promise<Response>
@@ -26,11 +27,27 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             sessionId: session.id,
             text,
             ops: [],
+            agentSessions: {
+                planner: session.plannerSessionId,
+                enhancer: session.roleSessions.enhancer.sessionId,
+                designer: session.roleSessions.designer.sessionId,
+                builder: session.roleSessions.builder.sessionId,
+                composer: session.roleSessions.composer.sessionId,
+            },
         };
         return chatResponse(response, context.getCorsHeaders);
     }
     catch (error)
     {
+        if (error instanceof FigmaUserFacingError)
+        {
+            return chatResponse({
+                sessionId: session.id,
+                text: error.message,
+                ops: [],
+                agentSessions: error.agentSessions,
+            }, context.getCorsHeaders);
+        }
         return jsonWithCors({ error: stringifyError(error) }, { status: 500 }, context.getCorsHeaders);
     }
 }

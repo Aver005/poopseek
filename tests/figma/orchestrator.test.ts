@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
     applyRenderPolicyToOps,
     buildDerivedSnapshot,
-    buildStageUserMessage,
-    getStageConfig,
     inferEditIntent,
     inferLayoutConstraints,
     inferTaskMode,
@@ -73,7 +71,7 @@ describe("figma orchestrator", () =>
             createdAt: Date.now(),
             themeName: "food",
             modes: ["light"],
-            collections: { color: { canvas: "#fff" }, spacing: {}, radius: {}, typography: {}, shadow: {} },
+            collections: { color: { canvas: "#fff" }, spacing: {}, size: {}, radius: {}, typography: {}, shadow: {} },
             aliases: {},
         };
 
@@ -197,83 +195,4 @@ describe("figma orchestrator", () =>
         expect(snapshot.summary).toContain("snapshot source: plugin");
     });
 
-    it("limits stage tools for compose stage", () =>
-    {
-        const config = getStageConfig("compose", "initial");
-        expect(config.allowedTools).toContain("figma.compose.meta");
-        expect(config.allowedTools).toContain("figma.compose.jsx");
-        expect(config.allowedTools).toContain("figma.compile");
-        expect(config.requiredTools).toEqual(["figma.compose.meta", "figma.compose.jsx", "figma.compile"]);
-    });
-
-    it("splits primitives into plan stage and per-primitive jsx stage", () =>
-    {
-        const planConfig = getStageConfig("primitives-plan", "initial");
-        expect(planConfig.requiredTools).toEqual(["figma.primitives.plan"]);
-        expect(planConfig.allowedTools).not.toContain("figma.primitives.jsx");
-
-        const jsxConfig = getStageConfig("primitive-jsx", "initial");
-        expect(jsxConfig.requiredTools).toEqual(["figma.primitives.jsx"]);
-        expect(jsxConfig.allowedTools).toContain("figma.primitives.jsx");
-        expect(jsxConfig.allowedTools).not.toContain("figma.compose.meta");
-    });
-
-    it("injects active artifact ids and schema reminders into stage user message", () =>
-    {
-        const snapshot = buildDerivedSnapshot(
-            {
-                buffer: new JsxBuffer(),
-                tokens: [{
-                    id: "tokens_openai_v1",
-                    type: "figma.tokens",
-                    version: 1,
-                    createdAt: Date.now(),
-                    themeName: "openai",
-                    modes: ["light"],
-                    collections: { color: { canvas: "#fff" }, spacing: {}, radius: {}, typography: {}, shadow: {} },
-                    aliases: {},
-                }],
-                primitivePlans: [{
-                    id: "primitives_openai_v1",
-                    type: "figma.primitives.plan",
-                    version: 1,
-                    createdAt: Date.now(),
-                    tokensArtifactId: "tokens_openai_v1",
-                    entries: [],
-                }],
-                primitiveJsx: [{
-                    id: "primitives_jsx_openai_v1",
-                    type: "figma.primitives.jsx",
-                    version: 1,
-                    createdAt: Date.now(),
-                    primitivesArtifactId: "primitives_openai_v1",
-                    entries: [],
-                }],
-                compositionMeta: [],
-                compositionJsx: [],
-                compileArtifacts: [],
-            },
-            {
-                taskMode: "initial",
-                editIntent: "new-screen",
-                currentStage: "primitives",
-                hasPresentedResult: false,
-                revisionCount: 0,
-                lastUserPrompt: "сайт в стиле OpenAI",
-                layout: inferLayoutConstraints("mobile"),
-            },
-        );
-
-        const text = buildStageUserMessage({
-            stage: "primitives",
-            userPrompt: "сайт в стиле OpenAI",
-            snapshot,
-            layout: inferLayoutConstraints("mobile"),
-        });
-
-        expect(text).toContain("tokensArtifactId: tokens_openai_v1");
-        expect(text).toContain("primitivesArtifactId: primitives_openai_v1");
-        expect(text).toContain("VALID `level`");
-        expect(text).toContain("INVALID JSX");
-    });
 });

@@ -17,6 +17,7 @@ export interface FigmaChatResponse
     sessionId: string;
     text: string;
     ops: FigmaOp[];
+    agentSessions?: Record<string, string>;
 }
 
 export interface FigmaSnapshotRequest
