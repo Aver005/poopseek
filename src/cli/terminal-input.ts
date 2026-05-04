@@ -432,6 +432,14 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
 
     const submit = (rawValue: string): void =>
     {
+        const expandedValue = expandPasteSentinels(rawValue, pasteBlocks);
+        const trimmedValue = expandedValue.trim();
+        if (trimmedValue.length === 0)
+        {
+            pasteBlocks.clear();
+            return;
+        }
+
         const wasSuspended = vm.suspended;
         if (!wasSuspended)
         {
@@ -441,13 +449,8 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         state.value = "";
         state.cursor = 0;
 
-        const expandedValue = expandPasteSentinels(rawValue, pasteBlocks);
         pasteBlocks.clear();
-        const trimmedValue = expandedValue.trim();
-        if (trimmedValue.length > 0)
-        {
-            if (history.at(-1) !== trimmedValue) history.push(trimmedValue);
-        }
+        if (history.at(-1) !== trimmedValue) history.push(trimmedValue);
         historyIndex = -1;
         historyDraft = "";
         cmdTabIndex = -1;
