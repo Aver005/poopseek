@@ -368,6 +368,10 @@ function applyCornerRadii(
         (node as SceneNode & { topLeftRadius: number }).topLeftRadius = Number(op.cornerRadiusTopLeft);
     if ("topRightRadius" in node && op.cornerRadiusTopRight !== undefined)
         (node as SceneNode & { topRightRadius: number }).topRightRadius = Number(op.cornerRadiusTopRight);
+    if ("bottomLeftRadius" in node && op.cornerRadiusBottomLeft !== undefined)
+        (node as SceneNode & { bottomLeftRadius: number }).bottomLeftRadius = Number(op.cornerRadiusBottomLeft);
+    if ("bottomRightRadius" in node && op.cornerRadiusBottomRight !== undefined)
+        (node as SceneNode & { bottomRightRadius: number }).bottomRightRadius = Number(op.cornerRadiusBottomRight);
 }
 
 async function executeOps(ops: FigmaOp[]): Promise<number>

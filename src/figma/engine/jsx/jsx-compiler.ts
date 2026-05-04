@@ -195,15 +195,15 @@ function applyGradient(state: State, nodeId: string, value: unknown): void
     const gradient = str(value);
     if (!gradient) return;
     const parts = gradient.split(":");
-    if (parts.length === 2)
+    if (parts.length === 3)
     {
-        const [from, to, angle = "0"] = parts;
-        push(state, { type: "set_gradient", nodeId, from, to, angle: Number(angle) });
+        const [from, to, angle] = parts;
+        push(state, { type: "set_gradient", nodeId, from, to, angle: Number(angle ?? "0") });
     }
-    else if (parts.length === 3)
+    else if (parts.length === 4)
     {
-        const [from, via, to, angle = "0"] = parts;
-        push(state, { type: "set_gradient_three", nodeId, from, via, to, angle: Number(angle) });
+        const [from, via, to, angle] = parts;
+        push(state, { type: "set_gradient_three", nodeId, from, via, to, angle: Number(angle ?? "0") });
     }
 }
 
@@ -272,10 +272,17 @@ function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" |
 {
     const props = { ...defaults, ...mergeProps(node) };
     const parent = top(state);
-    const layoutMode = forcedLayout ?? (str(props.layoutMode) as "HORIZONTAL" | "VERTICAL" | undefined);
+    // Auto-infer layout when gap is set but no explicit layout declared
+    const inferredLayout = (props.gap !== undefined && !forcedLayout && !str(props.layoutMode))
+        ? "VERTICAL"
+        : undefined;
+    const layoutMode = forcedLayout ?? (str(props.layoutMode) as "HORIZONTAL" | "VERTICAL" | undefined) ?? inferredLayout;
     const id = str(props.id) ?? uid(state, layoutMode === "VERTICAL" ? "vstk" : layoutMode === "HORIZONTAL" ? "hstk" : "frm");
-    const fillParent = props.widthMode === "FILL" || parent?.layout === "VERTICAL";
-    const fillParentHeight = props.heightMode === "FILL";
+    // Explicit w/h takes priority — don't override with fillParent
+    const hasExplicitWidth = num(props.w ?? props.width) !== undefined;
+    const hasExplicitHeight = num(props.h ?? props.height) !== undefined;
+    const fillParent = !hasExplicitWidth && (props.widthMode === "FILL" || parent?.layout === "VERTICAL");
+    const fillParentHeight = !hasExplicitHeight && props.heightMode === "FILL";
     const width = fillParent ? undefined : inferWidth(props, parent);
     const height = inferHeight(props, parent, layoutMode ? undefined : 100);
     const autoWidth = width === undefined;
@@ -307,6 +314,8 @@ function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" |
         ...(num(props.radius ?? props.cornerRadius) !== undefined ? { cornerRadius: num(props.radius ?? props.cornerRadius) } : {}),
         ...(props.radiusTopLeft !== undefined ? { cornerRadiusTopLeft: num(props.radiusTopLeft) } : {}),
         ...(props.radiusTopRight !== undefined ? { cornerRadiusTopRight: num(props.radiusTopRight) } : {}),
+        ...(props.radiusBottomLeft !== undefined ? { cornerRadiusBottomLeft: num(props.radiusBottomLeft) } : {}),
+        ...(props.radiusBottomRight !== undefined ? { cornerRadiusBottomRight: num(props.radiusBottomRight) } : {}),
         ...(fillParent ? { fillParent: true } : {}),
         ...(fillParentHeight ? { fillParentHeight: true } : {}),
         ...(props.clipContent ? { clipContent: true } : {}),
@@ -668,6 +677,8 @@ function compileImage(node: JsxNode, state: State): void
         cornerRadius: num(props.radius ?? props.cornerRadius) ?? 12,
         ...(props.radiusTopLeft !== undefined ? { cornerRadiusTopLeft: num(props.radiusTopLeft) } : {}),
         ...(props.radiusTopRight !== undefined ? { cornerRadiusTopRight: num(props.radiusTopRight) } : {}),
+        ...(props.radiusBottomLeft !== undefined ? { cornerRadiusBottomLeft: num(props.radiusBottomLeft) } : {}),
+        ...(props.radiusBottomRight !== undefined ? { cornerRadiusBottomRight: num(props.radiusBottomRight) } : {}),
         ...(fillParent && parent?.layout === "VERTICAL" ? { fillParent: true } : {}),
         ...(props.clipContent ? { clipContent: true } : { clipContent: true }),
     });
@@ -692,6 +703,10 @@ function compileRect(node: JsxNode, state: State): void
         ...position(props),
         ...(!props.gradient && props.fill !== undefined ? { fill: props.fill } : {}),
         ...(num(props.radius ?? props.cornerRadius) !== undefined ? { cornerRadius: num(props.radius ?? props.cornerRadius) } : {}),
+        ...(props.radiusTopLeft !== undefined ? { cornerRadiusTopLeft: num(props.radiusTopLeft) } : {}),
+        ...(props.radiusTopRight !== undefined ? { cornerRadiusTopRight: num(props.radiusTopRight) } : {}),
+        ...(props.radiusBottomLeft !== undefined ? { cornerRadiusBottomLeft: num(props.radiusBottomLeft) } : {}),
+        ...(props.radiusBottomRight !== undefined ? { cornerRadiusBottomRight: num(props.radiusBottomRight) } : {}),
     });
 
     applyGradient(state, id, props.gradient);
