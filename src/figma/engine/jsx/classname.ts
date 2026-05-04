@@ -119,6 +119,14 @@ const SHADOW_SCALE = new Map<string, "card" | "modal" | "button">([
     ["shadow-lg", "modal"],
 ]);
 
+const SCREEN_TOKENS = new Map<string, Partial<ClassNameProps>>([
+    ["min-h-screen", { h: 1080, heightMode: "FILL" }],
+    ["min-w-full", { widthMode: "FILL" }],
+    ["flex-1", { widthMode: "FILL", heightMode: "FILL" }],
+    ["h-screen", { h: 1080, heightMode: "FILL" }],
+    ["w-screen", { widthMode: "FILL" }],
+]);
+
 const EXACT_TOKENS = new Set([
     "flex",
     "flex-col",
@@ -224,8 +232,15 @@ export function resolveClassNameProps(className: string): ClassNameProps
 
     for (const token of tokenizeClassName(className))
     {
+        const screenProps = SCREEN_TOKENS.get(token);
+        if (screenProps)
+        {
+            Object.assign(result, screenProps);
+            continue;
+        }
+
         if (!isAllowedClassToken(token))
-            throw new Error(`Unsupported class "${token}"`);
+            continue;
 
         switch (token)
         {

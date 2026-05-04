@@ -8,6 +8,7 @@ import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
+import { setActiveTheme } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 import { makeHandymanTools } from "@/figma/engine/handyman/handyman-tools";
 import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
@@ -55,6 +56,10 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         const tokens = await runDesigner(subAgentRunner, enhanced, designerPrompt);
 
         session.varStore.setTokens(tokens);
+
+        const themeTokens = session.varStore.extractThemeTokens();
+        if (themeTokens.length > 0)
+            setActiveTheme({ tokens: themeTokens });
 
         const builderCtx = session.roleSessions["primitives-builder"].contextManager;
         const jsx = await runBuilder(deps, builderCtx, builderPrompt, enhanced, tokens);

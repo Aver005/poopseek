@@ -106,7 +106,7 @@ function appendChild(
 
 export function parseJsx(input: string): JsxNode[]
 {
-    const source = input.replace(/=\{([^}]*)\}/g, '="$1"');
+    const source = input.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/=\{([^}]*)\}/g, '="$1"');
     const roots: JsxNode[] = [];
     const stack: JsxNode[] = [];
     const tagRe = /<[^>]+>/g;
