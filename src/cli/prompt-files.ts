@@ -10,19 +10,11 @@ export type PromptFiles = {
     roleCreatorPrompt: string;
     poetPrompt: string;
     figmaPrompt: string;
-    figmaStagePrompts: {
-        preprocess: string;
-        tokens: string;
-        primitives: string;
-        compose: string;
-        repair: string;
-        revision: string;
-    };
     figmaRolePrompts: {
         enhancer: string;
+        styler: string;
+        primitivesBuilder: string;
         designer: string;
-        builder: string;
-        composer: string;
     };
 };
 
@@ -75,16 +67,10 @@ export async function readPromptFiles(): Promise<PromptFiles>
     const roleCreatorPromptPath = resolveExistingAssetPath("assets/prompts/role-creator.prompt.md");
     const poetPromptPath = resolveExistingAssetPath("assets/prompts/poet.prompt.md");
     const figmaPromptPath = resolveExistingAssetPath("assets/prompts/figma.prompt.md");
-    const figmaPreprocessPromptPath = resolveExistingAssetPath("assets/prompts/figma/preprocess.prompt.md");
-    const figmaTokensPromptPath = resolveExistingAssetPath("assets/prompts/figma/tokens.prompt.md");
-    const figmaPrimitivesPromptPath = resolveExistingAssetPath("assets/prompts/figma/primitives.prompt.md");
-    const figmaComposePromptPath = resolveExistingAssetPath("assets/prompts/figma/compose.prompt.md");
-    const figmaRepairPromptPath = resolveExistingAssetPath("assets/prompts/figma/repair.prompt.md");
-    const figmaRevisionPromptPath = resolveExistingAssetPath("assets/prompts/figma/revision.prompt.md");
     const figmaEnhancerPromptPath = resolveExistingAssetPath("assets/prompts/figma/enhancer.prompt.md");
+    const figmaStylerPromptPath = resolveExistingAssetPath("assets/prompts/figma/styler.prompt.md");
+    const figmaPrimitivesBuilderPromptPath = resolveExistingAssetPath("assets/prompts/figma/primitives-builder.prompt.md");
     const figmaDesignerPromptPath = resolveExistingAssetPath("assets/prompts/figma/designer.prompt.md");
-    const figmaBuilderPromptPath = resolveExistingAssetPath("assets/prompts/figma/builder.prompt.md");
-    const figmaComposerPromptPath = resolveExistingAssetPath("assets/prompts/figma/composer.prompt.md");
 
     const [
         basePrompt,
@@ -95,16 +81,10 @@ export async function readPromptFiles(): Promise<PromptFiles>
         roleCreatorPrompt,
         poetPrompt,
         figmaPrompt,
-        figmaPreprocessPrompt,
-        figmaTokensPrompt,
-        figmaPrimitivesPrompt,
-        figmaComposePrompt,
-        figmaRepairPrompt,
-        figmaRevisionPrompt,
         figmaEnhancerPrompt,
+        figmaStylerPrompt,
+        figmaPrimitivesBuilderPrompt,
         figmaDesignerPrompt,
-        figmaBuilderPrompt,
-        figmaComposerPrompt,
     ] = await Promise.all([
         fs.promises.readFile(basePromptPath, "utf8"),
         fs.promises.readFile(toolsPromptPath, "utf8"),
@@ -114,16 +94,10 @@ export async function readPromptFiles(): Promise<PromptFiles>
         fs.promises.readFile(roleCreatorPromptPath, "utf8"),
         fs.promises.readFile(poetPromptPath, "utf8"),
         fs.promises.readFile(figmaPromptPath, "utf8"),
-        fs.promises.readFile(figmaPreprocessPromptPath, "utf8"),
-        fs.promises.readFile(figmaTokensPromptPath, "utf8"),
-        fs.promises.readFile(figmaPrimitivesPromptPath, "utf8"),
-        fs.promises.readFile(figmaComposePromptPath, "utf8"),
-        fs.promises.readFile(figmaRepairPromptPath, "utf8"),
-        fs.promises.readFile(figmaRevisionPromptPath, "utf8"),
         fs.promises.readFile(figmaEnhancerPromptPath, "utf8"),
+        fs.promises.readFile(figmaStylerPromptPath, "utf8"),
+        fs.promises.readFile(figmaPrimitivesBuilderPromptPath, "utf8"),
         fs.promises.readFile(figmaDesignerPromptPath, "utf8"),
-        fs.promises.readFile(figmaBuilderPromptPath, "utf8"),
-        fs.promises.readFile(figmaComposerPromptPath, "utf8"),
     ]);
 
     return {
@@ -135,19 +109,11 @@ export async function readPromptFiles(): Promise<PromptFiles>
         roleCreatorPrompt,
         poetPrompt,
         figmaPrompt,
-        figmaStagePrompts: {
-            preprocess: figmaPreprocessPrompt,
-            tokens: figmaTokensPrompt,
-            primitives: figmaPrimitivesPrompt,
-            compose: figmaComposePrompt,
-            repair: figmaRepairPrompt,
-            revision: figmaRevisionPrompt,
-        },
         figmaRolePrompts: {
             enhancer: figmaEnhancerPrompt,
+            styler: figmaStylerPrompt,
+            primitivesBuilder: figmaPrimitivesBuilderPrompt,
             designer: figmaDesignerPrompt,
-            builder: figmaBuilderPrompt,
-            composer: figmaComposerPrompt,
         },
     };
 }

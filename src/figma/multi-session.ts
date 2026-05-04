@@ -18,17 +18,12 @@ export function getRoleContextManager(session: FigmaSession, role: FigmaRole): C
     return getRoleSession(session, role).contextManager;
 }
 
-export function getPlannerContextManager(session: FigmaSession): ContextManager
-{
-    return session.plannerContextManager;
-}
-
 export function roleHeader(role: FigmaRole): string
 {
     if (role === "enhancer") return "ENHANCER";
-    if (role === "designer") return "DESIGNER";
-    if (role === "builder") return "BUILDER";
-    return "COMPOSER";
+    if (role === "styler") return "STYLER";
+    if (role === "primitives-builder") return "PRIMITIVES_BUILDER";
+    return "DESIGNER";
 }
 
 export function buildRolePromptEnvelope(args: {

@@ -7,19 +7,11 @@ export interface FigmaServerDeps
     basePrompt: string;
     toolsPrompt: string;
     figmaPrompt: string;
-    figmaStagePrompts: {
-        preprocess: string;
-        tokens: string;
-        primitives: string;
-        compose: string;
-        repair: string;
-        revision: string;
-    };
     figmaRolePrompts: {
         enhancer: string;
+        styler: string;
+        primitivesBuilder: string;
         designer: string;
-        builder: string;
-        composer: string;
     };
     variableProcessor: VariableProcessor;
     getCallOptions?: () => ProviderCallOptions;

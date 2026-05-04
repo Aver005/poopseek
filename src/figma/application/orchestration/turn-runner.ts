@@ -1,25 +1,21 @@
+import type { FigmaOp } from "@/figma/api/contracts";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
 import type { FigmaRuntimeSync } from "@/figma/application/session/runtime-sync";
 import {
-    compileComposition,
-    saveComposerOutput,
-    saveDesignerOutput,
-    savePlannerOutput,
-    savePrimitiveJsx,
-} from "@/figma/application/orchestration/artifact-pipeline";
-import { runEnhancer } from "@/figma/application/enhancer/run-enhancer";
+    runEnhancerSession,
+    runStylerSession,
+    runPrimitivesBuilderSession,
+    runDesignerEditSession,
+} from "@/figma/application/sub-agents/figma-sub-agents";
+import type { DesignerToolCall } from "@/figma/application/sub-agents/figma-sub-agents";
 import {
     inferEditIntent,
     inferLayoutConstraints,
     inferTaskMode,
 } from "@/figma/application/orchestration";
-import {
-    FigmaUserFacingError,
-    runBuilderSession,
-    runComposerSession,
-    runDesignerSession,
-    runPlannerSession,
-} from "@/figma/application/sub-agents/figma-sub-agents";
+import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
+import { parseJsx, JsxParseError } from "@/figma/engine/jsx/jsx-parser";
+import { assertValidJsx, formatJsxValidationErrors, JsxValidationException } from "@/figma/engine/jsx/jsx-validator";
 import type { FigmaSession } from "@/figma/application/session/session-types";
 
 export class FigmaTurnRunner
@@ -37,130 +33,179 @@ export class FigmaTurnRunner
         session.orchestration.taskMode = inferTaskMode(session.orchestration.hasPresentedResult);
         session.orchestration.editIntent = inferEditIntent(userMessage, session.orchestration.hasPresentedResult);
         session.orchestration.layout = inferLayoutConstraints(userMessage, session.orchestration.layout);
-        session.orchestration.currentEnhancedPrompt = await runEnhancer(this.deps, session, userMessage);
         this.runtime.syncSessionRuntimeState(session);
 
-        return this.runMainPipeline(session, userMessage);
+        if (session.orchestration.taskMode === "revision")
+            return this.runRevision(session, userMessage);
+
+        return this.runInitialPipeline(session, userMessage);
     }
 
-    private async runMainPipeline(session: FigmaSession, userMessage: string): Promise<string>
+    private async runInitialPipeline(session: FigmaSession, userMessage: string): Promise<string>
     {
-        const enhancedPrompt = session.orchestration.currentEnhancedPrompt ?? userMessage;
-
-        session.orchestration.currentStage = "tokens";
+        session.orchestration.currentStage = "enhancing";
         this.runtime.syncSessionRuntimeState(session);
-        const design = await runDesignerSession(this.deps, session, userMessage, enhancedPrompt);
-        const tokensArtifact = saveDesignerOutput(session, design);
+        const enhancedPrompt = await runEnhancerSession(this.deps, session, userMessage);
+        session.orchestration.currentEnhancedPrompt = enhancedPrompt;
 
-        session.orchestration.currentStage = "primitives-plan";
+        session.orchestration.currentStage = "styling";
         this.runtime.syncSessionRuntimeState(session);
-        const planner = await runPlannerSession(this.deps, session, userMessage, enhancedPrompt, design);
-        const primitivePlanArtifact = savePlannerOutput(session, tokensArtifact.id, planner, enhancedPrompt);
-        session.orchestration.activeCompositionArtifactId = undefined;
-        session.orchestration.activeCompileArtifactId = undefined;
+        const tokens = await runStylerSession(this.deps, session, enhancedPrompt);
 
-        session.orchestration.currentStage = "primitive-jsx";
-        for (const primitive of planner.primitives)
+        session.varStore.setTokens(tokens);
+        session.dispatchOps([{ type: "set_variables", tokens }]);
+
+        session.orchestration.currentStage = "building-primitives";
+        this.runtime.syncSessionRuntimeState(session);
+        const primitivesJsx = await runPrimitivesBuilderSession(this.deps, session, enhancedPrompt);
+
+        session.orchestration.currentStage = "assembling";
+        this.runtime.syncSessionRuntimeState(session);
+        const frameJsx = this.assembleFrame(primitivesJsx, session.orchestration.layout);
+        const ops = this.compileJsxToOps(frameJsx);
+        session.buffer.reset();
+        session.dispatchOps(ops);
+
+        session.orchestration.hasPresentedResult = true;
+        session.orchestration.currentStage = "idle";
+        this.runtime.syncSessionRuntimeState(session);
+
+        return [
+            "Готово. Экран собран и отправлен в Figma.",
+            `- mode: ${session.orchestration.taskMode}`,
+            `- editIntent: ${session.orchestration.editIntent}`,
+            `- tokens: ${tokens.length}`,
+            `- enhancerSessionId: ${session.roleSessions.enhancer.sessionId}`,
+            `- stylerSessionId: ${session.roleSessions.styler.sessionId}`,
+            `- primitivesBuilderSessionId: ${session.roleSessions["primitives-builder"].sessionId}`,
+        ].join("\n");
+    }
+
+    private async runRevision(session: FigmaSession, userMessage: string): Promise<string>
+    {
+        session.orchestration.currentStage = "revision";
+        this.runtime.syncSessionRuntimeState(session);
+
+        const toolCalls = await runDesignerEditSession(this.deps, session, userMessage);
+        const ops = this.compileToolCallsToOps(toolCalls);
+        if (ops.length > 0)
+            session.dispatchOps(ops);
+
+        session.orchestration.revisionCount += 1;
+        session.orchestration.currentStage = "idle";
+        this.runtime.syncSessionRuntimeState(session);
+
+        return [
+            "Готово. Дизайнер внёс правки в Figma.",
+            `- mode: ${session.orchestration.taskMode}`,
+            `- editIntent: ${session.orchestration.editIntent}`,
+            `- toolCallCount: ${toolCalls.length}`,
+            `- designerSessionId: ${session.roleSessions.designer.sessionId}`,
+        ].join("\n");
+    }
+
+    private assembleFrame(primitivesJsx: string, layout: FigmaSession["orchestration"]["layout"]): string
+    {
+        const widthClass = layout.contentWidthPolicy === "full-bleed"
+            ? "w-full"
+            : `max-w-[${layout.maxContentWidth}px]`;
+        const paddingClass = layout.horizontalPadding > 0
+            ? `px-[${layout.horizontalPadding}px]`
+            : "";
+        const classes = ["min-h-dvh bg-background", widthClass, paddingClass]
+            .filter(Boolean)
+            .join(" ");
+
+        return [
+            `<Frame id="root-frame" name="Screen" className="${classes}">`,
+            primitivesJsx
+                .split("\n")
+                .map((line) => `    ${line}`)
+                .join("\n"),
+            "</Frame>",
+        ].join("\n");
+    }
+
+    private compileJsxToOps(jsx: string): FigmaOp[]
+    {
+        let ops: FigmaOp[];
+        try
         {
-            this.runtime.syncSessionRuntimeState(session);
-            const latestJsxArtifact = session.primitiveJsxStore.findLatestByPlanId(primitivePlanArtifact.id);
-            const builtPrimitiveNames = latestJsxArtifact?.entries.map((entry) => entry.name) ?? [];
-            const jsx = await runBuilderSession({
-                deps: this.deps,
-                session,
-                userMessage,
-                enhancedPrompt,
-                design,
-                planner,
-                primitive,
-                builtPrimitiveNames,
-            });
-            savePrimitiveJsx(session, primitivePlanArtifact.id, primitive.name, jsx);
+            const nodes = parseJsx(jsx);
+            assertValidJsx(nodes);
+            ops = compileJsx(nodes) as FigmaOp[];
+        }
+        catch (error)
+        {
+            if (error instanceof JsxParseError)
+                throw new Error(`JSX parse error @ ${error.loc.line}:${error.loc.column}: ${error.message}`);
+            if (error instanceof JsxValidationException)
+                throw new Error(formatJsxValidationErrors(error.errors));
+            throw error instanceof Error ? error : new Error(String(error));
         }
 
-        const primitivesJsxArtifact = session.primitiveJsxStore.findLatestByPlanId(primitivePlanArtifact.id);
-        if (!primitivesJsxArtifact)
-            throw new Error(`Primitives JSX artifact for "${primitivePlanArtifact.id}" was not created`);
+        if (ops.length === 0)
+            throw new Error("Compile produced 0 operations");
 
-        session.orchestration.currentStage = session.orchestration.taskMode === "revision" ? "revision" : "compose";
-        this.runtime.syncSessionRuntimeState(session);
-        let lastComposerError = "";
+        return ops;
+    }
 
-        for (let attempt = 1; attempt <= 3; attempt += 1)
+    private compileToolCallsToOps(toolCalls: DesignerToolCall[]): FigmaOp[]
+    {
+        const ops: FigmaOp[] = [];
+
+        for (const call of toolCalls)
         {
-            const composition = await runComposerSession({
-                deps: this.deps,
-                session,
-                userMessage,
-                enhancedPrompt,
-                design,
-                planner,
-                builtPrimitives: primitivesJsxArtifact.entries.map((entry) => ({ name: entry.name, jsx: entry.jsx })),
-                compileError: lastComposerError || undefined,
-            });
-
-            try
+            switch (call.tool)
             {
-                const compositionArtifact = saveComposerOutput(
-                    session,
-                    tokensArtifact.id,
-                    primitivePlanArtifact.id,
-                    primitivesJsxArtifact.id,
-                    composition,
-                );
-                session.orchestration.activeCompositionArtifactId = compositionArtifact.id;
-                const compileArtifact = compileComposition(session, compositionArtifact.id);
-                session.orchestration.activeCompileArtifactId = compileArtifact.id;
-                session.orchestration.hasPresentedResult = true;
-                session.orchestration.revisionCount += session.orchestration.taskMode === "revision" ? 1 : 0;
-                session.orchestration.currentStage = "idle";
-                this.runtime.syncSessionRuntimeState(session);
-
-                return [
-                    "Готово. Основной агент собрал экран и отправил его в Figma.",
-                    `- mode: ${session.orchestration.taskMode}`,
-                    `- editIntent: ${session.orchestration.editIntent}`,
-                    `- screenName: ${planner.screenName}`,
-                    `- tokensArtifactId: ${tokensArtifact.id}`,
-                    `- primitivesArtifactId: ${primitivePlanArtifact.id}`,
-                    `- primitivesJsxArtifactId: ${primitivesJsxArtifact.id}`,
-                    `- compositionArtifactId: ${compositionArtifact.id}`,
-                    `- compileArtifactId: ${compileArtifact.id}`,
-                    `- plannerSessionId: ${session.plannerSessionId}`,
-                    `- enhancerSessionId: ${session.roleSessions.enhancer.sessionId}`,
-                    `- designerSessionId: ${session.roleSessions.designer.sessionId}`,
-                    `- builderSessionId: ${session.roleSessions.builder.sessionId}`,
-                    `- composerSessionId: ${session.roleSessions.composer.sessionId}`,
-                ].join("\n");
-            }
-            catch (error)
-            {
-                lastComposerError = error instanceof Error ? error.message : String(error);
-                if (attempt >= 3)
+                case "figma.set-inner":
                 {
-                    throw new FigmaUserFacingError(
-                        [
-                            "Composer не смог собрать валидную композицию после 3 попыток.",
-                            `Последняя ошибка: ${lastComposerError}`,
-                            `plannerSessionId: ${session.plannerSessionId}`,
-                            `enhancerSessionId: ${session.roleSessions.enhancer.sessionId}`,
-                            `designerSessionId: ${session.roleSessions.designer.sessionId}`,
-                            `builderSessionId: ${session.roleSessions.builder.sessionId}`,
-                            `composerSessionId: ${session.roleSessions.composer.sessionId}`,
-                        ].join("\n"),
-                        {
-                            planner: session.plannerSessionId,
-                            enhancer: session.roleSessions.enhancer.sessionId,
-                            designer: session.roleSessions.designer.sessionId,
-                            builder: session.roleSessions.builder.sessionId,
-                            composer: session.roleSessions.composer.sessionId,
-                        },
-                    );
+                    const id = call.args.id as string;
+                    const source = call.args.source as string;
+                    if (!id || !source) continue;
+                    const childOps = this.compileJsxToOps(source);
+                    ops.push({ type: "replace_children", nodeId: id, childOps });
+                    break;
+                }
+
+                case "figma.set-outer":
+                {
+                    const source = call.args.source as string;
+                    if (!source) continue;
+                    const nodeOps = this.compileJsxToOps(source);
+                    const id = call.args.id as string;
+                    if (!id) continue;
+                    ops.push({ type: "replace_node", nodeId: id, childOps: nodeOps });
+                    break;
+                }
+
+                case "figma.remove":
+                {
+                    const id = call.args.id as string;
+                    if (!id) continue;
+                    ops.push({ type: "delete_node", nodeId: id });
+                    break;
+                }
+
+                case "figma.find":
+                {
+                    const pattern = call.args.pattern as string;
+                    if (!pattern) continue;
+                    ops.push({ type: "find_nodes", pattern });
+                    break;
+                }
+
+                case "figma.create-frame":
+                {
+                    const source = call.args.source as string;
+                    if (!source) continue;
+                    const frameOps = this.compileJsxToOps(source);
+                    ops.push(...frameOps);
+                    break;
                 }
             }
         }
 
-        throw new Error("Composer pipeline exited unexpectedly");
+        return ops;
     }
 }
-

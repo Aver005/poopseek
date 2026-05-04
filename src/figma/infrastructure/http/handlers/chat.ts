@@ -28,11 +28,10 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             text,
             ops: [],
             agentSessions: {
-                planner: session.plannerSessionId,
                 enhancer: session.roleSessions.enhancer.sessionId,
+                styler: session.roleSessions.styler.sessionId,
+                "primitives-builder": session.roleSessions["primitives-builder"].sessionId,
                 designer: session.roleSessions.designer.sessionId,
-                builder: session.roleSessions.builder.sessionId,
-                composer: session.roleSessions.composer.sessionId,
             },
         };
         return chatResponse(response, context.getCorsHeaders);

@@ -14,12 +14,10 @@ export type FigmaTaskMode = "initial" | "revision";
 export type FigmaEditIntent = "edit-existing" | "fork-variant" | "new-screen";
 export type FigmaStage =
     | "idle"
-    | "tokens"
-    | "primitives"
-    | "primitives-plan"
-    | "primitive-jsx"
-    | "compose"
-    | "repair"
+    | "enhancing"
+    | "styling"
+    | "building-primitives"
+    | "assembling"
     | "revision";
 export type FigmaPlatform = "mobile" | "tablet" | "desktop";
 export type ContentWidthPolicy = "full-bleed" | "inset" | "centered" | "split";

@@ -66,11 +66,10 @@ export function createFigmaSession(args: {
             { maxMessages: 64 },
             args.deps.variableProcessor,
         );
-    const plannerContext = createRoleContextManager();
     const enhancerContext = createRoleContextManager();
+    const stylerContext = createRoleContextManager();
+    const primitivesBuilderContext = createRoleContextManager();
     const designerContext = createRoleContextManager();
-    const builderContext = createRoleContextManager();
-    const composerContext = createRoleContextManager();
 
     const roleSessions: Record<FigmaRole, FigmaRoleSession> = {
         enhancer: {
@@ -78,27 +77,25 @@ export function createFigmaSession(args: {
             sessionId: `${id}:enhancer`,
             contextManager: enhancerContext,
         },
+        styler: {
+            role: "styler",
+            sessionId: `${id}:styler`,
+            contextManager: stylerContext,
+        },
+        "primitives-builder": {
+            role: "primitives-builder",
+            sessionId: `${id}:primitives-builder`,
+            contextManager: primitivesBuilderContext,
+        },
         designer: {
             role: "designer",
             sessionId: `${id}:designer`,
             contextManager: designerContext,
         },
-        builder: {
-            role: "builder",
-            sessionId: `${id}:builder`,
-            contextManager: builderContext,
-        },
-        composer: {
-            role: "composer",
-            sessionId: `${id}:composer`,
-            contextManager: composerContext,
-        },
     };
 
     const session: FigmaSession = {
         id,
-        plannerSessionId: `${id}:planner`,
-        plannerContextManager: plannerContext,
         roleSessions,
         buffer,
         varStore,

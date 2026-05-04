@@ -16,7 +16,7 @@ export interface FigmaPreparedBriefResponse
     brief: PreparedDesignBrief;
 }
 
-export type FigmaRole = "enhancer" | "designer" | "builder" | "composer";
+export type FigmaRole = "enhancer" | "styler" | "primitives-builder" | "designer";
 
 export interface FigmaRoleSession
 {
@@ -28,8 +28,6 @@ export interface FigmaRoleSession
 export interface FigmaSession
 {
     id: string;
-    plannerSessionId: string;
-    plannerContextManager: ContextManager;
     roleSessions: Record<FigmaRole, FigmaRoleSession>;
     buffer: JsxBuffer;
     varStore: VariableStore;
