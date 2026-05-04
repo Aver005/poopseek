@@ -8,6 +8,7 @@ import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
+import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
 import { setActiveTheme } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 import { makeHandymanTools } from "@/figma/engine/handyman/handyman-tools";
@@ -77,7 +78,19 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         session.mode = "edit";
 
         const mapped = mapKeyToId(result.jsx);
-        const ops = compileJsx(parseJsx(mapped));
+        const parsedNodes = parseJsx(mapped);
+        const validationErrors = validateJsxTree(parsedNodes);
+
+        if (validationErrors.length > 0)
+        {
+            return jsonWithCors(
+                { error: formatJsxValidationErrors(validationErrors), sessionId: session.id },
+                { status: 500 },
+                context.getCorsHeaders,
+            );
+        }
+
+        const ops = compileJsx(parsedNodes);
         session.dispatchOps(ops);
 
         assistantText = result.jsx;
@@ -115,7 +128,21 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             },
         );
 
-        const loopResult = await loop.runTurn(body.message);
+        const snap = session.buffer.snapshot();
+        let loopResult: Awaited<ReturnType<typeof loop.runTurn>>;
+        try
+        {
+            loopResult = await loop.runTurn(body.message);
+        }
+        catch (err)
+        {
+            session.buffer.restore(snap);
+            return jsonWithCors(
+                { error: err instanceof Error ? err.message : String(err), sessionId: session.id },
+                { status: 500 },
+                context.getCorsHeaders,
+            );
+        }
         assistantText = loopResult.assistantText;
 
         const bufferJsx = session.buffer.toJsx();

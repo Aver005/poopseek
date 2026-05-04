@@ -1,5 +1,7 @@
 import type { ILLMProvider } from "@/providers";
 import type { VarEntry } from "@/figma/engine/theme/var-store";
+import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
+import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
 
 export interface BuilderSuccess
 {
@@ -38,7 +40,8 @@ export async function runBuilderOneShot(
     maxRetries = 3,
 ): Promise<BuilderResult>
 {
-    const prompt = buildPrompt(promptContent, enhanced, tokens);
+    const basePrompt = buildPrompt(promptContent, enhanced, tokens);
+    let currentPrompt = basePrompt;
     let lastRaw = "";
 
     for (let attempt = 1; attempt <= maxRetries; attempt++)
@@ -47,15 +50,26 @@ export async function runBuilderOneShot(
         {
             const provider = await getProvider().clone();
             const chunks: string[] = [];
-            for await (const chunk of provider.complete([{ role: "user", content: prompt }], ""))
+            for await (const chunk of provider.complete([{ role: "user", content: currentPrompt }], ""))
                 chunks.push(chunk);
 
             const raw = chunks.join("");
             lastRaw = raw;
             const jsx = extractJsx(raw);
 
-            if (jsx.includes("<") && jsx.includes(">"))
+            if (!jsx.includes("<") || !jsx.includes(">"))
+                continue;
+
+            const nodes = parseJsx(jsx);
+            const errors = validateJsxTree(nodes);
+
+            if (errors.length === 0)
                 return { ok: true, jsx };
+
+            if (attempt < maxRetries)
+                currentPrompt = basePrompt + "\n\nPrevious attempt produced invalid JSX. Fix ALL issues:\n\n" + formatJsxValidationErrors(errors);
+
+            lastRaw = formatJsxValidationErrors(errors);
         }
         catch (err)
         {

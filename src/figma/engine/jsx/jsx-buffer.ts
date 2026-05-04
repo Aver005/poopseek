@@ -188,6 +188,22 @@ export class JsxBuffer
         this.counter = 0;
     }
 
+    snapshot(): { nodes: Map<string, BufferNode>; counter: number }
+    {
+        const nodesCopy = new Map<string, BufferNode>();
+        for (const [id, node] of this.nodes)
+            nodesCopy.set(id, { ...node, props: { ...node.props }, children: [...node.children] });
+        return { nodes: nodesCopy, counter: this.counter };
+    }
+
+    restore(snap: { nodes: Map<string, BufferNode>; counter: number }): void
+    {
+        this.nodes.clear();
+        for (const [id, node] of snap.nodes)
+            this.nodes.set(id, { ...node, props: { ...node.props }, children: [...node.children] });
+        this.counter = snap.counter;
+    }
+
     get size(): number
     {
         return this.nodes.size;
