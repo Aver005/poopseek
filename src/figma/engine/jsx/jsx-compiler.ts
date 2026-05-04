@@ -231,7 +231,13 @@ function applyTextStyle(state: State, nodeId: string, props: Props, preset?: Typ
     });
 }
 
-function createAutoLayout(state: State, nodeId: string, props: Props, direction: "HORIZONTAL" | "VERTICAL", options: { hugMain?: boolean; hugCross?: boolean } = {}): void
+function createAutoLayout(
+    state: State,
+    nodeId: string,
+    props: Props,
+    direction: "HORIZONTAL" | "VERTICAL",
+    options: { hugMain?: boolean; hugCross?: boolean; fillParent?: boolean; fillParentHeight?: boolean } = {},
+): void
 {
     const alignMap: Record<string, string> = {
         center: "CENTER",
@@ -247,8 +253,11 @@ function createAutoLayout(state: State, nodeId: string, props: Props, direction:
         type: "set_auto_layout",
         nodeId,
         direction,
-        ...(options.hugMain ? { hugMain: true } : {}),
-        ...(options.hugCross ? { hugCross: true } : {}),
+        // Always explicit so plugin can restore sizing after layoutMode reset
+        hugMain: options.hugMain ?? false,
+        hugCross: options.hugCross ?? false,
+        ...(options.fillParent ? { fillParent: true } : {}),
+        ...(options.fillParentHeight ? { fillParentHeight: true } : {}),
         ...(props.gap !== undefined ? { gap: num(props.gap) } : {}),
         ...(props.padX ?? props.px ? { paddingH: num(props.padX ?? props.px) } : {}),
         ...(props.padY ?? props.py ? { paddingV: num(props.padY ?? props.py) } : {}),
@@ -323,9 +332,20 @@ function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" |
 
     if (layoutMode)
     {
+        // VERTICAL (VStack): main=height, cross=width
+        //   hugMain  = hug height when no explicit h
+        //   hugCross = NEVER hug width — width comes from fillParent (FILL) or fixed size
+        // HORIZONTAL (HStack): main=width, cross=height
+        //   hugMain  = hug width only when not filling parent and no explicit w
+        //   hugCross = hug height when no explicit h
+        const isVertical = layoutMode === "VERTICAL";
+        const hugMain = isVertical ? autoHeight : (!fillParent && autoWidth);
+        const hugCross = isVertical ? false : autoHeight;
         createAutoLayout(state, id, props, layoutMode, {
-            hugMain: autoHeight || layoutMode === "HORIZONTAL",
-            hugCross: autoWidth || layoutMode === "VERTICAL",
+            hugMain,
+            hugCross,
+            fillParent,
+            fillParentHeight,
         });
     }
 
@@ -370,9 +390,14 @@ function compileScreen(node: JsxNode, state: State): void
         ...(props.clipContent ? { clipContent: true } : {}),
     });
 
-    // Screen по умолчанию — вертикальный Auto Layout
+    // Screen — фиксированный размер, auto-layout только для расположения детей
     const effectiveLayout = layoutMode ?? "VERTICAL";
-    createAutoLayout(state, id, props, effectiveLayout, { hugMain: false, hugCross: false });
+    createAutoLayout(state, id, props, effectiveLayout, {
+        hugMain: false,
+        hugCross: false,
+        fillParent: false,
+        fillParentHeight: false,
+    });
 
     if (props.gradient) applyGradient(state, id, props.gradient);
     if (props.borderEdge)

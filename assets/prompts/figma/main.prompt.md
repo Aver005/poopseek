@@ -52,34 +52,36 @@ Hero, H1, H2, H3, Body, Small, Caption, Label, Text
 РАЗМЕРЫ — ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА
 --------------------------------------------------
 
-ПРАВИЛО 1: Screen ВСЕГДА имеет явные w и h.
+ВСЕ РАЗМЕРЫ ТОЛЬКО ЧЕРЕЗ className. Никаких w={} h={} пропсов.
+
+ПРАВИЛО 1: Screen ВСЕГДА имеет w-[...] и h-[...] в className.
 
 Стандартные размеры:
-- Мобильный:  w={390}  h={844}
-- Планшет:    w={768}  h={1024}
-- Десктоп:    w={1440} h={900}
-- Широкий:    w={1920} h={1080}
+- Мобильный:  w-[390px] h-[844px]
+- Планшет:    w-[768px] h-[1024px]
+- Десктоп:    w-[1440px] h-[900px]
+- Широкий:    w-[1920px] h-[1080px]
 
 Пример:
-<Screen w={390} h={844} className="bg-canvas flex flex-col">
+<Screen className="w-[390px] h-[844px] bg-canvas flex-col">
 
-ПРАВИЛО 2: Frame без auto-layout ВСЕГДА имеет явные w и h.
+ПРАВИЛО 2: Frame без flex-col/flex ВСЕГДА имеет w-[...] и h-[...] в className.
 
-Frame — фиксированный контейнер. Если у него нет className с flex/flex-col,
-он НЕ сжимается по содержимому — его дети не определят его размер.
-Без явных w и h он получит дефолт 200×100 и сломает layout.
+Frame без auto-layout — фиксированный блок.
+Без явных размеров он получит дефолт 200×100 и сломает layout.
 
 Правильно:
-<Frame w={320} h={200} className="rounded-xl bg-white shadow">
+<Frame className="w-[320px] h-[200px] rounded-xl bg-white shadow">
 
 Неправильно:
-<Frame className="rounded-xl bg-white shadow">  ← нет w и h, будет 200×100
+<Frame className="rounded-xl bg-white shadow">  ← нет размеров
 
-ПРАВИЛО 3: VStack и HStack НЕ требуют w и h — они сами по себе auto-layout.
-Используй w-full если нужно растянуть по ширине.
+ПРАВИЛО 3: VStack и HStack НЕ требуют явных размеров — они auto-layout.
+Они автоматически растягиваются по ширине родителя.
+Добавляй h-[...] только если нужна фиксированная высота.
 
-ПРАВИЛО 4: Image ВСЕГДА имеет явные w и h.
-<Image src="..." w={360} h={200} className="rounded-xl" />
+ПРАВИЛО 4: Image ВСЕГДА имеет w-[...] и h-[...] в className.
+<Image src="..." className="w-[360px] h-[200px] rounded-xl" />
 
 --------------------------------------------------
 ГЛАВНОЕ: КАЧЕСТВО UI
@@ -240,6 +242,7 @@ shrink-0, grow
 СТРОГО ЗАПРЕЩЕНО
 --------------------------------------------------
 
+w={} h={} width={} height={}  ← ТОЛЬКО через className: w-[390px] h-[844px]
 hover:, md:, sm:, lg:, dark:, focus:  (любые модификаторы с :)
 relative, absolute, z-*, fixed, sticky
 object-*, background-*, style={}

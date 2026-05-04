@@ -782,9 +782,34 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         const direction = op.direction
                             ? String(op.direction) as "HORIZONTAL" | "VERTICAL" | "NONE"
                             : frame.layoutMode;
+                        // Setting layoutMode resets Figma's sizing modes to AUTO — we fix them below
                         if (op.direction) frame.layoutMode = direction;
-                        if (op.hugContent || op.hugMain) frame.primaryAxisSizingMode = "AUTO";
-                        if (op.hugCross) frame.counterAxisSizingMode = "AUTO";
+
+                        // Restore sizing after potential reset by layoutMode change.
+                        // hugMain controls the PRIMARY axis (height for VERTICAL, width for HORIZONTAL).
+                        // hugCross controls the COUNTER axis (width for VERTICAL, height for HORIZONTAL).
+                        const isVertical = direction === "VERTICAL";
+                        type SizingMode = "FIXED" | "HUG" | "FILL";
+                        const f = frame as FrameNode & {
+                            layoutSizingHorizontal: SizingMode;
+                            layoutSizingVertical: SizingMode;
+                        };
+
+                        if (isVertical)
+                        {
+                            // Primary axis = height
+                            f.layoutSizingVertical = op.hugMain ? "HUG" : "FIXED";
+                            // Counter axis = width: FILL if fillParent, else FIXED (never HUG — VStack always stretches)
+                            f.layoutSizingHorizontal = op.fillParent ? "FILL" : "FIXED";
+                        }
+                        else
+                        {
+                            // Primary axis = width
+                            f.layoutSizingHorizontal = op.fillParent ? "FILL" : (op.hugMain ? "HUG" : "FIXED");
+                            // Counter axis = height
+                            f.layoutSizingVertical = op.fillParentHeight ? "FILL" : (op.hugCross ? "HUG" : "FIXED");
+                        }
+
                         if (op.gap !== undefined) frame.itemSpacing = Number(op.gap);
                         if (op.paddingH !== undefined)
                         {
