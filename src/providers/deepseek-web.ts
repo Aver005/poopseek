@@ -1,4 +1,4 @@
-import { collectDeepseekOutput } from "@/bridge/deepseek-stream";
+import { streamDeepseekOutput } from "@/bridge/deepseek-stream";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type ChatSession from "@/deepseek-client/client/ChatSession";
 import type { ModelType } from "@/deepseek-client/types";
@@ -47,8 +47,6 @@ export class DeepseekWebProvider implements ILLMProvider
 
         if (!this.systemSentForSession)
         {
-            // First call in this session: pack system + any restored history into one message,
-            // preserving the same format the old bootstrap produced.
             const parts: string[] = [];
             if (system.trim().length > 0) parts.push(system.trim());
 
@@ -79,7 +77,6 @@ export class DeepseekWebProvider implements ILLMProvider
         }
         else
         {
-            // Subsequent calls: send only the new message with a lightweight header
             if (lastMsg.role === "tool")
             {
                 content = `### TOOL RESULT: ${lastMsg.name ?? "unknown"}\n${lastMsg.content}`;
@@ -99,11 +96,16 @@ export class DeepseekWebProvider implements ILLMProvider
             thinking_enabled: options?.thinkingEnabled,
             signal: options?.signal,
         });
-        const { text, parentMessageId } = await collectDeepseekOutput(response, {
-            signal: options?.signal,
-        });
+
+        let parentMessageId: number | null = null;
+
+        for await (const event of streamDeepseekOutput(response, { signal: options?.signal }))
+        {
+            if (event.text) yield event.text;
+            if (event.parentMessageId !== undefined) parentMessageId = event.parentMessageId;
+        }
+
         if (parentMessageId !== null) this.session!.setParentMessageId(parentMessageId);
-        if (text.length > 0) yield text;
     }
 
     async listModels(): Promise<string[]>

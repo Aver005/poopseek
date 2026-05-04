@@ -616,7 +616,7 @@ export async function runCli(): Promise<void>
 
     terminalInput.start(commands);
 
-    const MAX_MESSAGES = 40;
+    const MAX_MESSAGES = 256;
     const WARN_AT_MESSAGES = MAX_MESSAGES - 5;
 
     await runMainLoop({

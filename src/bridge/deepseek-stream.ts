@@ -10,6 +10,12 @@ export interface CollectedDeepseekOutput
     parentMessageId: number | null;
 }
 
+export interface StreamDeepseekChunk
+{
+    text?: string;
+    parentMessageId?: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown>
 {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -181,10 +187,10 @@ function extractParentMessageId(event: unknown): number | null
     return null;
 }
 
-export async function collectDeepseekOutput(
+export async function* streamDeepseekOutput(
     response: Response,
-    options: CollectDeepseekOutputOptions = {},
-): Promise<CollectedDeepseekOutput>
+    options: { signal?: AbortSignal } = {},
+): AsyncGenerator<StreamDeepseekChunk>
 {
     if (!response.body)
     {
@@ -194,8 +200,6 @@ export async function collectDeepseekOutput(
     const decoder = new TextDecoder();
     const reader = response.body.getReader();
     let buffer = "";
-    let outputText = "";
-    let parentMessageId: number | null = null;
     const throwIfAborted = (): void =>
     {
         if (!options.signal?.aborted) return;
@@ -204,13 +208,13 @@ export async function collectDeepseekOutput(
             : new Error("Запрос прерван");
     };
 
-    const flushLine = (line: string): void =>
+    const processLine = (line: string): StreamDeepseekChunk | null =>
     {
         const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) return;
+        if (!trimmed.startsWith("data:")) return null;
 
         const payload = trimmed.slice(5).trim();
-        if (payload.length === 0 || payload === "[DONE]") return;
+        if (payload.length === 0 || payload === "[DONE]") return null;
 
         let parsed: unknown = payload;
         try
@@ -223,29 +227,21 @@ export async function collectDeepseekOutput(
         }
 
         const normalized = normalizeEventPayload(parsed);
+        const result: StreamDeepseekChunk = {};
 
         if (isRecord(normalized))
         {
-            const extractedParentMessageId = extractParentMessageId(normalized);
-            if (extractedParentMessageId !== null)
-            {
-                parentMessageId = extractedParentMessageId;
-            }
+            const pid = extractParentMessageId(normalized);
+            if (pid !== null) result.parentMessageId = pid;
         }
 
         let textChunk = extractTextFromEvent(normalized);
-        if (textChunk.length === 0 && typeof normalized === "string")
-        {
-            textChunk = normalized;
-        }
-        if (textChunk.length === 0 && typeof parsed === "string")
-        {
-            textChunk = parsed;
-        }
-        if (textChunk.length === 0) return;
+        if (textChunk.length === 0 && typeof normalized === "string") textChunk = normalized;
+        if (textChunk.length === 0 && typeof parsed === "string") textChunk = parsed;
+        if (textChunk.length > 0) result.text = textChunk;
 
-        outputText += textChunk;
-        options.onTextChunk?.(textChunk);
+        if (result.text === undefined && result.parentMessageId === undefined) return null;
+        return result;
     };
 
     while (true)
@@ -261,14 +257,38 @@ export async function collectDeepseekOutput(
 
         for (const line of lines)
         {
-            flushLine(line);
+            const chunk = processLine(line);
+            if (chunk) yield chunk;
         }
     }
 
     if (buffer.trim().length > 0)
     {
         throwIfAborted();
-        flushLine(buffer);
+        const chunk = processLine(buffer);
+        if (chunk) yield chunk;
+    }
+}
+
+export async function collectDeepseekOutput(
+    response: Response,
+    options: CollectDeepseekOutputOptions = {},
+): Promise<CollectedDeepseekOutput>
+{
+    let outputText = "";
+    let parentMessageId: number | null = null;
+
+    for await (const chunk of streamDeepseekOutput(response, { signal: options.signal }))
+    {
+        if (chunk.text)
+        {
+            outputText += chunk.text;
+            options.onTextChunk?.(chunk.text);
+        }
+        if (chunk.parentMessageId !== undefined)
+        {
+            parentMessageId = chunk.parentMessageId;
+        }
     }
 
     return {
