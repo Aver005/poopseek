@@ -1,213 +1,147 @@
-<Frame width={1440} height={900} fill="#111111" name="CinemaWebsite">
-  <Frame autoLayout flow="vertical" width="fill" height="fill" name="MainContent">
-    <Frame autoLayout flow="horizontal" width="fill" height={72} fill="#111111" padX={40} padY={16} gap={32} alignY="center" name="Navbar">
-      <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} alignY="center" name="Logo">
-        <Ellipse width={32} height={32} fill="#F59E0B" name="LogoIcon" />
-        <Frame width={24} height={24} fill="none" stroke="#F59E0B" strokeWidth={2} radius={4} name="FilmIcon" />
-        <Text fill="#F3F4F6" fontSize={20} fontWeight="bold" letterSpacing={1}>CINEMA</Text>
+<Frame width={390} height={844} fill="#FFFFFF" autoLayout flow="vertical" name="FlightScreen">
+  <Frame width="fill" height="hug" autoLayout flow="vertical" gap={16} padX={16} padY={16} name="CalendarSection">
+    <Frame width="fill" height="hug" autoLayout flow="horizontal" alignX="between" alignY="center" gap={16} name="MonthNavigator">
+      <Frame width={40} height={40} radius={100} fill="#F8FAFC" alignX="center" alignY="center" name="PrevArrow">
+        <Text fill="#2563EB" fontSize={24} fontWeight="bold">‹</Text>
       </Frame>
-      <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={32} alignY="center" name="NavLinks">
-        <Text fill="#F3F4F6" fontSize={16} fontWeight="medium">Now Showing</Text>
-        <Text fill="#9CA3AF" fontSize={16} fontWeight="regular">Coming Soon</Text>
-        <Text fill="#9CA3AF" fontSize={16} fontWeight="regular">Tickets</Text>
-        <Text fill="#9CA3AF" fontSize={16} fontWeight="regular">Concessions</Text>
-      </Frame>
-      <Frame width="fill" height="hug" name="Spacer" />
-      <Frame width={24} height={24} fill="none" stroke="#F3F4F6" strokeWidth={2} radius={4} name="SearchIcon" />
-    </Frame>
-
-    <Frame autoLayout flow="vertical" width="fill" height={500} fill="#111111" clip={true} name="HeroSection">
-      <Frame width="fill" height="fill" fill="#1A1A1A" name="HeroBackground" />
-      <Frame ignoreAutoLayout x={80} y={80} width={600} height="hug" autoLayout flow="vertical" gap={24} name="HeroContent">
-        <Frame width={120} height={4} fill="#F59E0B" radius={2} name="GlowLine" dropShadow="0:0:12:#F59E0B:0.6" />
-        <Text fill="#F3F4F6" fontSize={64} fontWeight="bold" letterSpacing={-1}>DUNE: PART TWO</Text>
-        <Text fill="#9CA3AF" fontSize={20} lineHeight={32}>The epic conclusion arrives. Witness the fall.</Text>
-        <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={16} name="ButtonGroup">
-          <Frame autoLayout flow="horizontal" width="hug" height={56} fill="#F59E0B" radius={8} padX={32} padY={16} alignY="center" name="BuyButton" shadow="button" dropShadow="0:0:20:#F59E0B:0.4">
-            <Text fill="#111111" fontSize={18} fontWeight="bold">BUY TICKET</Text>
-          </Frame>
-          <Frame autoLayout flow="horizontal" width="hug" height={56} fill="none" stroke="#F59E0B" strokeWidth={2} radius={8} padX={32} padY={16} alignY="center" name="TrailerButton">
-            <Text fill="#F3F4F6" fontSize={18} fontWeight="medium">▶ TRAILER</Text>
-          </Frame>
-        </Frame>
+      <Text fill="#1E293B" fontSize={20} fontWeight="bold" name="MonthTitle">Март 2026</Text>
+      <Frame width={40} height={40} radius={100} fill="#F8FAFC" alignX="center" alignY="center" name="NextArrow">
+        <Text fill="#2563EB" fontSize={24} fontWeight="bold">›</Text>
       </Frame>
     </Frame>
-
-    <Frame autoLayout flow="vertical" width="fill" height="hug" padX={80} padY={48} gap={32} name="NowShowingSection">
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" alignY="center" name="SectionHeader">
-        <Text fill="#F3F4F6" fontSize={28} fontWeight="bold">NOW SHOWING</Text>
-        <Text fill="#F59E0B" fontSize={16} fontWeight="medium">VIEW ALL →</Text>
+    <Frame width="fill" height="hug" autoLayout flow="horizontal" gap={8} alignX="between" name="Weekdays">
+      <Text width="fill" fill="#64748B" fontSize={14} fontWeight="medium" alignX="center">Пн</Text>
+      <Text width="fill" fill="#64748B" fontSize={14} fontWeight="medium" alignX="center">Вт</Text>
+      <Text width="fill" fill="#64748B" fontSize={14} fontWeight="medium" alignX="center">Ср</Text>
+      <Text width="fill" fill="#64748B" fontSize={14} fontWeight="medium" alignX="center">Чт</Text>
+      <Text width="fill" fill="#64748B" fontSize={14} fontWeight="medium" alignX="center">Пт</Text>
+      <Text width="fill" fill="#64748B" fontSize={14} fontWeight="medium" alignX="center">Сб</Text>
+      <Text width="fill" fill="#64748B" fontSize={14} fontWeight="medium" alignX="center">Вс</Text>
+    </Frame>
+    <Frame width="fill" height={320} autoLayout flow="vertical" gap={4} name="DatesGrid">
+      <Frame width="fill" height="hug" autoLayout flow="horizontal" gap={8} alignX="between" name="Row1">
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date1"><Text fill="#1E293B" fontSize={16}>24</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date2"><Text fill="#1E293B" fontSize={16}>25</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date3"><Text fill="#1E293B" fontSize={16}>26</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date4"><Text fill="#1E293B" fontSize={16}>27</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date5"><Text fill="#1E293B" fontSize={16}>28</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date6"><Text fill="#64748B" fontSize={16}>1</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date7"><Text fill="#64748B" fontSize={16}>2</Text></Frame>
       </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={24} name="MovieRow">
-        <Frame autoLayout flow="vertical" width={220} height={380} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="MovieCard1" dropShadow="0:8:24:#000000:0.3">
-          <Image src="poster1.jpg" width="fill" height={280} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={16} padY={16} gap={12} name="CardContent">
-            <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" alignY="center" name="TitleRow">
-              <Text fill="#F3F4F6" fontSize={16} fontWeight="bold">GLADIATOR II</Text>
-              <Frame width={40} height={24} fill="#991B1B" radius={4} alignY="center" name="RatingBadge">
-                <Text fill="#F3F4F6" fontSize={12} fontWeight="bold">16+</Text>
-              </Frame>
-            </Frame>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} alignY="center" name="TrailerIcon">
-              <Ellipse width={28} height={28} fill="#F59E0B" opacity={0.9} name="PlayCircle" />
-              <Text fill="#9CA3AF" fontSize={12}>Trailer</Text>
-            </Frame>
-          </Frame>
+      <Frame width="fill" height="hug" autoLayout flow="horizontal" gap={8} alignX="between" name="Row2">
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date8"><Text fill="#64748B" fontSize={16}>3</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date9"><Text fill="#64748B" fontSize={16}>4</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date10"><Text fill="#64748B" fontSize={16}>5</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date11"><Text fill="#64748B" fontSize={16}>6</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date12"><Text fill="#64748B" fontSize={16}>7</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date13"><Text fill="#64748B" fontSize={16}>8</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date14"><Text fill="#1E293B" fontSize={16}>9</Text></Frame>
+      </Frame>
+      <Frame width="fill" height="hug" autoLayout flow="horizontal" gap={8} alignX="between" name="Row3">
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date15"><Text fill="#1E293B" fontSize={16}>10</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date16"><Text fill="#1E293B" fontSize={16}>11</Text></Frame>
+        <Frame width={46} height={46} radius={100} fill="#2563EB" alignX="center" alignY="center" name="SelectedDate"><Text fill="#FFFFFF" fontSize={16} fontWeight="bold">12</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date18"><Text fill="#1E293B" fontSize={16}>13</Text></Frame>
+        <Frame width={46} height="hug" autoLayout flow="vertical" alignX="center" alignY="center" gap={2} name="DateWithFlight">
+          <Text fill="#1E293B" fontSize={16}>14</Text>
+          <Frame width={36} height={18} radius={100} fill="#DBEAFE" alignX="center" alignY="center"><Text fill="#2563EB" fontSize={10} fontWeight="bold">3</Text></Frame>
         </Frame>
-        <Frame autoLayout flow="vertical" width={220} height={380} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="MovieCard2" dropShadow="0:8:24:#000000:0.3">
-          <Image src="poster2.jpg" width="fill" height={280} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={16} padY={16} gap={12} name="CardContent">
-            <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" alignY="center" name="TitleRow">
-              <Text fill="#F3F4F6" fontSize={16} fontWeight="bold">WICKED</Text>
-              <Frame width={40} height={24} fill="#065F46" radius={4} alignY="center" name="RatingBadge">
-                <Text fill="#F3F4F6" fontSize={12} fontWeight="bold">PG</Text>
-              </Frame>
-            </Frame>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} alignY="center" name="TrailerIcon">
-              <Ellipse width={28} height={28} fill="#F59E0B" opacity={0.9} name="PlayCircle" />
-              <Text fill="#9CA3AF" fontSize={12}>Trailer</Text>
-            </Frame>
-          </Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date20"><Text fill="#1E293B" fontSize={16}>15</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date21"><Text fill="#1E293B" fontSize={16}>16</Text></Frame>
+      </Frame>
+      <Frame width="fill" height="hug" autoLayout flow="horizontal" gap={8} alignX="between" name="Row4">
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date22"><Text fill="#1E293B" fontSize={16}>17</Text></Frame>
+        <Frame width={46} height="hug" autoLayout flow="vertical" alignX="center" alignY="center" gap={2} name="DateWithFlight2">
+          <Text fill="#1E293B" fontSize={16}>18</Text>
+          <Frame width={36} height={18} radius={100} fill="#DBEAFE" alignX="center" alignY="center"><Text fill="#2563EB" fontSize={10} fontWeight="bold">1</Text></Frame>
         </Frame>
-        <Frame autoLayout flow="vertical" width={220} height={380} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="MovieCard3" dropShadow="0:8:24:#000000:0.3">
-          <Image src="poster3.jpg" width="fill" height={280} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={16} padY={16} gap={12} name="CardContent">
-            <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" alignY="center" name="TitleRow">
-              <Text fill="#F3F4F6" fontSize={16} fontWeight="bold">KRAVEN</Text>
-              <Frame width={40} height={24} fill="#991B1B" radius={4} alignY="center" name="RatingBadge">
-                <Text fill="#F3F4F6" fontSize={12} fontWeight="bold">18+</Text>
-              </Frame>
-            </Frame>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} alignY="center" name="TrailerIcon">
-              <Ellipse width={28} height={28} fill="#F59E0B" opacity={0.9} name="PlayCircle" />
-              <Text fill="#9CA3AF" fontSize={12}>Trailer</Text>
-            </Frame>
-          </Frame>
-        </Frame>
-        <Frame autoLayout flow="vertical" width={220} height={380} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="MovieCard4" dropShadow="0:8:24:#000000:0.3">
-          <Image src="poster4.jpg" width="fill" height={280} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={16} padY={16} gap={12} name="CardContent">
-            <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" alignY="center" name="TitleRow">
-              <Text fill="#F3F4F6" fontSize={16} fontWeight="bold">MOANA 2</Text>
-              <Frame width={40} height={24} fill="#065F46" radius={4} alignY="center" name="RatingBadge">
-                <Text fill="#F3F4F6" fontSize={12} fontWeight="bold">PG</Text>
-              </Frame>
-            </Frame>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} alignY="center" name="TrailerIcon">
-              <Ellipse width={28} height={28} fill="#F59E0B" opacity={0.9} name="PlayCircle" />
-              <Text fill="#9CA3AF" fontSize={12}>Trailer</Text>
-            </Frame>
-          </Frame>
-        </Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date24"><Text fill="#1E293B" fontSize={16}>19</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date25"><Text fill="#1E293B" fontSize={16}>20</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date26"><Text fill="#1E293B" fontSize={16}>21</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date27"><Text fill="#1E293B" fontSize={16}>22</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date28"><Text fill="#1E293B" fontSize={16}>23</Text></Frame>
+      </Frame>
+      <Frame width="fill" height="hug" autoLayout flow="horizontal" gap={8} alignX="between" name="Row5">
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date29"><Text fill="#1E293B" fontSize={16}>24</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date30"><Text fill="#1E293B" fontSize={16}>25</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date31"><Text fill="#1E293B" fontSize={16}>26</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date32"><Text fill="#1E293B" fontSize={16}>27</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date33"><Text fill="#1E293B" fontSize={16}>28</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date34"><Text fill="#1E293B" fontSize={16}>29</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date35"><Text fill="#1E293B" fontSize={16}>30</Text></Frame>
+      </Frame>
+      <Frame width="fill" height="hug" autoLayout flow="horizontal" gap={8} alignX="between" name="Row6">
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date36"><Text fill="#1E293B" fontSize={16}>31</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date37"><Text fill="#64748B" fontSize={16}>1</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date38"><Text fill="#64748B" fontSize={16}>2</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date39"><Text fill="#64748B" fontSize={16}>3</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date40"><Text fill="#64748B" fontSize={16}>4</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date41"><Text fill="#64748B" fontSize={16}>5</Text></Frame>
+        <Frame width={46} height={46} radius={100} alignX="center" alignY="center" name="Date42"><Text fill="#64748B" fontSize={16}>6</Text></Frame>
       </Frame>
     </Frame>
-
-    <Frame autoLayout flow="vertical" width="fill" height="hug" padX={80} padY={48} gap={32} name="UpcomingSection">
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" alignY="center" name="SectionHeader">
-        <Text fill="#F3F4F6" fontSize={28} fontWeight="bold">COMING SOON</Text>
-        <Text fill="#F59E0B" fontSize={16} fontWeight="medium">VIEW CALENDAR →</Text>
-      </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={24} name="UpcomingGrid">
-        <Frame autoLayout flow="vertical" width={280} height={320} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="UpcomingCard1" dropShadow="0:4:12:#000000:0.25">
-          <Image src="upcoming1.jpg" width="fill" height={180} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={20} padY={20} gap={12} name="CardContent">
-            <Text fill="#F3F4F6" fontSize={18} fontWeight="bold">NOSFERATU</Text>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} name="Genres">
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre1">
-                <Text fill="#F59E0B" fontSize={12}>Horror</Text>
-              </Frame>
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre2">
-                <Text fill="#F59E0B" fontSize={12}>Fantasy</Text>
-              </Frame>
-            </Frame>
-            <Text fill="#9CA3AF" fontSize={14}>Releases Dec 25, 2024</Text>
-          </Frame>
-        </Frame>
-        <Frame autoLayout flow="vertical" width={280} height={320} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="UpcomingCard2" dropShadow="0:4:12:#000000:0.25">
-          <Image src="upcoming2.jpg" width="fill" height={180} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={20} padY={20} gap={12} name="CardContent">
-            <Text fill="#F3F4F6" fontSize={18} fontWeight="bold">THE LORD OF THE</Text>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} name="Genres">
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre1">
-                <Text fill="#F59E0B" fontSize={12}>Animation</Text>
-              </Frame>
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre2">
-                <Text fill="#F59E0B" fontSize={12}>Adventure</Text>
-              </Frame>
-            </Frame>
-            <Text fill="#9CA3AF" fontSize={14}>Releases Jan 10, 2025</Text>
-          </Frame>
-        </Frame>
-        <Frame autoLayout flow="vertical" width={280} height={320} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="UpcomingCard3" dropShadow="0:4:12:#000000:0.25">
-          <Image src="upcoming3.jpg" width="fill" height={180} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={20} padY={20} gap={12} name="CardContent">
-            <Text fill="#F3F4F6" fontSize={18} fontWeight="bold">MISSION: IMPOSSIBLE</Text>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} name="Genres">
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre1">
-                <Text fill="#F59E0B" fontSize={12}>Action</Text>
-              </Frame>
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre2">
-                <Text fill="#F59E0B" fontSize={12}>Thriller</Text>
-              </Frame>
-            </Frame>
-            <Text fill="#9CA3AF" fontSize={14}>Releases May 23, 2025</Text>
-          </Frame>
-        </Frame>
-        <Frame autoLayout flow="vertical" width={280} height={320} fill="#1A1A1A" radius={12} stroke="#374151" strokeWidth={1} name="UpcomingCard4" dropShadow="0:4:12:#000000:0.25">
-          <Image src="upcoming4.jpg" width="fill" height={180} radius="12 12 0 0" fill="#2D2D2D" name="Poster" />
-          <Frame autoLayout flow="vertical" width="fill" height="fill" padX={20} padY={20} gap={12} name="CardContent">
-            <Text fill="#F3F4F6" fontSize={18} fontWeight="bold">KARATE KID</Text>
-            <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} name="Genres">
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre1">
-                <Text fill="#F59E0B" fontSize={12}>Drama</Text>
-              </Frame>
-              <Frame width="hug" height={28} fill="none" stroke="#F59E0B" strokeWidth={1} radius={6} padX={12} padY={4} name="Genre2">
-                <Text fill="#F59E0B" fontSize={12}>Sport</Text>
-              </Frame>
-            </Frame>
-            <Text fill="#9CA3AF" fontSize={14}>Releases Jun 6, 2025</Text>
-          </Frame>
-        </Frame>
-      </Frame>
+  </Frame>
+  <Frame width="fill" height="hug" autoLayout flow="vertical" gap={12} padX={16} padY={16} name="FlightsList">
+    <Frame width="fill" height="hug" autoLayout flow="horizontal" alignX="between" alignY="center" name="ListHeader">
+      <Text fill="#1E293B" fontSize={18} fontWeight="bold">Рейсы на 12 марта</Text>
+      <Text fill="#2563EB" fontSize={14} fontWeight="medium">3 рейса</Text>
     </Frame>
-
-    <Frame autoLayout flow="vertical" width="fill" height={280} fill="#0A0A0A" stroke="#1F1F1F" strokeWidth={1} name="Footer">
-      <Frame autoLayout flow="horizontal" width="fill" height="fill" padX={80} padY={48} gap={64} name="FooterContent">
-        <Frame autoLayout flow="vertical" width={300} height="hug" gap={16} name="InfoColumn">
-          <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} alignY="center" name="FooterLogo">
-            <Ellipse width={28} height={28} fill="#F59E0B" name="LogoIcon" />
-            <Text fill="#F3F4F6" fontSize={18} fontWeight="bold">CINEMA</Text>
+    <Frame width="fill" height={96} radius={12} fill="#F8FAFC" stroke="#E2E8F0" strokeWidth={1} autoLayout flow="horizontal" gap={12} padX={12} padY={12} alignX="between" alignY="center" name="Flight1">
+      <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={12} alignY="center">
+        <Frame width={40} height={40} radius={8} fill="#DBEAFE" alignX="center" alignY="center"><Text fill="#2563EB" fontSize={10} fontWeight="bold">✈️</Text></Frame>
+        <Frame width="hug" height="hug" autoLayout flow="vertical" gap={4}>
+          <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={8} alignY="center">
+            <Text fill="#1E293B" fontSize={16} fontWeight="bold">SVO</Text>
+            <Text fill="#64748B" fontSize={14}>→</Text>
+            <Text fill="#1E293B" fontSize={16} fontWeight="bold">JFK</Text>
           </Frame>
-          <Text fill="#9CA3AF" fontSize={14} lineHeight={24}>123 Film Boulevard<br />Hollywood, CA 90210<br />United States</Text>
-          <Text fill="#F59E0B" fontSize={14}>info@cinema.com</Text>
-          <Text fill="#9CA3AF" fontSize={14}>(555) 123-4567</Text>
-        </Frame>
-        <Frame autoLayout flow="vertical" width={200} height="hug" gap={16} name="QuickLinks">
-          <Text fill="#F3F4F6" fontSize={16} fontWeight="bold">QUICK LINKS</Text>
-          <Text fill="#9CA3AF" fontSize={14}>Showtimes</Text>
-          <Text fill="#9CA3AF" fontSize={14}>Gift Cards</Text>
-          <Text fill="#9CA3AF" fontSize={14}>Membership</Text>
-          <Text fill="#9CA3AF" fontSize={14}>FAQ</Text>
-        </Frame>
-        <Frame autoLayout flow="vertical" width={200} height="hug" gap={16} name="Legal">
-          <Text fill="#F3F4F6" fontSize={16} fontWeight="bold">LEGAL</Text>
-          <Text fill="#9CA3AF" fontSize={14}>Terms of Use</Text>
-          <Text fill="#9CA3AF" fontSize={14}>Privacy Policy</Text>
-          <Text fill="#9CA3AF" fontSize={14}>Accessibility</Text>
-        </Frame>
-        <Frame autoLayout flow="vertical" width={200} height="hug" gap={16} name="Social">
-          <Text fill="#F3F4F6" fontSize={16} fontWeight="bold">FOLLOW US</Text>
-          <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={16} name="SocialIcons">
-            <Frame width={32} height={32} fill="none" stroke="#F59E0B" strokeWidth={2} radius={8} name="Facebook" />
-            <Frame width={32} height={32} fill="none" stroke="#F59E0B" strokeWidth={2} radius={8} name="Twitter" />
-            <Frame width={32} height={32} fill="none" stroke="#F59E0B" strokeWidth={2} radius={8} name="Instagram" />
-            <Frame width={32} height={32} fill="none" stroke="#F59E0B" strokeWidth={2} radius={8} name="YouTube" />
+          <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={8}>
+            <Text fill="#64748B" fontSize={12}>14:30</Text>
+            <Text fill="#64748B" fontSize={12}>—</Text>
+            <Text fill="#64748B" fontSize={12}>18:20</Text>
           </Frame>
         </Frame>
       </Frame>
-      <Frame width="fill" height={48} fill="#000000" alignX="center" alignY="center" name="CopyrightBar">
-        <Text fill="#6B7280" fontSize={12}>© 2024 CINEMA. All rights reserved.</Text>
-      </Frame>
+      <Frame width={32} height={32} radius={16} fill="#E2F4EA" alignX="center" alignY="center"><Text fill="#10B981" fontSize={12} fontWeight="bold">✓</Text></Frame>
     </Frame>
+    <Frame width="fill" height={96} radius={12} fill="#F8FAFC" stroke="#E2E8F0" strokeWidth={1} autoLayout flow="horizontal" gap={12} padX={12} padY={12} alignX="between" alignY="center" name="Flight2">
+      <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={12} alignY="center">
+        <Frame width={40} height={40} radius={8} fill="#DBEAFE" alignX="center" alignY="center"><Text fill="#2563EB" fontSize={10} fontWeight="bold">✈️</Text></Frame>
+        <Frame width="hug" height="hug" autoLayout flow="vertical" gap={4}>
+          <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={8} alignY="center">
+            <Text fill="#1E293B" fontSize={16} fontWeight="bold">DME</Text>
+            <Text fill="#64748B" fontSize={14}>→</Text>
+            <Text fill="#1E293B" fontSize={16} fontWeight="bold">LHR</Text>
+          </Frame>
+          <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={8}>
+            <Text fill="#64748B" fontSize={12}>08:15</Text>
+            <Text fill="#64748B" fontSize={12}>—</Text>
+            <Text fill="#64748B" fontSize={12}>11:45</Text>
+          </Frame>
+        </Frame>
+      </Frame>
+      <Frame width={32} height={32} radius={16} fill="#FEF3C7" alignX="center" alignY="center"><Text fill="#F59E0B" fontSize={12} fontWeight="bold">⏱</Text></Frame>
+    </Frame>
+    <Frame width="fill" height={96} radius={12} fill="#F8FAFC" stroke="#E2E8F0" strokeWidth={1} autoLayout flow="horizontal" gap={12} padX={12} padY={12} alignX="between" alignY="center" name="Flight3">
+      <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={12} alignY="center">
+        <Frame width={40} height={40} radius={8} fill="#DBEAFE" alignX="center" alignY="center"><Text fill="#2563EB" fontSize={10} fontWeight="bold">✈️</Text></Frame>
+        <Frame width="hug" height="hug" autoLayout flow="vertical" gap={4}>
+          <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={8} alignY="center">
+            <Text fill="#1E293B" fontSize={16} fontWeight="bold">LED</Text>
+            <Text fill="#64748B" fontSize={14}>→</Text>
+            <Text fill="#1E293B" fontSize={16} fontWeight="bold">CDG</Text>
+          </Frame>
+          <Frame width="hug" height="hug" autoLayout flow="horizontal" gap={8}>
+            <Text fill="#64748B" fontSize={12}>19:40</Text>
+            <Text fill="#64748B" fontSize={12}>—</Text>
+            <Text fill="#64748B" fontSize={12}>22:10</Text>
+          </Frame>
+        </Frame>
+      </Frame>
+      <Frame width={32} height={32} radius={16} fill="#FEE2E2" alignX="center" alignY="center"><Text fill="#EF4444" fontSize={12} fontWeight="bold">⚠</Text></Frame>
+    </Frame>
+  </Frame>
+  <Frame ignoreAutoLayout x={326} y={764} width={56} height={56} radius={100} fill="#2563EB" shadow="button" alignX="center" alignY="center" name="FAB">
+    <Text fill="#FFFFFF" fontSize={28} fontWeight="bold" alignX="center">+</Text>
   </Frame>
 </Frame>

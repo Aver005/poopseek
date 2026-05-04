@@ -188,7 +188,7 @@ function compileFrame(node: JsxNode, state: State): void
     const parent = top(state);
     const id = str(p.id) ?? uid(state, "frm");
 
-    const hasAutoLayout = !!p.autoLayout;
+    const hasAutoLayout = !!p.autoLayout || !!p.center;
     const isVertical = str(p.flow)?.toLowerCase() !== "horizontal";
     const flow: "HORIZONTAL" | "VERTICAL" = isVertical ? "VERTICAL" : "HORIZONTAL";
 
@@ -229,8 +229,8 @@ function compileFrame(node: JsxNode, state: State): void
         const hugMain  = isVertical ? (heightSz === "hug") : (widthSz  === "hug");
         const hugCross = isVertical ? (widthSz  === "hug") : (heightSz === "hug");
 
-        const primaryRaw = isVertical ? str(p.alignY) : str(p.alignX);
-        const crossRaw   = isVertical ? str(p.alignX) : str(p.alignY);
+        const primaryRaw = p.center ? "center" : (isVertical ? str(p.alignY) : str(p.alignX));
+        const crossRaw   = p.center ? "center" : (isVertical ? str(p.alignX) : str(p.alignY));
 
         push(state, {
             type: "set_auto_layout",

@@ -798,7 +798,7 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         if (isVertical)
                         {
                             // Primary axis = height
-                            f.layoutSizingVertical = op.hugMain ? "HUG" : "FIXED";
+                            f.layoutSizingVertical = op.hugMain ? "HUG" : (op.fillParentHeight ? "FILL" : "FIXED");
                             // Counter axis = width: FILL if fillParent, else FIXED (never HUG — VStack always stretches)
                             f.layoutSizingHorizontal = op.fillParent ? "FILL" : "FIXED";
                         }

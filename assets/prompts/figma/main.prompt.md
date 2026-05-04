@@ -41,6 +41,7 @@
 | `padTop/Right/Bottom/Left` | `{px}` | Индивидуальный padding |
 | `alignX` | `"start"/"center"/"end"/"between"` | Выравнивание по X |
 | `alignY` | `"start"/"center"/"end"/"between"` | Выравнивание по Y |
+| `center` | bare flag | Центрирует всё содержимое по обеим осям (включает autoLayout) |
 | `shadow` | `"card"/"modal"/"button"` | Тень (пресет) |
 | `dropShadow` | `"x:y:blur:color:opacity"` | Кастомная тень (внешняя) |
 | `innerShadow` | `"x:y:blur:color:opacity"` | Кастомная тень (внутренняя) |
