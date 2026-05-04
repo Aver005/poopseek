@@ -140,7 +140,7 @@ function inferWidth(props: Props, parent?: FrameContext): number | undefined
         return parent?.isAutoLayout ? undefined : parent?.width;
     if (!parent) return 1440;
     if (!parent.isAutoLayout) return parent.width;
-    if (parent.layout === "VERTICAL") return undefined;
+    if (parent.layout === "VERTICAL") return parent.width;
     return undefined;
 }
 
@@ -274,7 +274,7 @@ function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" |
     const parent = top(state);
     const layoutMode = forcedLayout ?? (str(props.layoutMode) as "HORIZONTAL" | "VERTICAL" | undefined);
     const id = str(props.id) ?? uid(state, layoutMode === "VERTICAL" ? "vstk" : layoutMode === "HORIZONTAL" ? "hstk" : "frm");
-    const fillParent = props.widthMode === "FILL" || (!!props.fullWidth && parent?.layout === "VERTICAL");
+    const fillParent = props.widthMode === "FILL" || parent?.layout === "VERTICAL";
     const fillParentHeight = props.heightMode === "FILL";
     const width = fillParent ? undefined : inferWidth(props, parent);
     const height = inferHeight(props, parent, layoutMode ? undefined : 100);
@@ -292,12 +292,6 @@ function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" |
         // Если родитель с Auto Layout и позиция не задана — не центрируем
         autoCenterX = false;
         autoCenterY = false;
-    }
-    else if (parent && x === undefined && y === undefined && (width !== undefined || autoWidth))
-    {
-        // Центрируем по умолчанию
-        autoCenterX = true;
-        autoCenterY = true;
     }
 
     push(state, {
@@ -379,7 +373,11 @@ function compileScreen(node: JsxNode, state: State): void
     applyShadow(state, id, props.shadow);
     applyOpacity(state, id, props.opacity);
 
-    state.stack.push({ id, width, height, isAutoLayout: !!layoutMode, layout: layoutMode });
+    state.stack.push({
+        id, width, height,
+        isAutoLayout: true,
+        layout: effectiveLayout ?? "VERTICAL",
+    });
     compileChildren(node, state);
     state.stack.pop();
 }
@@ -405,7 +403,7 @@ function compileText(node: JsxNode, state: State, presetName?: string): void
     const parent = top(state);
     const id = str(props.id) ?? uid(state, "txt");
     const width = num(props.w ?? props.width);
-    const fillParent = props.widthMode === "FILL" || (parent?.layout === "VERTICAL" && width === undefined && props.x === undefined);
+    const fillParent = props.widthMode === "FILL" || parent?.layout === "VERTICAL";
     const content = getText(node, props);
 
     // Автоматическое центрирование текста
@@ -473,8 +471,6 @@ function compileButton(node: JsxNode, state: State): void
         ...parentRef(state, props),
         ...(width !== undefined ? { width } : {}),
         height,
-        ...(autoCenterX && parent && width === undefined ? { x: (parent.width / 2) - (preset.paddingH * 2 + 50) } : (x !== undefined ? { x } : {})),
-        ...(y !== undefined ? { y } : {}),
         fill: props.fill ?? variantPreset.fill,
         cornerRadius: num(props.radius ?? props.cornerRadius) ?? 12,
         ...(fillParent && parent?.layout === "VERTICAL" ? { fillParent: true } : {}),

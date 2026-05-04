@@ -118,12 +118,16 @@ function stripCurlyBlocks(input: string): string
     return result;
 }
 
+function replaceCurlyValues(input: string): string {
+    return input.replace(/\{([^}]+)\}/g, (_, expr) => expr.trim());
+}
+
 export function parseJsx(input: string): JsxNode[]
 {
     // 1. Strip JSX block comments
     let source = input.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
     // 2. Strip all {expr} blocks including nested ones (.map, template literals, conditions)
-    source = stripCurlyBlocks(source);
+    source = replaceCurlyValues(source);
     // 3. Strip lowercase HTML closing tags, keeping text content
     source = source.replace(/<\/[a-z][A-Za-z0-9]*(?:\s[^>]*)?\s*>/g, "");
     // 4. Strip lowercase HTML opening/self-closing tags, keeping text content

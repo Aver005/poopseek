@@ -539,10 +539,12 @@ export function resolveClassNameProps(className: string): ClassNameProps
         switch (token)
         {
             case "flex":
-                result.layoutMode = "HORIZONTAL";
+                if (!result.layoutMode)
+                    result.layoutMode = "HORIZONTAL";
                 continue;
             case "flex-col":
-                result.layoutMode = "VERTICAL";
+                if (!result.layoutMode)
+                    result.layoutMode = "VERTICAL";
                 continue;
             case "items-start":
                 result.align = "start";
@@ -699,9 +701,8 @@ export function resolveClassNameProps(className: string): ClassNameProps
             continue;
         }
 
-        if (token.startsWith("w-"))
+        if (token.startsWith("w-") && token !== "w-full")
         {
-            result.w = readScaleValue("w-", token);
             continue;
         }
 

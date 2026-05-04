@@ -13,6 +13,10 @@ export interface ClassNameProps
     paddingRight?: number;
     paddingTop?: number;
     paddingBottom?: number;
+    marginLeft?: number;
+    marginRight?: number;
+    marginTop?: number;
+    marginBottom?: number;
     w?: number;
     h?: number;
     widthMode?: "FILL";
@@ -373,6 +377,7 @@ export function resolveClassNameProps(className: string): ClassNameProps
         if (token.startsWith("via-")) continue;
         if (token.startsWith("to-")) continue;
 
+
         // Opacity modifier: bg-white/80, text-primary/50, border-border/30
         const slashIdx = token.lastIndexOf("/");
         if (slashIdx > 0 && /^\d+$/.test(token.slice(slashIdx + 1)))
@@ -395,16 +400,24 @@ export function resolveClassNameProps(className: string): ClassNameProps
             continue;
         }
 
+        if (token.startsWith("mx-")) {
+            const v = readScaleValue("mx-", token);
+            result.marginLeft = v;
+            result.marginRight = v;
+        }
+
         if (!isAllowedClassToken(token))
             continue;
 
         switch (token)
         {
             case "flex":
-                result.layoutMode = "HORIZONTAL";
+                if (!result.layoutMode)
+                    result.layoutMode = "HORIZONTAL";
                 continue;
             case "flex-col":
-                result.layoutMode = "VERTICAL";
+                if (!result.layoutMode)
+                    result.layoutMode = "VERTICAL";
                 continue;
             case "items-start":
                 result.align = "start";
@@ -561,9 +574,8 @@ export function resolveClassNameProps(className: string): ClassNameProps
             continue;
         }
 
-        if (token.startsWith("w-"))
+        if (token.startsWith("w-") && token !== "w-full")
         {
-            result.w = readScaleValue("w-", token);
             continue;
         }
 
