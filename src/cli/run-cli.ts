@@ -38,7 +38,6 @@ import { createProvider, DeepseekWebProvider, type ILLMProvider } from "@/provid
 import { runRoleCreation, type ActiveOperation } from "@/roles/creation";
 import { createDeepseekHistoryImporter } from "@/deepseek-client/history-import";
 import { FigmaServerManager, ScopeManager, FigmaLogger } from "@/figma";
-import { figmaToolsRegistry, FIGMA_TOOLS_DOC } from "@/tools/defs/figma";
 import { printWelcome } from "@/cli/welcome";
 import { webToolsRegistry, webToolNames, WEB_TOOLS_PROMPT } from "@/tools/web-tools";
 import { createAskUser } from "@/cli/ask-user";
@@ -271,12 +270,10 @@ export async function runCli(): Promise<void>
             return skill ? skill.body : null;
         },
         (toolName) => mcpDynamicResolver(toolName)
-            ?? (callOptionsStore.getLocalSearchEnabled() ? webToolsRegistry[toolName] : undefined)
-            ?? (scopeManager.isFigma() ? figmaToolsRegistry[toolName] : undefined),
+            ?? (callOptionsStore.getLocalSearchEnabled() ? webToolsRegistry[toolName] : undefined),
         () => [
             ...mcpManager.getDynamicToolNames(),
             ...(callOptionsStore.getLocalSearchEnabled() ? webToolNames : []),
-            ...(scopeManager.isFigma() ? Object.keys(figmaToolsRegistry) : []),
         ],
         subAgentRunner,
         (message) => generationIndicator.activate(message),
@@ -388,9 +385,6 @@ export async function runCli(): Promise<void>
         }
     };
 
-    const buildFigmaContext = (): string =>
-        [prompts.figmaPrompt, "", FIGMA_TOOLS_DOC].join("\n");
-
     const enterFigmaScope = async (): Promise<void> =>
     {
         const jamId = crypto.randomUUID();
@@ -398,7 +392,7 @@ export async function runCli(): Promise<void>
         await logger.init();
         figmaLoggerRef.current = logger;
         scopeManager.enter(jamId);
-        contextManager.setFigmaContext(buildFigmaContext());
+        contextManager.setFigmaContext(prompts.figmaPrompt);
     };
 
     const exitFigmaScope = (): void =>
@@ -417,7 +411,7 @@ export async function runCli(): Promise<void>
         await logger.init();
         figmaLoggerRef.current = logger;
         scopeManager.enter(sessionId);
-        contextManager.setFigmaContext(buildFigmaContext());
+        contextManager.setFigmaContext(prompts.figmaPrompt);
         return {};
     };
 

@@ -1,4 +1,4 @@
-import { COLOR_TOKEN_KEYS, createVariableColorValue } from "../theme/design-tokens";
+import { COLOR_TOKEN_KEYS, createVariableColorValue, type VariableColorValue } from "../theme/design-tokens";
 import { getAllowedThemeColorKeys, resolveThemeColorValue } from "../theme/theme-state";
 
 export type ClassLayoutMode = "HORIZONTAL" | "VERTICAL";
@@ -17,9 +17,9 @@ export interface ClassNameProps
     h?: number;
     widthMode?: "FILL";
     heightMode?: "FILL";
-    fill?: ReturnType<typeof createVariableColorValue>;
-    color?: ReturnType<typeof createVariableColorValue>;
-    stroke?: ReturnType<typeof createVariableColorValue>;
+    fill?: VariableColorValue | string;
+    color?: VariableColorValue | string;
+    stroke?: VariableColorValue | string;
     strokeWeight?: number;
     borderEdge?: "TOP" | "BOTTOM";
     radius?: number;
@@ -84,6 +84,10 @@ const FONT_SIZE_SCALE = new Map<string, number>([
     ["3xl", 30],
     ["4xl", 36],
     ["5xl", 48],
+    ["6xl", 60],
+    ["7xl", 72],
+    ["8xl", 96],
+    ["9xl", 128],
 ]);
 
 const LINE_HEIGHT_SCALE = new Map<string, number>([
@@ -120,10 +124,11 @@ const SHADOW_SCALE = new Map<string, "card" | "modal" | "button">([
 ]);
 
 const SCREEN_TOKENS = new Map<string, Partial<ClassNameProps>>([
-    ["min-h-screen", { h: 1080, heightMode: "FILL" }],
+    ["min-h-screen", { heightMode: "FILL" }],
     ["min-w-full", { widthMode: "FILL" }],
-    ["flex-1", { widthMode: "FILL", heightMode: "FILL" }],
-    ["h-screen", { h: 1080, heightMode: "FILL" }],
+    ["min-w-screen", { widthMode: "FILL" }],
+    ["flex-1", { widthMode: "FILL" }],
+    ["h-screen", { heightMode: "FILL" }],
     ["w-screen", { widthMode: "FILL" }],
 ]);
 
@@ -157,6 +162,31 @@ const EXACT_TOKENS = new Set([
     ...RADIUS_SCALE.keys(),
     ...SHADOW_SCALE.keys(),
 ]);
+
+function withAlpha(color: VariableColorValue | string | unknown, opacityPercent: number): string
+{
+    let hex = "#000000";
+    if (typeof color === "string")
+        hex = color;
+    else if (typeof color === "object" && color !== null && "hex" in color)
+        hex = (color as { hex: string }).hex;
+
+    const alpha = Math.round(Math.max(0, Math.min(100, opacityPercent)) / 100 * 255);
+    const alphaHex = alpha.toString(16).padStart(2, "0").toUpperCase();
+    return hex.slice(0, 7) + alphaHex;
+}
+
+function parseArbitrarySize(token: string): { axis: "w" | "h"; value: number } | null
+{
+    const match = /^(?:min-|max-)?(w|h)-\[(\d+(?:\.\d+)?)(px|rem|em)?\]$/.exec(token);
+    if (!match) return null;
+
+    let value = parseFloat(match[2]!);
+    const unit = match[3] ?? "px";
+    if (unit === "rem" || unit === "em") value *= 16;
+
+    return { axis: match[1] as "w" | "h", value: Math.round(value) };
+}
 
 function isSpacingToken(prefix: string, token: string): boolean
 {
@@ -236,6 +266,28 @@ export function resolveClassNameProps(className: string): ClassNameProps
         if (screenProps)
         {
             Object.assign(result, screenProps);
+            continue;
+        }
+
+        // Opacity modifier: bg-white/80, text-primary/50, border-border/30
+        const slashIdx = token.lastIndexOf("/");
+        if (slashIdx > 0 && /^\d+$/.test(token.slice(slashIdx + 1)))
+        {
+            const baseToken = token.slice(0, slashIdx);
+            const opacityPct = parseInt(token.slice(slashIdx + 1), 10);
+            const base = resolveClassNameProps(baseToken);
+            if (base.fill !== undefined) result.fill = withAlpha(base.fill, opacityPct);
+            if (base.color !== undefined) result.color = withAlpha(base.color, opacityPct);
+            if (base.stroke !== undefined) result.stroke = withAlpha(base.stroke, opacityPct);
+            continue;
+        }
+
+        // Arbitrary size: w-[342px], h-[500px], min-w-[1200px], max-w-[800px]
+        const arbitrarySize = parseArbitrarySize(token);
+        if (arbitrarySize !== null)
+        {
+            if (arbitrarySize.axis === "w") result.w = arbitrarySize.value;
+            else result.h = arbitrarySize.value;
             continue;
         }
 

@@ -25,4 +25,6 @@ export interface FigmaSession
     mode: "create" | "edit";
     lastJsx: string;
     lastSnapshot: FigmaPluginSnapshot | null;
+    documentName: string;
+    historyLoaded: boolean;
 }

@@ -1,8 +1,19 @@
-import ContextManager from "@/agent/context-manager";
-import StreamingAgentLoop from "@/agent/streaming-loop";
-import ToolExecutor from "@/agent/tool-executor";
-import type { FigmaServerDeps } from "@/figma/application/server-deps";
+import type { ILLMProvider } from "@/providers";
 import type { VarEntry } from "@/figma/engine/theme/var-store";
+
+export interface BuilderSuccess
+{
+    ok: true;
+    jsx: string;
+}
+
+export interface BuilderFailure
+{
+    ok: false;
+    error: string;
+}
+
+export type BuilderResult = BuilderSuccess | BuilderFailure;
 
 function extractJsx(text: string): string
 {
@@ -11,42 +22,49 @@ function extractJsx(text: string): string
     return text.trim();
 }
 
-export async function runBuilder(
-    deps: FigmaServerDeps,
-    contextManager: ContextManager,
-    builderPromptContent: string,
+function buildPrompt(promptContent: string, enhanced: string, tokens: VarEntry[]): string
+{
+    const tokenHint = tokens.length > 0
+        ? "\n\nDesign tokens:\n" + tokens.map((t) => `- ${t.name}: ${t.value}`).join("\n")
+        : "";
+    return promptContent + "\n\nUser request:\n" + enhanced + tokenHint;
+}
+
+export async function runBuilderOneShot(
+    getProvider: () => ILLMProvider,
+    promptContent: string,
     enhanced: string,
     tokens: VarEntry[],
-): Promise<string>
+    maxRetries = 3,
+): Promise<BuilderResult>
 {
-    contextManager.setFigmaContext(builderPromptContent);
+    const prompt = buildPrompt(promptContent, enhanced, tokens);
+    let lastRaw = "";
 
-    const toolExecutor = new ToolExecutor(
-        process.cwd(),
-        undefined,
-        deps.getSkillContent,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-    );
-
-    const loop = new StreamingAgentLoop(
-        deps.getProvider,
-        contextManager,
-        toolExecutor,
+    for (let attempt = 1; attempt <= maxRetries; attempt++)
+    {
+        try
         {
-            maxStepsPerTurn: 8,
-            maxToolsPerStep: 0,
-            getCallOptions: deps.getCallOptions,
-            getRequestDelay: deps.getRequestDelay,
-        },
-    );
+            const provider = await getProvider().clone();
+            const chunks: string[] = [];
+            for await (const chunk of provider.complete([{ role: "user", content: prompt }], ""))
+                chunks.push(chunk);
 
-    const tokenHint = tokens.length > 0
-        ? "\n\nDesign tokens:\n" + tokens.map(t => `- ${t.name}: ${t.value}`).join("\n")
-        : "";
+            const raw = chunks.join("");
+            lastRaw = raw;
+            const jsx = extractJsx(raw);
 
-    const result = await loop.runTurn(enhanced + tokenHint);
-    return extractJsx(result.assistantText);
+            if (jsx.includes("<") && jsx.includes(">"))
+                return { ok: true, jsx };
+        }
+        catch (err)
+        {
+            lastRaw = err instanceof Error ? err.message : String(err);
+        }
+    }
+
+    return {
+        ok: false,
+        error: `Builder failed after ${maxRetries} attempts. Last response:\n${lastRaw.slice(0, 400)}`,
+    };
 }

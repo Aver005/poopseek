@@ -1,5 +1,17 @@
 import type { FigmaSnapshotRequest } from "@/figma/api/contracts";
+import type { FigmaSnapshotNode } from "@/figma/domain/plugin/snapshot-types";
+import { loadHandymanHistory } from "@/figma/application/persistence/session-store";
 import { invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
+
+function hasFrameNodes(nodes: FigmaSnapshotNode[]): boolean
+{
+    for (const node of nodes)
+    {
+        if (node.type === "FRAME") return true;
+        if (node.children && hasFrameNodes(node.children)) return true;
+    }
+    return false;
+}
 
 export async function handlePushSnapshot(req: Request, context: FigmaHttpContext): Promise<Response>
 {
@@ -22,7 +34,25 @@ export async function handlePushSnapshot(req: Request, context: FigmaHttpContext
 
     session.lastActivityAt = Date.now();
     session.lastSnapshot = body.snapshot;
-    session.mode = body.snapshot.tree.length > 0 ? "edit" : "create";
+    session.mode = hasFrameNodes(body.snapshot.tree) ? "edit" : "create";
+
+    const documentName = body.snapshot.documentName ?? "";
+    if (documentName && documentName !== session.documentName)
+    {
+        session.documentName = documentName;
+        session.historyLoaded = false;
+    }
+
+    if (!session.historyLoaded && session.documentName)
+    {
+        session.historyLoaded = true;
+        const saved = await loadHandymanHistory(session.documentName);
+        if (saved)
+        {
+            const handymanCtx = session.roleSessions.designer.contextManager;
+            handymanCtx.restoreState(saved);
+        }
+    }
 
     return jsonWithCors({ ok: true }, undefined, context.getCorsHeaders);
 }

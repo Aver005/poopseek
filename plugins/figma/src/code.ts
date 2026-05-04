@@ -25,6 +25,7 @@ interface FigmaPluginSnapshot
     selectedNodeIds: string[];
     tree: FigmaSnapshotNode[];
     jsx: string;
+    documentName?: string;
 }
 
 interface FigmaOp
@@ -181,6 +182,7 @@ function buildPluginSnapshot(): FigmaPluginSnapshot
         selectedNodeIds: figma.currentPage.selection.map((node) => getLogicalId(node.id)),
         tree: roots,
         jsx: roots.map((node) => snapshotNodeToJsx(node, 0, true)).join("\n"),
+        documentName: figma.root.name || undefined,
     };
 }
 

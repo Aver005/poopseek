@@ -21,4 +21,5 @@ export interface FigmaPluginSnapshot
     selectedNodeIds: string[];
     tree: FigmaSnapshotNode[];
     jsx: string;
+    documentName?: string;
 }

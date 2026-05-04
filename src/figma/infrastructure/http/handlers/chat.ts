@@ -2,7 +2,7 @@ import path from "node:path";
 import type { FigmaChatRequest, FigmaChatResponse } from "@/figma/api/contracts";
 import { runEnhancer } from "@/figma/application/pipeline/enhancer";
 import { runDesigner } from "@/figma/application/pipeline/designer";
-import { runBuilder } from "@/figma/application/pipeline/builder";
+import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
 import { SubAgentRunner } from "@/agent/sub-agent";
 import StreamingAgentLoop from "@/agent/streaming-loop";
 import ToolExecutor from "@/agent/tool-executor";
@@ -11,6 +11,7 @@ import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { setActiveTheme } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 import { makeHandymanTools } from "@/figma/engine/handyman/handyman-tools";
+import { saveHandymanHistory } from "@/figma/application/persistence/session-store";
 import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
 
 const WORKSPACE_ROOT = process.cwd();
@@ -61,16 +62,25 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         if (themeTokens.length > 0)
             setActiveTheme({ tokens: themeTokens });
 
-        const builderCtx = session.roleSessions["primitives-builder"].contextManager;
-        const jsx = await runBuilder(deps, builderCtx, builderPrompt, enhanced, tokens);
+        const result = await runBuilderOneShot(deps.getProvider, builderPrompt, enhanced, tokens);
 
-        session.lastJsx = jsx;
+        if (!result.ok)
+        {
+            return jsonWithCors(
+                { error: result.error, sessionId: session.id },
+                { status: 500 },
+                context.getCorsHeaders,
+            );
+        }
 
-        const mapped = mapKeyToId(jsx);
+        session.lastJsx = result.jsx;
+        session.mode = "edit";
+
+        const mapped = mapKeyToId(result.jsx);
         const ops = compileJsx(parseJsx(mapped));
         session.dispatchOps(ops);
 
-        assistantText = jsx;
+        assistantText = result.jsx;
     }
     else
     {
@@ -105,8 +115,8 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             },
         );
 
-        const result = await loop.runTurn(body.message);
-        assistantText = result.assistantText;
+        const loopResult = await loop.runTurn(body.message);
+        assistantText = loopResult.assistantText;
 
         const bufferJsx = session.buffer.toJsx();
         if (bufferJsx)
@@ -114,6 +124,11 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             session.lastJsx = bufferJsx;
             const ops = compileJsx(parseJsx(bufferJsx));
             session.dispatchOps(ops);
+        }
+
+        if (session.documentName)
+        {
+            await saveHandymanHistory(session.documentName, handymanCtx.exportState()).catch(() => {});
         }
     }
 

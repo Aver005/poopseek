@@ -12,7 +12,6 @@ import { PrimitiveJsxStore } from "@/figma/domain/artifacts/stores/primitive-jsx
 import { CompositionMetaStore } from "@/figma/domain/artifacts/stores/composition-meta-store";
 import { CompositionJsxStore } from "@/figma/domain/artifacts/stores/composition-jsx-store";
 import { CompileArtifactStore } from "@/figma/domain/artifacts/stores/compile-artifact-store";
-import { createStagedFigmaTools } from "@/tools/defs/figma/v2/staged";
 import type { FigmaCompositionMetaArtifact, FigmaPrimitivesJsxArtifact } from "@/figma/domain/artifacts/artifact-types";
 
 describe("figma JSX pipeline", () =>
@@ -224,7 +223,7 @@ describe("figma JSX pipeline", () =>
         expect(ops.some((op) => op.type === "create_frame" && op.name === "Home")).toBe(true);
     });
 
-    it("supports staged tool runtime with introspection and figma_render alias", async () =>
+    it.skip("supports staged tool runtime — v2 staged tools removed", async () =>
     {
         const buffer = new JsxBuffer();
         const varStore = new VariableStore();
@@ -350,7 +349,7 @@ describe("figma JSX pipeline", () =>
         expect((compileListResult.data as Array<{ compositionArtifactId: string }>)[0]?.compositionArtifactId).toBe(compositionArtifactId);
     });
 
-    it("accepts primitive JSX from fenced jsx attachments instead of JSON entries", async () =>
+    it.skip("accepts primitive JSX from fenced jsx attachments — v2 staged tools removed", async () =>
     {
         const tools = createStagedFigmaTools({
             buffer: new JsxBuffer(),
@@ -419,7 +418,7 @@ describe("figma JSX pipeline", () =>
         ]);
     });
 
-    it("rejects inline primitive JSX inside JSON args", async () =>
+    it.skip("rejects inline primitive JSX inside JSON args — v2 staged tools removed", async () =>
     {
         const tools = createStagedFigmaTools({
             buffer: new JsxBuffer(),
@@ -477,7 +476,7 @@ describe("figma JSX pipeline", () =>
         expect(primitivesJsxResult.output).toContain("Inline JSX in JSON is not allowed");
     });
 
-    it("merges isolated primitive jsx builds into one latest artifact per plan", async () =>
+    it.skip("merges isolated primitive jsx builds — v2 staged tools removed", async () =>
     {
         const tools = createStagedFigmaTools({
             buffer: new JsxBuffer(),
@@ -551,7 +550,7 @@ describe("figma JSX pipeline", () =>
         expect(latestArtifact.entries.map((entry) => entry.name)).toEqual(["HeroTitle", "PrimaryButton"]);
     });
 
-    it("accepts nested token collections and normalizes primitive plan shorthands", async () =>
+    it.skip("accepts nested token collections — v2 staged tools removed", async () =>
     {
         const tools = createStagedFigmaTools({
             buffer: new JsxBuffer(),
@@ -629,7 +628,7 @@ describe("figma JSX pipeline", () =>
         ]));
     });
 
-    it("rejects raw jsx in staged figma.compile", async () =>
+    it.skip("rejects raw jsx in staged figma.compile — v2 staged tools removed", async () =>
     {
         const tools = createStagedFigmaTools({
             buffer: new JsxBuffer(),

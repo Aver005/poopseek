@@ -104,9 +104,30 @@ function appendChild(
     roots.push(child);
 }
 
+function stripCurlyBlocks(input: string): string
+{
+    let result = "";
+    let depth = 0;
+    for (let i = 0; i < input.length; i++)
+    {
+        const ch = input[i]!;
+        if (ch === "{") depth++;
+        else if (ch === "}") { if (depth > 0) depth--; }
+        else if (depth === 0) result += ch;
+    }
+    return result;
+}
+
 export function parseJsx(input: string): JsxNode[]
 {
-    const source = input.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/=\{([^}]*)\}/g, '="$1"');
+    // 1. Strip JSX block comments
+    let source = input.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+    // 2. Strip all {expr} blocks including nested ones (.map, template literals, conditions)
+    source = stripCurlyBlocks(source);
+    // 3. Strip lowercase HTML closing tags, keeping text content
+    source = source.replace(/<\/[a-z][A-Za-z0-9]*(?:\s[^>]*)?\s*>/g, "");
+    // 4. Strip lowercase HTML opening/self-closing tags, keeping text content
+    source = source.replace(/<[a-z][A-Za-z0-9]*(?:\s[^>]*)?\s*\/?>/g, "");
     const roots: JsxNode[] = [];
     const stack: JsxNode[] = [];
     const tagRe = /<[^>]+>/g;

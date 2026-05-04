@@ -306,8 +306,10 @@ function compileScreen(node: JsxNode, state: State): void
 {
     const props = mergeProps(node);
     const id = str(props.id) ?? uid(state, "screen");
-    const width = num(props.w ?? props.width) ?? 390;
-    const height = num(props.h ?? props.height) ?? 844;
+    const width = num(props.w ?? props.width)
+        ?? (props.widthMode === "FILL" ? 1440 : 390);
+    const height = num(props.h ?? props.height)
+        ?? (props.heightMode === "FILL" ? 900 : 844);
     const layoutMode = str(props.layoutMode) as "HORIZONTAL" | "VERTICAL" | undefined;
 
     push(state, {

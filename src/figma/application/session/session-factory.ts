@@ -59,6 +59,8 @@ export function createFigmaSession(args: {
         mode: "create",
         lastJsx: "",
         lastSnapshot: null,
+        documentName: "",
+        historyLoaded: false,
     };
 }
 

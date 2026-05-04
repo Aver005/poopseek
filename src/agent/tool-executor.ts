@@ -120,10 +120,7 @@ export default class ToolExecutor
         return {
             workspaceRoot: this.workspaceRoot,
             currentToolCall,
-            getToolNames: () => [
-                ...getToolNames(),
-                ...(this.getDynamicToolNames?.() ?? []),
-            ],
+            getToolNames: () => this.getDynamicToolNames?.() ?? getToolNames(),
             resolvePath: (inputPath: string) => this.resolvePath(inputPath),
             runCommand: async (
                 kind: "powershell" | "bash",
@@ -157,15 +154,18 @@ export default class ToolExecutor
 
         try
         {
-            const toolHandler = toolsRegistry[toolCall.tool]
-                ?? this.dynamicToolResolver?.(toolCall.tool);
+            // When dynamic tools are provided, they are the ONLY tools (isolated mode).
+            // Fall back to global registry only when no dynamic resolver is present.
+            const toolHandler = this.dynamicToolResolver
+                ? this.dynamicToolResolver(toolCall.tool)
+                : toolsRegistry[toolCall.tool];
 
             if (toolHandler)
             {
                 return await toolHandler(args, this.getContext(toolCall));
             }
 
-            const allNames = [...getToolNames(), ...(this.getDynamicToolNames?.() ?? [])];
+            const allNames = this.getDynamicToolNames?.() ?? getToolNames();
             return {
                 ok: false,
                 output: `Unknown tool: ${toolCall.tool}. Available: ${allNames.join(", ")}`,
