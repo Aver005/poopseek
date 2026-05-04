@@ -21,6 +21,8 @@ export async function handlePushSnapshot(req: Request, context: FigmaHttpContext
         return jsonWithCors({ error: "Unknown session" }, { status: 404 }, context.getCorsHeaders);
 
     session.lastActivityAt = Date.now();
+    session.lastSnapshot = body.snapshot;
+    session.mode = body.snapshot.tree.length > 0 ? "edit" : "create";
 
     return jsonWithCors({ ok: true }, undefined, context.getCorsHeaders);
 }

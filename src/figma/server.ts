@@ -74,6 +74,7 @@ export class FigmaServerManager
             pendingOps: this.pendingOps,
             getOrCreateSession: (sessionId?: string) => this.getOrCreateSession(sessionId),
             getCorsHeaders: () => this.corsHeaders(),
+            deps: this.deps,
         };
     }
 

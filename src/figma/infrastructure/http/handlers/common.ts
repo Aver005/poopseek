@@ -1,5 +1,6 @@
 import type { FigmaSession } from "@/figma/application/session/session-types";
 import type { FigmaChatResponse, FigmaOp } from "@/figma/api/contracts";
+import type { FigmaServerDeps } from "@/figma/application/server-deps";
 
 export interface FigmaHttpContext
 {
@@ -7,6 +8,7 @@ export interface FigmaHttpContext
     pendingOps: FigmaOp[];
     getOrCreateSession: (sessionId?: string) => FigmaSession;
     getCorsHeaders: () => Record<string, string>;
+    deps: FigmaServerDeps;
 }
 
 export function jsonWithCors(body: unknown, init?: ResponseInit & { status?: number }, getCorsHeaders?: () => Record<string, string>): Response

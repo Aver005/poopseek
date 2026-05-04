@@ -56,6 +56,9 @@ export function createFigmaSession(args: {
         dispatchOps,
         createdAt: Date.now(),
         lastActivityAt: Date.now(),
+        mode: "create",
+        lastJsx: "",
+        lastSnapshot: null,
     };
 }
 

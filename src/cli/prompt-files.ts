@@ -12,8 +12,6 @@ export type PromptFiles = {
     figmaPrompt: string;
     figmaRolePrompts: {
         enhancer: string;
-        styler: string;
-        primitivesBuilder: string;
         designer: string;
     };
 };
@@ -68,8 +66,6 @@ export async function readPromptFiles(): Promise<PromptFiles>
     const poetPromptPath = resolveExistingAssetPath("assets/prompts/poet.prompt.md");
     const figmaPromptPath = resolveExistingAssetPath("assets/prompts/figma.prompt.md");
     const figmaEnhancerPromptPath = resolveExistingAssetPath("assets/prompts/figma/enhancer.prompt.md");
-    const figmaStylerPromptPath = resolveExistingAssetPath("assets/prompts/figma/styler.prompt.md");
-    const figmaPrimitivesBuilderPromptPath = resolveExistingAssetPath("assets/prompts/figma/primitives-builder.prompt.md");
     const figmaDesignerPromptPath = resolveExistingAssetPath("assets/prompts/figma/designer.prompt.md");
 
     const [
@@ -82,8 +78,6 @@ export async function readPromptFiles(): Promise<PromptFiles>
         poetPrompt,
         figmaPrompt,
         figmaEnhancerPrompt,
-        figmaStylerPrompt,
-        figmaPrimitivesBuilderPrompt,
         figmaDesignerPrompt,
     ] = await Promise.all([
         fs.promises.readFile(basePromptPath, "utf8"),
@@ -95,8 +89,6 @@ export async function readPromptFiles(): Promise<PromptFiles>
         fs.promises.readFile(poetPromptPath, "utf8"),
         fs.promises.readFile(figmaPromptPath, "utf8"),
         fs.promises.readFile(figmaEnhancerPromptPath, "utf8"),
-        fs.promises.readFile(figmaStylerPromptPath, "utf8"),
-        fs.promises.readFile(figmaPrimitivesBuilderPromptPath, "utf8"),
         fs.promises.readFile(figmaDesignerPromptPath, "utf8"),
     ]);
 
@@ -111,8 +103,6 @@ export async function readPromptFiles(): Promise<PromptFiles>
         figmaPrompt,
         figmaRolePrompts: {
             enhancer: figmaEnhancerPrompt,
-            styler: figmaStylerPrompt,
-            primitivesBuilder: figmaPrimitivesBuilderPrompt,
             designer: figmaDesignerPrompt,
         },
     };
