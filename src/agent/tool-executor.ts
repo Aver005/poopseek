@@ -154,11 +154,8 @@ export default class ToolExecutor
 
         try
         {
-            // When dynamic tools are provided, they are the ONLY tools (isolated mode).
-            // Fall back to global registry only when no dynamic resolver is present.
-            const toolHandler = this.dynamicToolResolver
-                ? this.dynamicToolResolver(toolCall.tool)
-                : toolsRegistry[toolCall.tool];
+            const toolHandler = this.dynamicToolResolver?.(toolCall.tool)
+                ?? toolsRegistry[toolCall.tool];
 
             if (toolHandler)
             {
