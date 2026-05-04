@@ -47,6 +47,7 @@ import { createProviderStore } from "@/stores/provider";
 import { createSessionStore } from "@/stores/session";
 import { createConfigStore } from "@/stores/config";
 import { createCallOptionsStore } from "@/stores/call-options";
+import { MAX_MESSAGES } from "@/types/consts";
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -134,7 +135,7 @@ export async function runCli(): Promise<void>
     const contextManager = new ContextManager(
         prompts.basePrompt,
         prompts.toolsPrompt,
-        { maxMessages: 40 },
+        { maxMessages: MAX_MESSAGES },
         variableProcessor,
     );
     reportProgress?.(40);
@@ -616,7 +617,7 @@ export async function runCli(): Promise<void>
 
     terminalInput.start(commands);
 
-    const MAX_MESSAGES = 256;
+    
     const WARN_AT_MESSAGES = MAX_MESSAGES - 5;
 
     await runMainLoop({

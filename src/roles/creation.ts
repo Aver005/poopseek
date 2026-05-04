@@ -14,6 +14,7 @@ import type { SubAgentRunner } from "@/agent/sub-agent";
 import type { ILLMProvider } from "@/providers";
 import type { AskUserFn } from "@/tools/types";
 import type { VariableProcessor } from "@/variables";
+import { MAX_MESSAGES } from "@/types/consts";
 
 export type ActiveOperation = {
     kind: "role-creation";
@@ -163,7 +164,7 @@ export async function runRoleCreation(deps: RoleCreationDeps): Promise<void>
     const roleContextManager = new ContextManager(
         prompts.roleCreatorPrompt,
         prompts.toolsPrompt,
-        { maxMessages: 40 },
+        { maxMessages: MAX_MESSAGES },
         variableProcessor,
     );
     const roleToolExecutor = new ToolExecutor(
