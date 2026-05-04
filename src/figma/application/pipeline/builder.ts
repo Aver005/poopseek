@@ -29,7 +29,10 @@ function buildPrompt(promptContent: string, enhanced: string, tokens: VarEntry[]
     const tokenHint = tokens.length > 0
         ? "\n\nDesign tokens:\n" + tokens.map((t) => `- ${t.name}: ${t.value}`).join("\n")
         : "";
-    return promptContent + "\n\nUser request:\n" + enhanced + tokenHint;
+    const userPart = enhanced + tokenHint;
+    if (promptContent.includes("{{USER_INPUT}}"))
+        return promptContent.replace("{{USER_INPUT}}", userPart);
+    return promptContent + "\n\nUser request:\n" + userPart;
 }
 
 export async function runBuilderOneShot(

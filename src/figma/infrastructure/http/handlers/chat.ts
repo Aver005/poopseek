@@ -51,7 +51,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         const [enhancerPrompt, designerPrompt, builderPrompt] = await Promise.all([
             readPrompt("enhancer.prompt.md"),
             readPrompt("designer.prompt.md"),
-            readPrompt("builder.prompt.md"),
+            readPrompt("main.prompt.md"),
         ]);
 
         const enhanced = await runEnhancer(subAgentRunner, body.message, enhancerPrompt);
