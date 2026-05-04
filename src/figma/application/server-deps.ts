@@ -7,12 +7,6 @@ export interface FigmaServerDeps
     basePrompt: string;
     toolsPrompt: string;
     figmaPrompt: string;
-    figmaRolePrompts: {
-        enhancer: string;
-        styler: string;
-        primitivesBuilder: string;
-        designer: string;
-    };
     variableProcessor: VariableProcessor;
     getCallOptions?: () => ProviderCallOptions;
     getRequestDelay?: () => number;

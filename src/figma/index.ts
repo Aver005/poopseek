@@ -14,21 +14,4 @@ export { JsxBuffer } from "./engine/jsx/jsx-buffer";
 export type { BufferNode } from "./engine/jsx/jsx-buffer";
 export { VariableStore } from "./engine/theme/var-store";
 export type { VarEntry } from "./engine/theme/var-store";
-export { TokensStore } from "./domain/artifacts/stores/tokens-store";
-export { PrimitivePlanStore } from "./domain/artifacts/stores/primitive-plan-store";
-export { PrimitiveJsxStore } from "./domain/artifacts/stores/primitive-jsx-store";
-export { CompositionMetaStore } from "./domain/artifacts/stores/composition-meta-store";
-export { CompositionJsxStore } from "./domain/artifacts/stores/composition-jsx-store";
-export { CompileArtifactStore } from "./domain/artifacts/stores/compile-artifact-store";
-export { renderCompositionInvocationJsx, expandCompositionToJsx, assertCompositionUsesKnownSymbols } from "./engine/composition/materializer";
-export type {
-    FigmaTokensArtifact,
-    FigmaPrimitivesPlanArtifact,
-    FigmaPrimitivesJsxArtifact,
-    FigmaCompositionMetaArtifact,
-    FigmaCompositionJsxArtifact,
-    FigmaCompileArtifact,
-    FigmaPrimitiveDefinition,
-    CompositionNode,
-} from "./domain/artifacts/artifact-types";
 

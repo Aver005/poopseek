@@ -1,14 +1,10 @@
 import type { FigmaSession } from "@/figma/application/session/session-types";
-import type { FigmaRuntimeSync } from "@/figma/application/session/runtime-sync";
-import type { FigmaTurnRunner } from "@/figma/application/orchestration/turn-runner";
 import type { FigmaChatResponse, FigmaOp } from "@/figma/api/contracts";
 
 export interface FigmaHttpContext
 {
     sessions: Map<string, FigmaSession>;
     pendingOps: FigmaOp[];
-    runtime: FigmaRuntimeSync;
-    turnRunner: FigmaTurnRunner;
     getOrCreateSession: (sessionId?: string) => FigmaSession;
     getCorsHeaders: () => Record<string, string>;
 }

@@ -5,7 +5,6 @@ export type {
     FigmaSnapshotRequest,
 } from "@/figma/api/contracts";
 export type {
-    FigmaPreparedBriefResponse,
     FigmaRole,
     FigmaRoleSession,
     FigmaSession,

@@ -1,10 +1,8 @@
 import type { Server } from "bun";
 type BunServer = Server<unknown>;
 import type { FigmaOp } from "@/figma/api/contracts";
-import { FigmaTurnRunner } from "@/figma/application/orchestration/turn-runner";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
 import { createFigmaSession } from "@/figma/application/session/session-factory";
-import { FigmaRuntimeSync } from "@/figma/application/session/runtime-sync";
 import type { FigmaSession } from "@/figma/application/session/session-types";
 import { handleChat } from "@/figma/infrastructure/http/handlers/chat";
 import type { FigmaHttpContext } from "@/figma/infrastructure/http/handlers/common";
@@ -25,15 +23,11 @@ export class FigmaServerManager
     private readonly pendingOps: FigmaOp[] = [];
     private cleanupTimer: ReturnType<typeof setInterval> | null = null;
     private readonly deps: FigmaServerDeps;
-    private readonly runtime: FigmaRuntimeSync;
-    private readonly turnRunner: FigmaTurnRunner;
 
     constructor(deps: FigmaServerDeps, port: number = DEFAULT_PORT)
     {
         this.deps = deps;
         this.port = port;
-        this.runtime = new FigmaRuntimeSync(deps);
-        this.turnRunner = new FigmaTurnRunner(deps, this.runtime);
     }
 
     get isRunning(): boolean
@@ -78,8 +72,6 @@ export class FigmaServerManager
         return {
             sessions: this.sessions,
             pendingOps: this.pendingOps,
-            runtime: this.runtime,
-            turnRunner: this.turnRunner,
             getOrCreateSession: (sessionId?: string) => this.getOrCreateSession(sessionId),
             getCorsHeaders: () => this.corsHeaders(),
         };
@@ -121,7 +113,6 @@ export class FigmaServerManager
 
         const session = createFigmaSession({
             deps: this.deps,
-            runtime: this.runtime,
             pendingOps: this.pendingOps,
             sessionId,
         });

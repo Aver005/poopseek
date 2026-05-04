@@ -20,9 +20,7 @@ export async function handlePushSnapshot(req: Request, context: FigmaHttpContext
     if (!session)
         return jsonWithCors({ error: "Unknown session" }, { status: 404 }, context.getCorsHeaders);
 
-    session.orchestration.pluginSnapshot = body.snapshot;
     session.lastActivityAt = Date.now();
-    context.runtime.syncSessionRuntimeState(session);
 
     return jsonWithCors({ ok: true }, undefined, context.getCorsHeaders);
 }
