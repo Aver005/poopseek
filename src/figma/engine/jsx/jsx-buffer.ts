@@ -247,17 +247,29 @@ export class JsxBuffer
 
     private propsToAttrs(node: BufferNode): string
     {
-        const textOnlyKeys = new Set(["text", "content"]);
-        const parts: string[] = [];
+        const skipKeys = new Set(["text", "content", "id"]);
+        // Render id as key= first so Handyman can reference the node
+        const parts: string[] = [`key="${node.id}"`];
 
         for (const [key, value] of Object.entries(node.props))
         {
-            if (textOnlyKeys.has(key)) continue;
-            if (value === undefined || value === null) continue;
-            const s = String(value);
-            parts.push(s.includes('"') ? `${key}='${s}'` : `${key}="${s}"`);
+            if (skipKeys.has(key)) continue;
+            if (value === undefined || value === null || value === false) continue;
+            if (value === true)
+            {
+                parts.push(key);
+            }
+            else if (typeof value === "number")
+            {
+                parts.push(`${key}={${value}}`);
+            }
+            else
+            {
+                const s = String(value);
+                parts.push(s.includes('"') ? `${key}='${s}'` : `${key}="${s}"`);
+            }
         }
 
-        return parts.length > 0 ? " " + parts.join(" ") : "";
+        return " " + parts.join(" ");
     }
 }

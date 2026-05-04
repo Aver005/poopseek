@@ -3,7 +3,7 @@ import type { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 
-function loadNodes(buffer: JsxBuffer, jsx: string, parentId: string): void
+function loadNodes(buffer: JsxBuffer, jsx: string, parentId?: string): void
 {
     const mapped = mapKeyToId(jsx);
     const nodes = parseJsx(mapped);
@@ -11,7 +11,20 @@ function loadNodes(buffer: JsxBuffer, jsx: string, parentId: string): void
     function insertNode(node: typeof nodes[0], pid: string | undefined): void
     {
         const id = String(node.props.id ?? node.props.key ?? "");
-        buffer.create(node.type, { ...node.props, id }, pid);
+
+        // Preserve text content from string children into the `text` prop
+        const textChild = node.children
+            .filter((c): c is string => typeof c === "string")
+            .map(s => s.trim())
+            .filter(Boolean)
+            .join(" ");
+
+        const props: Record<string, unknown> = { ...node.props, id };
+        if (textChild && !props.text && !props.content)
+            props.text = textChild;
+
+        buffer.create(node.type, props, pid);
+
         for (const child of node.children)
             if (typeof child === "object")
                 insertNode(child, id);
@@ -29,22 +42,32 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
         const node = buffer.get(key);
         if (!node) return { ok: false, output: `Node "${key}" not found`, error: `Node "${key}" not found` };
 
+        function renderAttr(k: string, v: unknown): string
+        {
+            if (v === true) return k;
+            if (v === false || v === undefined || v === null) return "";
+            if (typeof v === "number") return `${k}={${v}}`;
+            const s = String(v);
+            return s.includes('"') ? `${k}='${s}'` : `${k}="${s}"`;
+        }
+
         function toJsx(id: string, depth: number): string
         {
             const n = buffer.get(id);
             if (!n) return "";
             const indent = "  ".repeat(depth);
-            const attrs = Object.entries(n.props)
-                .filter(([k]) => k !== "id")
-                .map(([k, v]) => `${k}="${v}"`)
-                .join(" ");
+            const textVal = n.props.text ?? n.props.content;
+            const attrs = [`key="${n.id}"`, ...Object.entries(n.props)
+                .filter(([k]) => k !== "id" && k !== "text" && k !== "content")
+                .map(([k, v]) => renderAttr(k, v))
+                .filter(Boolean)].join(" ");
             const tag = n.type;
-            const keyAttr = `key="${n.id}"`;
-            const allAttrs = [keyAttr, attrs].filter(Boolean).join(" ");
+            if (n.children.length === 0 && textVal !== undefined && String(textVal).trim())
+                return `${indent}<${tag} ${attrs}>${String(textVal).trim()}</${tag}>`;
             if (n.children.length === 0)
-                return `${indent}<${tag} ${allAttrs} />`;
+                return `${indent}<${tag} ${attrs} />`;
             const children = n.children.map(cid => toJsx(cid, depth + 1)).join("\n");
-            return `${indent}<${tag} ${allAttrs}>\n${children}\n${indent}</${tag}>`;
+            return `${indent}<${tag} ${attrs}>\n${children}\n${indent}</${tag}>`;
         }
 
         return { ok: true, output: toJsx(key, 0) };

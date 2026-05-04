@@ -54,171 +54,63 @@ export interface ComponentSpec
     allowedProps: Set<string>;
 }
 
-const COMMON_PROPS = [
-    "id",
-    "name",
-    "className",
-    "x",
-    "y",
-    "w",
-    "h",
-    "width",
-    "height",
-    "opacity",
-];
-
-const CONTAINER_STYLE_PROPS = [
-    "fill",
-    "stroke",
-    "strokeWeight",
-    "gradient",
-    "radius",
-    "cornerRadius",
-    "shadow",
-    "gap",
-    "padX",
-    "padY",
-    "px",
-    "py",
-    "paddingLeft",
-    "paddingRight",
-    "paddingTop",
-    "paddingBottom",
-    "align",
-    "counterAlign",
-    "justify",
-    "justifyContent",
+const FRAME_PROPS = new Set([
+    "id", "name", "x", "y",
+    "autoLayout", "flow",
+    "ignoreAutoLayout",
+    "width", "height", "w", "h",
+    "fill", "stroke", "strokeWidth", "strokeWeight",
+    "gradient", "radius",
+    "radiusTL", "radiusTR", "radiusBL", "radiusBR",
+    "shadow", "dropShadow", "innerShadow", "opacity", "clip",
+    "gap", "padX", "padY", "padTop", "padRight", "padBottom", "padLeft",
+    "alignX", "alignY",
     "detach",
-    "fullWidth",
-];
+]);
 
-const TEXT_STYLE_PROPS = [
-    "text",
-    "content",
-    "size",
-    "fontSize",
-    "weight",
-    "fontWeight",
-    "color",
-    "textColor",
-    "align",
-    "textAlign",
-    "letterSpacing",
-    "lineHeight",
-];
+const TEXT_PROPS = new Set([
+    "id", "name", "x", "y",
+    "fill", "fontSize", "size", "fontWeight", "weight",
+    "width", "height", "w", "h",
+    "alignX", "alignY",
+    "lineHeight", "letterSpacing",
+    "content", "text",
+    "opacity", "detach",
+]);
 
-function makeSet(values: string[]): Set<string>
-{
-    return new Set(values);
-}
+const IMAGE_PROPS = new Set([
+    "id", "name", "x", "y",
+    "src", "alt",
+    "width", "height", "w", "h",
+    "fill", "radius",
+    "radiusTL", "radiusTR", "radiusBL", "radiusBR",
+    "stroke", "strokeWidth", "strokeWeight",
+    "shadow", "dropShadow", "innerShadow", "opacity", "detach",
+]);
+
+const ELLIPSE_PROPS = new Set([
+    "id", "name", "x", "y",
+    "width", "height", "w", "h", "size",
+    "fill", "stroke", "strokeWidth", "strokeWeight",
+    "opacity", "detach",
+]);
+
+const LINE_PROPS = new Set([
+    "id", "name", "x", "y",
+    "length", "width", "w",
+    "stroke", "strokeWidth", "strokeWeight", "weight",
+    "vertical", "rotation",
+    "color", "opacity", "detach",
+]);
 
 export const COMPONENT_SPECS: Record<string, ComponentSpec> = {
-    Screen: {
-        rootOnly: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS]),
-    },
-    Frame: {
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS]),
-    },
-    VStack: {
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS]),
-    },
-    HStack: {
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS]),
-    },
-    Card: {
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS]),
-    },
-    Text: {
-        // textOnly: true,  // ← УБРАНО! Теперь поддерживает детей-строки
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    Hero: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    H1: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    H2: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    H3: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    Body: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    BodySm: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    Small: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    Caption: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    Label: {
-        // textOnly: true,  // ← УБРАНО!
-        allowedProps: makeSet([...COMMON_PROPS, ...TEXT_STYLE_PROPS]),
-    },
-    Button: {
-        // textOnly: true,  // ← УБРАНО! Теперь может иметь текст-дети
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, ...TEXT_STYLE_PROPS, "label", "variant", "size"]),
-    },
-    Image: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, "src", "alt"]),
-    },
-    Input: {
-        textOnly: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, ...TEXT_STYLE_PROPS, "placeholder"]),
-    },
-    Divider: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, "length", "weight", "color", "orientation", "rotation", "fill", "stroke", "strokeWeight", "className"]),
-    },
-    Line: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, "length", "weight", "color", "orientation", "rotation", "fill", "stroke", "strokeWeight", "className"]),
-    },
-    Rect: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS]),
-    },
-    Ellipse: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, "size"]),
-    },
-    Circle: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, "size"]),
-    },
-    Icon: {
-        textOnly: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, ...TEXT_STYLE_PROPS, "symbol", "icon", "size"]),
-    },
-    Avatar: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, "symbol", "icon", "size"]),
-    },
-    Badge: {
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, ...TEXT_STYLE_PROPS, "label", "text", "size"]),
-    },
-    NavBar: {
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS, "title"]),
-    },
-    TabBar: {
-        noChildren: true,
-        allowedProps: makeSet([...COMMON_PROPS, ...CONTAINER_STYLE_PROPS]),
-    },
+    Frame:   { allowedProps: FRAME_PROPS },
+    Text:    { allowedProps: TEXT_PROPS },
+    Image:   { noChildren: true, allowedProps: IMAGE_PROPS },
+    Ellipse: { noChildren: true, allowedProps: ELLIPSE_PROPS },
+    Circle:  { noChildren: true, allowedProps: ELLIPSE_PROPS },
+    Line:    { noChildren: true, allowedProps: LINE_PROPS },
+    Divider: { noChildren: true, allowedProps: LINE_PROPS },
 };
 
 export const ALLOWED_TAGS = Object.keys(COMPONENT_SPECS);

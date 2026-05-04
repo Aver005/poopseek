@@ -1,4 +1,3 @@
-import { describeAllowedUtilities, isAllowedClassToken, tokenizeClassName } from "./classname";
 import { ALLOWED_TAGS, getComponentSpec } from "./jsx-spec";
 import type { JsxNode, JsxSourceLocation } from "./jsx-parser";
 
@@ -31,22 +30,22 @@ function pushError(
     errors.push({ path, message, loc: node.loc });
 }
 
-function hasElementChildren(node: JsxNode): boolean
-{
-    return node.children.some((child) => typeof child === "object");
-}
-
 function getTextContent(node: JsxNode): string
 {
     return node.children.filter((child): child is string => typeof child === "string").join("").trim();
 }
 
-function validateProps(node: JsxNode, path: string, errors: JsxValidationError[]): void
+function hasElementChildren(node: JsxNode): boolean
+{
+    return node.children.some((child) => typeof child === "object");
+}
+
+function validateNode(node: JsxNode, path: string, errors: JsxValidationError[]): void
 {
     const spec = getComponentSpec(node.type);
     if (!spec)
     {
-        pushError(errors, node, path, `Unsupported tag <${node.type}>. Allowed tags: ${ALLOWED_TAGS.join(", ")}`);
+        pushError(errors, node, path, `Unsupported tag <${node.type}>. Allowed: ${ALLOWED_TAGS.join(", ")}`);
         return;
     }
 
@@ -55,53 +54,12 @@ function validateProps(node: JsxNode, path: string, errors: JsxValidationError[]
         if (!spec.allowedProps.has(propName))
             pushError(errors, node, path, `Unsupported prop "${propName}" on <${node.type}>`);
     }
-}
 
-function validateClassNames(node: JsxNode, path: string, errors: JsxValidationError[]): void
-{
-    const className = node.props.className;
-    if (typeof className !== "string" || className.trim().length === 0) return;
-
-    for (const token of tokenizeClassName(className))
-    {
-        if (token.includes(":"))
-        {
-            pushError(errors, node, path, `Unsupported class "${token}". State, responsive and variant modifiers are disabled`);
-            continue;
-        }
-
-        if (!isAllowedClassToken(token))
-            pushError(errors, node, path, `Unsupported class "${token}". Allowed utilities: ${describeAllowedUtilities()}`);
-    }
-}
-
-function validateNode(node: JsxNode, path: string, parentType: string | null, errors: JsxValidationError[]): void
-{
-    const spec = getComponentSpec(node.type);
-    if (!spec)
-    {
-        pushError(errors, node, path, `Unsupported tag <${node.type}>. Allowed tags: ${ALLOWED_TAGS.join(", ")}`);
-        return;
-    }
-
-    if (spec.rootOnly && parentType !== null)
-        pushError(errors, node, path, `<${node.type}> is only allowed at the root level`);
-
-    validateProps(node, path, errors);
-    validateClassNames(node, path, errors);
-
-    if (spec.noChildren && node.children.length > 0)
+    if (spec.noChildren && (node.children.length > 0))
         pushError(errors, node, path, `<${node.type}> must not have children`);
 
     if (spec.textOnly && hasElementChildren(node))
         pushError(errors, node, path, `<${node.type}> accepts text children only`);
-
-    if (node.type === "Button")
-    {
-        const label = node.props.label ?? node.props.text;
-        if ((typeof label !== "string" || label.trim().length === 0) && getTextContent(node).length === 0)
-            pushError(errors, node, path, "<Button> requires a non-empty label, text prop, or text child");
-    }
 
     if (node.type === "Image")
     {
@@ -114,13 +72,13 @@ function validateNode(node: JsxNode, path: string, parentType: string | null, er
     {
         const content = node.props.content ?? node.props.text;
         if ((typeof content !== "string" || content.trim().length === 0) && getTextContent(node).length === 0)
-            pushError(errors, node, path, "<Text> requires text content");
+            pushError(errors, node, path, "<Text> requires text content or a text child");
     }
 
     node.children.forEach((child, index) =>
     {
         if (typeof child === "string") return;
-        validateNode(child, `${path} > ${child.type}[${index}]`, node.type, errors);
+        validateNode(child, `${path} > ${child.type}[${index}]`, errors);
     });
 }
 
@@ -129,18 +87,11 @@ export function validateJsxTree(nodes: JsxNode[]): JsxValidationError[]
     const errors: JsxValidationError[] = [];
 
     if (nodes.length === 0)
-        return [{
-            path: "root",
-            message: "JSX tree is empty",
-            loc: { index: 0, line: 1, column: 1 },
-        }];
+        return [{ path: "root", message: "JSX tree is empty", loc: { index: 0, line: 1, column: 1 } }];
 
     nodes.forEach((node, index) =>
-    {
-        if (node.type !== "Screen")
-            pushError(errors, node, `root[${index}]`, "Top-level nodes must be <Screen>");
-        validateNode(node, `${node.type}[${index}]`, null, errors);
-    });
+        validateNode(node, `${node.type}[${index}]`, errors)
+    );
 
     return errors;
 }
@@ -150,16 +101,11 @@ export function validateJsxFragment(nodes: JsxNode[]): JsxValidationError[]
     const errors: JsxValidationError[] = [];
 
     if (nodes.length === 0)
-        return [{
-            path: "fragment",
-            message: "JSX fragment is empty",
-            loc: { index: 0, line: 1, column: 1 },
-        }];
+        return [{ path: "fragment", message: "JSX fragment is empty", loc: { index: 0, line: 1, column: 1 } }];
 
     nodes.forEach((node, index) =>
-    {
-        validateNode(node, `${node.type}[${index}]`, null, errors);
-    });
+        validateNode(node, `${node.type}[${index}]`, errors)
+    );
 
     return errors;
 }
@@ -187,31 +133,17 @@ export function formatJsxValidationErrors(errors: JsxValidationError[]): string
         grouped.set(error.message, bucket);
     }
 
-    const summarizeFix = (message: string): string | null =>
-    {
-        const unsupportedClass = /Unsupported class "([^"]+)"/.exec(message)?.[1];
-        if (!unsupportedClass) return null;
-        if (unsupportedClass === "flex-row")
-            return 'fix: use `HStack` or just `flex` instead of `flex-row`';
-        if (unsupportedClass.startsWith("mx-") || unsupportedClass.startsWith("my-"))
-            return "fix: replace axis margins with `gap-*`, `px-*`, `py-*`, or a wrapper Frame";
-        if (unsupportedClass.startsWith("hover:") || unsupportedClass.startsWith("md:") || unsupportedClass.startsWith("sm:"))
-            return "fix: remove state/responsive modifiers entirely";
-        return null;
-    };
-
     const lines = [...grouped.entries()].slice(0, 10).map(([message, items], index) =>
     {
         const samples = items.slice(0, 2).map((item) => `${item.path} @ ${item.loc.line}:${item.loc.column}`);
-        const suffix = items.length > 2 ? ` (+${items.length - 2} more)` : "";
-        const fix = summarizeFix(message);
-        return `${index + 1}. ${message}\n   at ${samples.join("; ")}${suffix}${fix ? `\n   ${fix}` : ""}`;
+        const suffix  = items.length > 2 ? ` (+${items.length - 2} more)` : "";
+        return `${index + 1}. ${message}\n   at ${samples.join("; ")}${suffix}`;
     });
 
     return [
-        "JSX validation failed. Fix all listed issues in one pass and call figma_render again with corrected JSX.",
-        `Total problems: ${errors.length}. Unique issues: ${grouped.size}.`,
+        "JSX validation failed. Fix all listed issues and resubmit.",
+        `Total: ${errors.length}. Unique: ${grouped.size}.`,
         ...lines,
-        ...(grouped.size > 10 ? [`...and ${grouped.size - 10} more unique issues`] : []),
+        ...(grouped.size > 10 ? [`...and ${grouped.size - 10} more`] : []),
     ].join("\n");
 }
