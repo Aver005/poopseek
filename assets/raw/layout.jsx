@@ -1,127 +1,117 @@
-<Screen key="Root" name="Shawarma Royal Home" className="bg-background">
-  <VStack key="Page" name="Full Page" className="w-full gap-0">
-    
-    {/* Sticky Header */}
-    <NavBar key="StickyHeader" name="Sticky Header" className="bg-surface shadow-md border-b border-border sticky top-0 z-10">
-      <HStack key="HeaderContent" name="Header Content" className="w-full justify-between items-center px-6 py-4">
-        <HStack key="LogoArea" name="Logo Area" className="gap-2 items-center">
-          <Icon key="LogoIcon" name="Shawarma Icon" className="w-10 h-10 bg-accent rounded-full" />
-          <H2 key="LogoText" name="Logo" className="text-primary font-bold tracking-tight">Shawarma Royal</H2>
-        </HStack>
-        <HStack key="NavLinks" name="Navigation" className="gap-8">
-          <Text key="NavMenu" name="Menu Link" className="text-text font-semibold text-lg">Menu</Text>
-          <Text key="NavLocations" name="Locations Link" className="text-text font-semibold text-lg">Locations</Text>
-          <Button key="NavCta" name="Shawarma Time Button" className="bg-primary rounded-lg px-6 py-2">
-            <Text key="CtaText" name="Button Text" className="text-white font-bold">Shawarma Time! ⏰</Text>
-          </Button>
-        </HStack>
-      </HStack>
-    </NavBar>
+<Screen key="Root" name="Shawarma Royal - Landing Page">
+  <NavBar key="NavBar1" name="Navigation Bar" className="bg-surface border-b border-border px-6 py-4 flex justify-between items-center">
+    <HStack key="LogoStack" name="Logo Group" className="items-center gap-2">
+      <Text key="LogoIcon" name="Logo Icon" className="text-3xl">🥙</Text>
+      <Text key="LogoText" name="Logo Text" className="text-2xl font-bold text-accent">Shawarma Royal</Text>
+    </HStack>
+    <HStack key="NavLinks" name="Nav Links" className="items-center gap-6">
+      <Text key="NavMenu" name="Menu Link" className="text-base font-semibold text-text">Menu</Text>
+      <Text key="NavLocations" name="Locations Link" className="text-base font-semibold text-text">Locations</Text>
+      <Button key="NavCTA" name="Order Button" className="bg-accent text-white px-5 py-2 rounded-full font-semibold">Shawarma Time! 🕺</Button>
+    </HStack>
+  </NavBar>
 
-    {/* Hero Section with Gradient Background */}
-    <VStack key="HeroSection" name="Hero Section" className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 items-center justify-center py-20 px-6">
-      <HStack key="HeroContent" name="Hero Content" className="items-center justify-between max-w-screen-xl w-full gap-12 flex-wrap">
-        <VStack key="HeroTextArea" name="Text Area" className="gap-4 flex-1">
-          <Hero key="HeroTitle" name="Main Headline" className="text-white font-bold tracking-tight leading-tight">
-            You've Met Your Match — Shawarma Royal!
-          </Hero>
-          <Body key="HeroSubtitle" name="Subtitle" className="text-white text-xl font-medium">
-            🥙 Wrapped with love, grilled to perfection, and sauced like a dream.
-          </Body>
-          <Button key="HeroButton" name="Order Now Bouncing" className="bg-primary rounded-lg px-8 py-3 mt-4 shadow-lg">
-            <Text key="HeroButtonText" name="Button Label" className="text-white font-bold text-lg">🤤 Order Now — It's SHWARMY Time!</Text>
-          </Button>
-        </VStack>
-        <VStack key="HeroIllustration" name="Winking Shawarma" className="items-center justify-center flex-1">
-          <Icon key="ShawarmaIcon" name="Winking Shawarma" className="w-64 h-64 bg-surface rounded-full shadow-xl items-center justify-center">
-            <Text key="WinkEmoji" name="Wink Face" className="text-8xl">😉🌯</Text>
-          </Icon>
-          <HStack key="SpeechBubbles" name="Floating Quotes" className="gap-4 mt-4">
-            <Card key="Bubble1" name="Crunchy AF Bubble" className="bg-surface rounded-full px-4 py-2 shadow-md">
-              <Text key="CrunchyText" name="Crunchy AF" className="text-accent font-bold">Crunchy AF 🔊</Text>
-            </Card>
-            <Card key="Bubble2" name="Garlic Sauce Bubble" className="bg-surface rounded-full px-4 py-2 shadow-md">
-              <Text key="GarlicText" name="Garlic Sauce" className="text-primary font-bold">🧄 Garlic Sauce Upgrade 🧄</Text>
-            </Card>
-          </HStack>
-        </VStack>
+  <Frame key="HeroSection" name="Hero Section" className="bg-gradient-to-br from-yellow-300 via-amber-300 to-orange-400 px-8 py-16 flex justify-between items-center overflow-hidden">
+    <VStack key="HeroContent" name="Hero Text Content" className="flex-1 items-start gap-4">
+      <Hero key="HeroTitle" name="Main Title" className="text-text font-bold leading-tight">
+        You've Met Your Match — 😉
+        <Text key="HeroAccent" name="Accent Text" className="text-accent bg-white/30 px-3 py-1 rounded-2xl inline-block">Shawarma Royal!</Text>
+      </Hero>
+      <HStack key="HeroTagline" name="Tagline" className="items-center gap-3">
+        <Text key="CrunchyText" name="Crunchy AF Badge" className="bg-surface px-4 py-2 rounded-full shadow-md text-2xl font-semibold text-text-secondary">Crunchy AF</Text>
+        <Text key="CommentEmoji" name="Comment Emoji" className="text-4xl">💬</Text>
+      </HStack>
+      <Frame key="SpeechBubble" name="Speech Bubble" className="relative bg-surface px-6 py-3 rounded-2xl shadow-lg inline-flex items-center gap-2 mt-2">
+        <Text key="GarlicText" name="Garlic Sauce Text" className="text-xl font-bold text-text">🧄 Garlic Sauce Upgrade</Text>
+        <Text key="SparkleEmoji" name="Sparkle Emoji" className="text-2xl">✨</Text>
+      </Frame>
+    </VStack>
+    <VStack key="HeroVisual" name="Hero Shawarma Visual" className="items-center">
+      <Text key="ShawarmaEmoji" name="Shawarma Emoji" className="text-[180px] leading-none drop-shadow-2xl">🥙</Text>
+      <Text key="WinkEmoji" name="Wink Emoji" className="text-7xl -mt-16 -mr-12">😉</Text>
+      <Text key="FlameEmoji" name="Flame Emoji" className="text-6xl -mt-10 -ml-12">🔥</Text>
+      <Text key="RoyalCrunchText" name="Royal Crunch Label" className="bg-accent/80 px-4 py-1 rounded-full text-2xl font-bold text-white mt-2">royal crunch</Text>
+    </VStack>
+  </Frame>
+
+  <Frame key="CardsSection" name="Cards Section" className="px-8 py-16">
+    <VStack key="SectionHeader" name="Section Header" className="items-center gap-2 mb-12">
+      <H2 key="SectionTitle" name="Section Title" className="text-4xl font-bold text-text text-center">Pick Your Shawarma Soulmate</H2>
+      <HStack key="Subtitle" name="Subtitle with Emoji" className="items-center gap-2">
+        <Text key="PunsText" name="Puns Text" className="text-xl text-text-secondary">😂 silly puns included</Text>
+        <Text key="BurritoEmoji" name="Burrito Emoji" className="text-3xl">🌯</Text>
       </HStack>
     </VStack>
 
-    {/* Cards Section */}
-    <VStack key="CardsSection" name="Menu Cards" className="w-full px-6 py-16 bg-background items-center">
-      <VStack key="CardsContainer" name="Responsive Grid" className="max-w-screen-xl w-full gap-12">
-        <H2 key="SectionTitle" name="Choose Your Fighter" className="text-text font-bold text-center">🔥 Roll with the Best 🔥</H2>
-        
-        {/* Row of 3 Cards - Written Manually */}
-        <HStack key="CardsRowDesktop" name="Desktop Row" className="gap-6 justify-center flex-wrap">
-          
-          {/* Card 1: Classic */}
-          <Card key="CardClassic" name="Classic Card" className="bg-surface rounded-xl shadow-lg border border-border w-80 overflow-hidden hover-scale">
-            <VStack key="ClassicContent" name="Classic Content" className="items-center p-6 gap-4">
-              <Icon key="ClassicIcon" name="Classic Shawarma" className="w-32 h-32 bg-accent rounded-full items-center justify-center">
-                <Text key="ClassicEmoji" name="Classic Emoji" className="text-5xl">🌯</Text>
-              </Icon>
-              <VStack key="ClassicText" name="Text Area" className="items-center gap-2">
-                <H3 key="ClassicTitle" name="Classic" className="text-text font-bold text-2xl">Classic</H3>
-                <Caption key="ClassicPun" name="Pun Subtitle" className="text-text-secondary font-medium text-center">"I'm kind of a big dill" 🥒</Caption>
-                <Body key="ClassicDesc" name="Description" className="text-text text-center">Garlic sauce, pickles, fries wrapped in perfection.</Body>
-              </VStack>
-              <Button key="ClassicOrder" name="Order Classic" className="bg-primary rounded-lg w-full py-3">
-                <Text key="ClassicOrderText" name="Button" className="text-white font-bold">I WANT THIS! 🍗</Text>
-              </Button>
-            </VStack>
-          </Card>
+    <HStack key="CardsGrid" name="Cards Grid" className="justify-center gap-8 flex-wrap">
+      <Card key="ClassicCard" name="Classic Shawarma Card" className="bg-surface rounded-3xl p-8 w-80 border-2 border-border shadow-xl items-center text-center">
+        <Frame key="ClassicIcon" name="Classic Icon" className="w-28 h-28 bg-yellow-100 rounded-full items-center justify-center mb-5">
+          <Text key="ClassicEmoji" name="Classic Emoji" className="text-6xl">🥙</Text>
+        </Frame>
+        <H3 key="ClassicTitle" name="Classic Title" className="text-3xl font-bold text-text">Classic</H3>
+        <Body key="ClassicSubtitle" name="Classic Subtitle" className="text-text-secondary italic mt-2">"Wrap star of the show"</Body>
+        <Caption key="ClassicIngredients" name="Classic Ingredients" className="text-gray-500 mt-2">Chicken, pickles, garlic magic</Caption>
+        <Text key="ClassicPrice" name="Classic Price" className="text-accent font-bold text-2xl mt-5">€7.90</Text>
+        <Button key="ClassicButton" name="Classic Order Button" className="bg-primary text-white px-6 py-3 rounded-full font-bold text-lg mt-4">Add to order</Button>
+      </Card>
 
-          {/* Card 2: Spicy */}
-          <Card key="CardSpicy" name="Spicy Card" className="bg-surface rounded-xl shadow-lg border border-border w-80 overflow-hidden">
-            <VStack key="SpicyContent" name="Spicy Content" className="items-center p-6 gap-4">
-              <Icon key="SpicyIcon" name="Spicy Shawarma" className="w-32 h-32 bg-accent rounded-full items-center justify-center">
-                <Text key="SpicyEmoji" name="Spicy Emoji" className="text-5xl">🌶️🔥</Text>
-              </Icon>
-              <VStack key="SpicyText" name="Text Area" className="items-center gap-2">
-                <H3 key="SpicyTitle" name="Spicy" className="text-text font-bold text-2xl">Spicy</H3>
-                <Caption key="SpicyPun" name="Pun Subtitle" className="text-text-secondary font-medium text-center">"Let's get smashed!" 🍺</Caption>
-                <Body key="SpicyDesc" name="Description" className="text-text text-center">Sriracha, jalapeños, and a kick that slaps back.</Body>
-              </VStack>
-              <Button key="SpicyOrder" name="Order Spicy" className="bg-primary rounded-lg w-full py-3">
-                <Text key="SpicyOrderText" name="Button" className="text-white font-bold">FEEL THE BURN! 🔥</Text>
-              </Button>
-            </VStack>
-          </Card>
+      <Card key="SpicyCard" name="Spicy Shawarma Card" className="bg-surface rounded-3xl p-8 w-80 border-2 border-border shadow-xl items-center text-center">
+        <Frame key="SpicyIcon" name="Spicy Icon" className="w-28 h-28 bg-red-100 rounded-full items-center justify-center mb-5">
+          <Text key="SpicyEmoji" name="Spicy Emoji" className="text-6xl">🌶️</Text>
+        </Frame>
+        <H3 key="SpicyTitle" name="Spicy Title" className="text-3xl font-bold text-text">Spicy</H3>
+        <Body key="SpicySubtitle" name="Spicy Subtitle" className="text-text-secondary italic mt-2">"Feel the burn, baby"</Body>
+        <Caption key="SpicyIngredients" name="Spicy Ingredients" className="text-gray-500 mt-2">Harissa chicken, jalapeños</Caption>
+        <Text key="SpicyPrice" name="Spicy Price" className="text-accent font-bold text-2xl mt-5">€8.50</Text>
+        <Button key="SpicyButton" name="Spicy Order Button" className="bg-primary text-white px-6 py-3 rounded-full font-bold text-lg mt-4">Fire it up</Button>
+      </Card>
 
-          {/* Card 3: Vegan */}
-          <Card key="CardVegan" name="Vegan Card" className="bg-surface rounded-xl shadow-lg border border-border w-80 overflow-hidden">
-            <VStack key="VeganContent" name="Vegan Content" className="items-center p-6 gap-4">
-              <Icon key="VeganIcon" name="Vegan Shawarma" className="w-32 h-32 bg-accent rounded-full items-center justify-center">
-                <Text key="VeganEmoji" name="Vegan Emoji" className="text-5xl">🌱🥙</Text>
-              </Icon>
-              <VStack key="VeganText" name="Text Area" className="items-center gap-2">
-                <H3 key="VeganTitle" name="Vegan" className="text-text font-bold text-2xl">Vegan</H3>
-                <Caption key="VeganPun" name="Pun Subtitle" className="text-text-secondary font-medium text-center">"Lettuce celebrate!" 🎉</Caption>
-                <Body key="VeganDesc" name="Description" className="text-text text-center">Falafel, tahini, fresh mint. No animals harmed.</Body>
-              </VStack>
-              <Button key="VeganOrder" name="Order Vegan" className="bg-primary rounded-lg w-full py-3">
-                <Text key="VeganOrderText" name="Button" className="text-white font-bold">GO GREEN! 💚</Text>
-              </Button>
-            </VStack>
-          </Card>
-        </HStack>
+      <Card key="VeganCard" name="Vegan Shawarma Card" className="bg-surface rounded-3xl p-8 w-80 border-2 border-border shadow-xl items-center text-center">
+        <Frame key="VeganIcon" name="Vegan Icon" className="w-28 h-28 bg-green-100 rounded-full items-center justify-center mb-5">
+          <Text key="VeganEmoji" name="Vegan Emoji" className="text-6xl">🥬</Text>
+        </Frame>
+        <H3 key="VeganTitle" name="Vegan Title" className="text-3xl font-bold text-text">Vegan</H3>
+        <Body key="VeganSubtitle" name="Vegan Subtitle" className="text-text-secondary italic mt-2">"Peas, love & hummus"</Body>
+        <Caption key="VeganIngredients" name="Vegan Ingredients" className="text-gray-500 mt-2">Falafel, grilled veg, tahini</Caption>
+        <Text key="VeganPrice" name="Vegan Price" className="text-accent font-bold text-2xl mt-5">€8.90</Text>
+        <Button key="VeganButton" name="Vegan Order Button" className="bg-primary text-white px-6 py-3 rounded-full font-bold text-lg mt-4">Go green</Button>
+      </Card>
+    </HStack>
+  </Frame>
 
-        {/* Tablet & Mobile Note: The HStack flex-wrap handles 2 cols on tablet, 1 on mobile */}
-      </VStack>
-    </VStack>
+  <Frame key="GlobalCTASection" name="Global CTA Section" className="px-8 py-12 flex justify-center">
+    <Button key="GlobalOrderButton" name="Global Order Button" className="bg-primary text-white font-extrabold text-2xl px-12 py-5 rounded-full border-4 border-yellow-300 items-center gap-3">
+      <Text key="CTAText" name="CTA Text">⚡ ORDER NOW – SHAWARMA TIME</Text>
+      <Text key="CTAEmoji" name="CTA Emoji" className="text-4xl">🥙</Text>
+    </Button>
+  </Frame>
 
-    {/* Footer */}
-    <Divider key="FooterDivider" name="Line" className="border-border" />
-    <HStack key="Footer" name="Footer" className="justify-between items-center px-6 py-8 bg-surface flex-wrap gap-4">
-      <Text key="FooterCopy" name="Copyright" className="text-text-secondary">© 2024 Shawarma Royal — Good Vibes, Great Wraps</Text>
-      <HStack key="FooterEmojis" name="Emoji Row" className="gap-2">
-        <Text key="Emoji1" name="Happy" className="text-2xl">😋</Text>
-        <Text key="Emoji2" name="Shawarma" className="text-2xl">🌯</Text>
-        <Text key="Emoji3" name="Garlic" className="text-2xl">🧄</Text>
+  <Frame key="Footer" name="Footer" className="bg-surface border-t-4 border-border px-8 py-6 rounded-t-3xl">
+    <HStack key="FooterContent" name="Footer Content" className="justify-between items-center flex-wrap gap-4">
+      <HStack key="Address" name="Address Section" className="items-center gap-2">
+        <Text key="AddressText" name="Address Text" className="text-lg font-semibold text-text">📍 42 Shawarma Lane, Crunch City</Text>
+        <Text key="MapEmoji" name="Map Emoji" className="text-2xl">🗺️</Text>
+      </HStack>
+      <HStack key="SocialIcons" name="Social Icons" className="gap-4">
+        <Frame key="InstagramIcon" name="Instagram Icon" className="bg-yellow-100 p-2 rounded-full">
+          <Text key="InstagramEmoji" name="Instagram Emoji" className="text-2xl">📸</Text>
+        </Frame>
+        <Frame key="TwitterIcon" name="Twitter Icon" className="bg-yellow-100 p-2 rounded-full">
+          <Text key="TwitterEmoji" name="Twitter Emoji" className="text-2xl">🐦</Text>
+        </Frame>
+        <Frame key="PhoneIcon" name="Phone Icon" className="bg-yellow-100 p-2 rounded-full">
+          <Text key="PhoneEmoji" name="Phone Emoji" className="text-2xl">📱</Text>
+        </Frame>
+      </HStack>
+      <HStack key="Copyright" name="Copyright Section" className="items-center gap-2">
+        <Text key="CopyrightText" name="Copyright Text" className="text-text-secondary font-medium">© 2025 Shawarma Royal</Text>
+        <Text key="CrownEmoji" name="Crown Emoji" className="text-xl">👑</Text>
+        <Badge key="GarlicBadge" name="Garlic Badge" className="bg-accent/20 px-3 py-1 rounded-full text-sm">100% garlicky</Badge>
       </HStack>
     </HStack>
+  </Frame>
 
-  </VStack>
+  <Frame key="FloatingGarlic" name="Floating Garlic Element" className="fixed bottom-6 right-6">
+    <Text key="GarlicEmoji" name="Garlic Emoji" className="text-5xl opacity-80">🧄</Text>
+  </Frame>
 </Screen>

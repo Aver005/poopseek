@@ -76,7 +76,19 @@ function num(value: unknown): number | undefined
 
 function textContent(node: JsxNode): string
 {
-    return node.children.filter((child): child is string => typeof child === "string").join("").trim();
+    // Собираем текст из детей
+    let result = "";
+    for (const child of node.children)
+    {
+        if (typeof child === "string")
+            result += child;
+        else if (typeof child === "object" && child.type === "Text")
+        {
+            // Рекурсивно достаём текст из вложенных Text компонентов
+            result += textContent(child);
+        }
+    }
+    return result.trim();
 }
 
 function mergeProps(node: JsxNode): Props
@@ -91,7 +103,9 @@ function mergeProps(node: JsxNode): Props
 
 function getText(node: JsxNode, props: Props): string
 {
-    return str(props.label ?? props.content ?? props.text) ?? textContent(node);
+    const fromProps = str(props.label ?? props.content ?? props.text);
+    if (fromProps) return fromProps;
+    return textContent(node);
 }
 
 function sanitizePropString(value: unknown): string | undefined
@@ -124,7 +138,7 @@ function inferWidth(props: Props, parent?: FrameContext): number | undefined
     if (explicit !== undefined) return explicit;
     if (props.widthMode === "FILL")
         return parent?.isAutoLayout ? undefined : parent?.width;
-    if (!parent) return 390;
+    if (!parent) return 1440;
     if (!parent.isAutoLayout) return parent.width;
     if (parent.layout === "VERTICAL") return undefined;
     return undefined;
@@ -180,8 +194,17 @@ function applyGradient(state: State, nodeId: string, value: unknown): void
 {
     const gradient = str(value);
     if (!gradient) return;
-    const [from = "#2563EB", to = "#1D4ED8", angle = "0"] = gradient.split(":");
-    push(state, { type: "set_gradient", nodeId, from, to, angle: Number(angle) });
+    const parts = gradient.split(":");
+    if (parts.length === 2)
+    {
+        const [from, to, angle = "0"] = parts;
+        push(state, { type: "set_gradient", nodeId, from, to, angle: Number(angle) });
+    }
+    else if (parts.length === 3)
+    {
+        const [from, via, to, angle = "0"] = parts;
+        push(state, { type: "set_gradient_three", nodeId, from, via, to, angle: Number(angle) });
+    }
 }
 
 function applyOpacity(state: State, nodeId: string, value: unknown): void
@@ -258,6 +281,25 @@ function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" |
     const autoWidth = width === undefined;
     const autoHeight = height === undefined;
 
+    // Автоматическое центрирование внутри родителя
+    const x = num(props.x);
+    const y = num(props.y);
+    let autoCenterX = false;
+    let autoCenterY = false;
+
+    if (parent?.isAutoLayout && x === undefined && y === undefined)
+    {
+        // Если родитель с Auto Layout и позиция не задана — не центрируем
+        autoCenterX = false;
+        autoCenterY = false;
+    }
+    else if (parent && x === undefined && y === undefined && (width !== undefined || autoWidth))
+    {
+        // Центрируем по умолчанию
+        autoCenterX = true;
+        autoCenterY = true;
+    }
+
     push(state, {
         type: "create_frame",
         id,
@@ -265,7 +307,8 @@ function compileFrame(node: JsxNode, state: State, forcedLayout?: "HORIZONTAL" |
         ...parentRef(state, props),
         ...(width !== undefined ? { width } : {}),
         ...(height !== undefined ? { height } : {}),
-        ...position(props),
+        ...(autoCenterX && parent ? { x: (parent.width - (width ?? 200)) / 2 } : (x !== undefined ? { x } : {})),
+        ...(autoCenterY && parent ? { y: (parent.height - (height ?? 200)) / 2 } : (y !== undefined ? { y } : {})),
         ...(!props.gradient && props.fill !== undefined ? { fill: props.fill } : {}),
         ...(num(props.radius ?? props.cornerRadius) !== undefined ? { cornerRadius: num(props.radius ?? props.cornerRadius) } : {}),
         ...(props.radiusTopLeft !== undefined ? { cornerRadiusTopLeft: num(props.radiusTopLeft) } : {}),
@@ -324,8 +367,9 @@ function compileScreen(node: JsxNode, state: State): void
         ...(props.clipContent ? { clipContent: true } : {}),
     });
 
-    if (layoutMode)
-        createAutoLayout(state, id, props, layoutMode, { hugMain: false, hugCross: false });
+    // Screen по умолчанию — вертикальный Auto Layout
+    const effectiveLayout = layoutMode ?? "VERTICAL";
+    createAutoLayout(state, id, props, effectiveLayout, { hugMain: false, hugCross: false });
 
     if (props.gradient) applyGradient(state, id, props.gradient);
     if (props.borderEdge)
@@ -364,19 +408,23 @@ function compileText(node: JsxNode, state: State, presetName?: string): void
     const fillParent = props.widthMode === "FILL" || (parent?.layout === "VERTICAL" && width === undefined && props.x === undefined);
     const content = getText(node, props);
 
+    // Автоматическое центрирование текста
+    const textAlign = str(props.align ?? props.textAlign)?.toUpperCase() as "LEFT" | "CENTER" | "RIGHT" | undefined;
+    const autoCenter = textAlign === "CENTER" || (parent?.layout === "VERTICAL" && textAlign === undefined);
+
     push(state, {
         type: "create_text",
         id,
         name: str(props.name) ?? (presetName ?? "Text"),
         ...parentRef(state, props),
         content,
-        ...position(props),
-        fontSize: num(props.size ?? props.fontSize) ?? preset?.fontSize ?? 16,
-        fontWeight: str(props.weight ?? props.fontWeight) ?? preset?.fontWeight ?? "Regular",
-        color: props.color ?? props.textColor ?? "#0F172A",
+        ...(autoCenter && parent && width === undefined ? { textAlign: "CENTER" } : {}),
         ...(width !== undefined ? { width } : {}),
         ...(fillParent ? { fillParent: true } : {}),
         ...(props.heightMode === "FILL" ? { fillParentHeight: true } : {}),
+        fontSize: num(props.size ?? props.fontSize) ?? preset?.fontSize ?? 16,
+        fontWeight: str(props.weight ?? props.fontWeight) ?? preset?.fontWeight ?? "Regular",
+        color: props.color ?? props.textColor ?? "#0F172A",
     });
 
     applyTextStyle(state, id, props, preset);
@@ -408,6 +456,16 @@ function compileButton(node: JsxNode, state: State): void
     const width = fillParent ? undefined : num(props.w ?? props.width);
     const height = num(props.h ?? props.height) ?? preset.height;
 
+    // Автоматическое центрирование кнопки
+    const x = num(props.x);
+    const y = num(props.y);
+    let autoCenterX = false;
+
+    if (parent && x === undefined && y === undefined && width === undefined)
+    {
+        autoCenterX = true;
+    }
+
     push(state, {
         type: "create_frame",
         id,
@@ -415,7 +473,8 @@ function compileButton(node: JsxNode, state: State): void
         ...parentRef(state, props),
         ...(width !== undefined ? { width } : {}),
         height,
-        ...position(props),
+        ...(autoCenterX && parent && width === undefined ? { x: (parent.width / 2) - (preset.paddingH * 2 + 50) } : (x !== undefined ? { x } : {})),
+        ...(y !== undefined ? { y } : {}),
         fill: props.fill ?? variantPreset.fill,
         cornerRadius: num(props.radius ?? props.cornerRadius) ?? 12,
         ...(fillParent && parent?.layout === "VERTICAL" ? { fillParent: true } : {}),
@@ -737,6 +796,13 @@ function compileNavBar(node: JsxNode, state: State): void
             weight: 1,
             name: "Border Bottom",
         });
+
+    // Добавляем Auto Layout и обрабатываем детей
+    createAutoLayout(state, id, props, "HORIZONTAL", { hugMain: false, hugCross: false });
+
+    state.stack.push({ id, width, height, isAutoLayout: true, layout: "HORIZONTAL" });
+    compileChildren(node, state);
+    state.stack.pop();
 }
 
 function compileTabBar(node: JsxNode, state: State): void
@@ -827,4 +893,3 @@ export function compileJsx(nodes: JsxNode[]): FigmaOp[]
 
     return state.ops;
 }
-

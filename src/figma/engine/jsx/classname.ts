@@ -18,6 +18,7 @@ export interface ClassNameProps
     widthMode?: "FILL";
     heightMode?: "FILL";
     fill?: VariableColorValue | string;
+    gradient?: string;  // ← НОВОЕ: строка в формате "from:to:angle"
     color?: VariableColorValue | string;
     stroke?: VariableColorValue | string;
     strokeWeight?: number;
@@ -163,6 +164,87 @@ const EXACT_TOKENS = new Set([
     ...SHADOW_SCALE.keys(),
 ]);
 
+// ============================================
+// НОВОЕ: поддержка градиентов
+// ============================================
+
+// Маппинг Tailwind цветов в hex (основные цвета)
+const COLOR_MAP: Record<string, string> = {
+    // yellow
+    "yellow-300": "#FDE047",
+    "yellow-400": "#FACC15",
+    "yellow-500": "#EAB308",
+    // amber
+    "amber-300": "#FCD34D",
+    "amber-400": "#FBBF24",
+    "amber-500": "#F59E0B",
+    // orange
+    "orange-400": "#FB923C",
+    "orange-500": "#F97316",
+    "orange-600": "#EA580C",
+    // green
+    "green-500": "#22C55E",
+    "green-600": "#16A34A",
+    // blue
+    "blue-500": "#3B82F6",
+    "blue-600": "#2563EB",
+    // red
+    "red-500": "#EF4444",
+    "red-600": "#DC2626",
+    // slate
+    "slate-50": "#F8FAFC",
+    "slate-100": "#F1F5F9",
+    "slate-200": "#E2E8F0",
+    "slate-900": "#0F172A",
+    // white/black
+    "white": "#FFFFFF",
+    "black": "#000000",
+    "transparent": "#00000000",
+};
+
+// Парсинг градиента из классов Tailwind
+function parseGradientFromClasses(tokens: string[]): string | undefined
+{
+    let gradientType: "to-br" | "to-r" | "to-b" | "to-t" | "to-l" | null = null;
+    let fromColor: string | null = null;
+    let viaColor: string | null = null;
+    let toColor: string | null = null;
+    
+    for (const token of tokens)
+    {
+        if (token === "bg-gradient-to-br") gradientType = "to-br";
+        else if (token === "bg-gradient-to-r") gradientType = "to-r";
+        else if (token === "bg-gradient-to-b") gradientType = "to-b";
+        else if (token === "bg-gradient-to-t") gradientType = "to-t";
+        else if (token === "bg-gradient-to-l") gradientType = "to-l";
+        else if (token.startsWith("from-")) fromColor = token.slice(5);
+        else if (token.startsWith("via-")) viaColor = token.slice(4);
+        else if (token.startsWith("to-")) toColor = token.slice(3);
+    }
+    
+    if (!gradientType || !fromColor || !toColor) return undefined;
+    
+    // Конвертируем Tailwind цвета в hex
+    const fromHex = COLOR_MAP[fromColor] ?? fromColor;
+    const toHex = COLOR_MAP[toColor] ?? toColor;
+    const viaHex = viaColor ? (COLOR_MAP[viaColor] ?? viaColor) : undefined;
+    
+    // Угол для градиента
+    let angle = 135; // to-br = 135deg
+    if (gradientType === "to-r") angle = 90;
+    else if (gradientType === "to-b") angle = 180;
+    else if (gradientType === "to-t") angle = 0;
+    else if (gradientType === "to-l") angle = 270;
+    
+    if (viaHex)
+    {
+        // Трёхцветный градиент
+        return `${fromHex}:${viaHex}:${toHex}:${angle}`;
+    }
+    
+    return `${fromHex}:${toHex}:${angle}`;
+}
+
 function withAlpha(color: VariableColorValue | string | unknown, opacityPercent: number): string
 {
     let hex = "#000000";
@@ -229,6 +311,17 @@ export function tokenizeClassName(className: string): string[]
 export function isAllowedClassToken(token: string): boolean
 {
     if (token.includes(":")) return false;
+    
+    // Градиентные токены
+    if (token === "bg-gradient-to-br" ||
+        token === "bg-gradient-to-r" ||
+        token === "bg-gradient-to-b" ||
+        token === "bg-gradient-to-t" ||
+        token === "bg-gradient-to-l") return true;
+    if (token.startsWith("from-")) return true;
+    if (token.startsWith("via-")) return true;
+    if (token.startsWith("to-")) return true;
+    
     if (EXACT_TOKENS.has(token)) return true;
     if (isSpacingToken("p-", token)) return true;
     if (isSpacingToken("px-", token)) return true;
@@ -259,8 +352,13 @@ function readScaleValue(prefix: string, token: string): number
 export function resolveClassNameProps(className: string): ClassNameProps
 {
     const result: ClassNameProps = {};
+    const tokens = tokenizeClassName(className);
+    
+    // Сначала проверяем наличие градиента
+    const gradient = parseGradientFromClasses(tokens);
+    if (gradient) result.gradient = gradient;
 
-    for (const token of tokenizeClassName(className))
+    for (const token of tokens)
     {
         const screenProps = SCREEN_TOKENS.get(token);
         if (screenProps)
@@ -268,6 +366,12 @@ export function resolveClassNameProps(className: string): ClassNameProps
             Object.assign(result, screenProps);
             continue;
         }
+
+        // Пропускаем градиентные токены (уже обработаны)
+        if (token.startsWith("bg-gradient-")) continue;
+        if (token.startsWith("from-")) continue;
+        if (token.startsWith("via-")) continue;
+        if (token.startsWith("to-")) continue;
 
         // Opacity modifier: bg-white/80, text-primary/50, border-border/30
         const slashIdx = token.lastIndexOf("/");
@@ -469,7 +573,7 @@ export function resolveClassNameProps(className: string): ClassNameProps
             continue;
         }
 
-        if (token.startsWith("bg-"))
+        if (token.startsWith("bg-") && !result.gradient)
         {
             result.fill = resolveThemeColorValue(token.slice(3)) ?? createVariableColorValue(token.slice(3));
             continue;
@@ -526,10 +630,10 @@ export function describeAllowedUtilities(): string
         "spacing: p-*, px-*, py-*, pt-*, pr-*, pb-*, pl-*, gap-*",
         "size: w-*, h-*, w-full",
         "colors: bg-*, text-*, border-*",
+        "gradients: bg-gradient-to-*, from-*, via-*, to-*",
         "theme aliases: bg-brand, bg-accent, bg-surface, text-text, text-muted, text-on-brand, border-default",
         "typography: text-xs..text-5xl, font-*, leading-*, tracking-*",
         "surface: rounded*, rounded-t-*, border, border-t, border-b, shadow*",
         "misc: overflow-hidden",
     ].join("; ");
 }
-

@@ -3,7 +3,7 @@
  * Preview a JSX layout file directly in Figma without the AI pipeline.
  *
  * Usage:
- *   SOURCE_FILE=path/to/layout.jsx bun run scripts/preview.ts
+ *   SOURCE_FILE=assets/raw/layout.jsx bun run scripts/preview.ts
  *   SOURCE_FILE=path/to/layout.jsx bun run scripts/preview.ts --port 7331
  */
 
