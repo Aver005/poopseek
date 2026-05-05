@@ -13,16 +13,14 @@
 
 ## Компоненты
 
-Доступно ровно 5 компонентов: **Frame**, **Text**, **Image**, **Ellipse**, **Line**.
+Доступно ровно 6 компонентов: **Frame**, **Text**, **Image**, **Rect**, **Ellipse**, **Line**.
 Никаких других. Никаких HTML-тегов.
 
 ---
 
 ## Frame
 
-Универсальный контейнер. С `autoLayout` — авто-раскладка. Без — фиксированный блок.
-
-### Пропсы
+Универсальный контейнер. С `autoLayout` — авто-раскладка. Без него (`ignoreAutoLayout`) — фиксированный блок.
 
 | Проп | Значения | Описание |
 |---|---|---|
@@ -41,64 +39,35 @@
 | `padTop/Right/Bottom/Left` | `{px}` | Индивидуальный padding |
 | `alignX` | `"start"/"center"/"end"/"between"` | Выравнивание по X |
 | `alignY` | `"start"/"center"/"end"/"between"` | Выравнивание по Y |
-| `center` | bare flag | Центрирует всё содержимое по обеим осям (включает autoLayout) |
+| `center` | bare flag | Центрирует содержимое по обеим осям (включает autoLayout) |
 | `shadow` | `"card"/"modal"/"button"` | Тень (пресет) |
-| `dropShadow` | `"x:y:blur:color:opacity"` | Кастомная тень (внешняя) |
-| `innerShadow` | `"x:y:blur:color:opacity"` | Кастомная тень (внутренняя) |
+| `dropShadow` | `"x:y:blur[:spread]:color:opacity"` | Кастомная тень (внешняя) |
+| `innerShadow` | `"x:y:blur[:spread]:color:opacity"` | Кастомная тень (внутренняя) |
 | `gradient` | `"#from:#to:angle"` | Градиент (заменяет fill) |
 | `opacity` | `{0-1}` | Прозрачность |
 | `clip` | bare flag | Обрезать содержимое |
+| `x` | `{px}` | Горизонтальная позиция (абсолютная или на канвасе) |
+| `y` | `{px}` | Вертикальная позиция (абсолютная или на канвасе) |
 | `ignoreAutoLayout` | bare flag | Абсолютное позиционирование внутри auto-layout |
 | `name` | `"..."` | Имя слоя в Figma |
 
-### Размеры width / height
+**alignX / alignY работают по абсолютным осям — независимо от flow.**
 
-```
-width={390}    — фиксированный px
-width="fill"   — растянуть по родителю
-width="hug"    — обернуть содержимое (только в auto-layout)
-```
+**Несколько теней через `;`:** `dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"`
 
 ### ignoreAutoLayout — абсолютное позиционирование
 
-Элемент выходит из потока auto-layout и позиционируется абсолютно внутри родителя.
-Всегда требует явных `x`, `y`, `width`, `height`.
+Элемент выходит из потока auto-layout. Всегда требует явных `x`, `y`, `width`, `height`.
 
 ```jsx
 <Frame autoLayout flow="vertical" width={390} height={200} fill="#2563EB" name="Hero">
   <Text fill="#FFFFFF" fontSize={24} fontWeight="bold" width="fill">Заголовок</Text>
-  {/* Badge поверх — абсолютная позиция */}
   <Frame ignoreAutoLayout x={16} y={16} width={48} height={24}
          fill="#F59E0B" radius={12} name="Badge">
     <Text fill="#FFFFFF" fontSize={11} fontWeight="bold">NEW</Text>
   </Frame>
 </Frame>
 ```
-
-### Тени
-
-```jsx
-shadow="card"                          — пресет (лёгкая)
-shadow="modal"                         — пресет (тяжёлая)
-shadow="button"                        — пресет (цветная)
-dropShadow="0:4:16:0:#000000:0.12"    — x:y:blur:spread:color:opacity
-dropShadow="0:2:8:#000000:0.06"       — x:y:blur:color:opacity (spread=0)
-innerShadow="0:2:4:0:#000000:0.08"    — внутренняя тень
-```
-
-Несколько теней через `;`:
-```jsx
-dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
-```
-
-### Выравнивание alignX / alignY
-
-`alignX` и `alignY` работают по абсолютным осям — независимо от flow.
-
-Примеры:
-- `alignX="center"` → дети по центру горизонтали
-- `alignY="between"` → justify по вертикали
-- `alignX="center" alignY="center"` → полный центр
 
 ---
 
@@ -122,11 +91,6 @@ dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
 | `opacity` | `{0-1}` | Прозрачность |
 | `name` | `"..."` | Имя слоя |
 
-Содержимое — текстовый дочерний узел:
-```jsx
-<Text fill="#64748B" fontSize={14}>Подпись</Text>
-```
-
 ---
 
 ## Image
@@ -137,7 +101,7 @@ dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
 
 | Проп | Значения | Описание |
 |---|---|---|
-| `src` | `"..."` | **Обязательный**. Путь или ключевое слово |
+| `src` | `"..."` | **Обязательный**. Путь или URL |
 | `width` | `{px}` / `"fill"` | Ширина |
 | `height` | `{px}` | Высота |
 | `radius` | `{px}` | Скругление |
@@ -148,24 +112,72 @@ dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
 
 ---
 
-## Ellipse / Line
+## Иконки брендов — theSVG
 
 ```jsx
-<Ellipse width={48} height={48} fill="#2563EB" stroke="#1D4ED8" strokeWidth={2} />
+<Image src="https://thesvg.org/icons/{slug}/{variant}.svg" width={24} height={24} />
+```
+
+Варианты: `default` (цветной) · `light` (белый, для тёмного фона) · `dark` (чёрный) · `mono`
+
+| Категория | Слаги |
+|---|---|
+| Соцсети | `instagram` `facebook` `x` `linkedin` `youtube` `tiktok` `discord` `telegram` `whatsapp` `reddit` `snapchat` `pinterest` |
+| Авторизация | `google` `apple` `github` `microsoft` |
+| Оплата | `visa` `mastercard` `paypal` `stripe` `applepay` `googlepay` `amex` |
+| Платформы | `appstore` `googleplay` `android` |
+| Технологии | `react` `nodejs` `typescript` `python` `openai` `figma` `vercel` `firebase` `docker` |
+
+**Пример — кнопки авторизации:**
+
+```jsx
+<Frame autoLayout flow="vertical" width="fill" height="hug" gap={12} name="SocialAuth">
+  <Frame autoLayout flow="horizontal" width="fill" height={52}
+         fill="#FFFFFF" stroke="#E2E8F0" strokeWidth={1} radius={14}
+         padX={20} gap={10} alignX="center" alignY="center" name="GoogleBtn">
+    <Image src="https://thesvg.org/icons/google/default.svg" width={20} height={20} />
+    <Text fill="#0F172A" fontSize={15} fontWeight="medium">Войти через Google</Text>
+  </Frame>
+  <Frame autoLayout flow="horizontal" width="fill" height={52}
+         fill="#000000" radius={14}
+         padX={20} gap={10} alignX="center" alignY="center" name="AppleBtn">
+    <Image src="https://thesvg.org/icons/apple/light.svg" width={20} height={20} />
+    <Text fill="#FFFFFF" fontSize={15} fontWeight="medium">Войти через Apple</Text>
+  </Frame>
+</Frame>
+```
+
+**Пример — метод оплаты:**
+
+```jsx
+<Frame center width={56} height={36} fill="#F8FAFC" stroke="#E2E8F0" strokeWidth={1} radius={8} name="Visa">
+  <Image src="https://thesvg.org/icons/visa/default.svg" width={36} height={22} />
+</Frame>
+```
+
+---
+
+## Rect / Ellipse / Line
+
+Примитивы без детей. Используй вместо Frame когда не нужен контейнер.
+
+```jsx
+<Rect width={4} height="fill" fill="#2563EB" radius={2} name="Accent" />
+<Ellipse size={48} fill="#2563EB" stroke="#1D4ED8" strokeWidth={2} />
 <Line length="fill" stroke="#E2E8F0" strokeWidth={1} />
 ```
 
-**Ellipse**: `width`, `height`, `size` (квадрат), `fill`, `stroke`, `strokeWidth`, `opacity`
+**Rect**: `width`, `height`, `fill`, `radius`, `radiusTL/TR/BL/BR`, `x`, `y`, `ignoreAutoLayout`, `name`
+**Ellipse**: `width`, `height`, `size` (квадрат), `fill`, `stroke`, `strokeWidth`, `x`, `y`, `ignoreAutoLayout`, `opacity`
 **Line**: `length` (`{px}` или `"fill"`), `stroke`, `strokeWidth`, `vertical` (bare для вертикальной)
 
 ---
 
 ## Жёсткие правила
 
-- **Только** Frame / Text / Image / Ellipse / Line
+- **Только** Frame / Text / Image / Rect / Ellipse / Line
 - **Нет** className — только явные пропсы
-- **Нет** HTML-тегов (div, span, p и т.д.)
-- **Нет** JS-выражений, map(), условий, шаблонных строк
+- **Нет** HTML-тегов, JS-выражений, map(), условий, шаблонных строк
 - **Нет** hover:, md:, dark:, @media и любых модификаторов
 - Text **всегда** имеет непустой текстовый child
 - Image **всегда** имеет непустой src
@@ -186,6 +198,7 @@ dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
 - Список одинаковых карточек без контраста
 - Плоский layout без акцентов
 - Пустые блоки без контента
+- Писать "Google" / "Apple" / "GitHub" текстом там, где есть иконка — всегда theSVG
 
 ---
 
@@ -193,33 +206,22 @@ dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
 
 ```jsx
 <Frame autoLayout flow="vertical" width={390} height={844} fill="#F8FAFC" name="Screen">
-
-  {/* Шапка */}
   <Frame autoLayout flow="horizontal" width="fill" height={56}
          fill="#FFFFFF" padX={16} alignY="center" gap={12} name="NavBar">
     <Text fill="#0F172A" fontSize={18} fontWeight="bold" width="fill">Заголовок</Text>
   </Frame>
-
-  {/* Hero */}
   <Frame autoLayout flow="vertical" width="fill" height={200}
          fill="#2563EB" padX={24} padY={24} gap={12} name="Hero">
     <Text fill="#FFFFFF" fontSize={28} fontWeight="bold">Главный заголовок</Text>
     <Text fill="#BFDBFE" fontSize={16}>Подзаголовок</Text>
   </Frame>
-
-  {/* Контент */}
   <Frame autoLayout flow="vertical" width="fill" height="hug"
          padX={16} padY={16} gap={16} name="Content">
-    ...
   </Frame>
-
-  {/* Tab Bar */}
   <Frame autoLayout flow="horizontal" width="fill" height={83}
          fill="#FFFFFF" stroke="#E2E8F0" strokeWidth={1} alignX="between" padX={24}
          alignY="center" name="TabBar">
-    ...
   </Frame>
-
 </Frame>
 ```
 
@@ -234,7 +236,8 @@ dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
 5. Есть Hero или акцентный блок?
 6. Есть минимум 3 разных типа секций?
 7. Нет повторяющихся одинаковых блоков без контраста?
-8. Цветовая палитра связна (не случайный набор цветов)?
+8. Цветовая палитра связна?
+9. Есть бренды / платформы / методы оплаты? → использованы theSVG-иконки, не текст?
 
 Если хоть один ответ "нет" — исправить перед выводом.
 
@@ -245,5 +248,7 @@ dropShadow="0:2:8:#000000:0.06;0:8:24:0:#000000:0.12"
 {{USER_INPUT}}
 
 ---
+
+## Вывод
 
 Сгенерируй JSX.

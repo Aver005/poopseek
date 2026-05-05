@@ -424,6 +424,41 @@ function compileLine(node: JsxNode, state: State): void
     applyOpacity(state, id, p.opacity);
 }
 
+function compileRect(node: JsxNode, state: State): void
+{
+    const p = node.props;
+    const parent = top(state);
+    const id = str(p.id) ?? uid(state, "rect");
+
+    const parentIsAL = parent?.isAutoLayout ?? false;
+    const widthSz  = resolveFill(resolveSize(p.width  ?? p.w), parentIsAL, parent?.width  ?? 0);
+    const heightSz = resolveFill(resolveSize(p.height ?? p.h), parentIsAL, parent?.height ?? 0);
+    const fillParent       = widthSz  === "fill";
+    const fillParentHeight = heightSz === "fill";
+    const width  = typeof widthSz  === "number" ? widthSz  : undefined;
+    const height = typeof heightSz === "number" ? heightSz : undefined;
+
+    push(state, {
+        type: "create_rect",
+        id,
+        name: str(p.name) ?? "Rect",
+        ...parentRef(state, p),
+        ...(width  !== undefined ? { width }  : {}),
+        ...(height !== undefined ? { height } : {}),
+        ...(fillParent       ? { fillParent: true }       : {}),
+        ...(fillParentHeight ? { fillParentHeight: true } : {}),
+        ...(p.fill !== undefined ? { fill: p.fill } : {}),
+        ...(num(p.radius) !== undefined ? { cornerRadius: num(p.radius) } : {}),
+        ...(p.radiusTL !== undefined ? { cornerRadiusTopLeft:     num(p.radiusTL) } : {}),
+        ...(p.radiusTR !== undefined ? { cornerRadiusTopRight:    num(p.radiusTR) } : {}),
+        ...(p.radiusBL !== undefined ? { cornerRadiusBottomLeft:  num(p.radiusBL) } : {}),
+        ...(p.radiusBR !== undefined ? { cornerRadiusBottomRight: num(p.radiusBR) } : {}),
+        ...(p.ignoreAutoLayout ? { ignoreAutoLayout: true } : {}),
+        ...(p.x !== undefined ? { x: num(p.x) } : {}),
+        ...(p.y !== undefined ? { y: num(p.y) } : {}),
+    });
+}
+
 function compileChildren(node: JsxNode, state: State): void
 {
     for (const child of node.children)
@@ -438,6 +473,8 @@ function compile(node: JsxNode, state: State): void
         case "Frame":   return compileFrame(node, state);
         case "Text":    return compileText(node, state);
         case "Image":   return compileImage(node, state);
+        case "Rect":
+        case "Rectangle": return compileRect(node, state);
         case "Ellipse":
         case "Circle":  return compileEllipse(node, state);
         case "Line":
