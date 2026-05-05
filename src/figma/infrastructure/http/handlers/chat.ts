@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { FigmaChatRequest, FigmaChatResponse } from "@/figma/api/contracts";
-import { runEnhancer } from "@/figma/application/pipeline/enhancer";
+import { runIntentClassifier } from "@/figma/application/pipeline/intent";
 import { runDesigner } from "@/figma/application/pipeline/designer";
 import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
 import { SubAgentRunner } from "@/agent/sub-agent";
@@ -44,17 +44,23 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     const deps = context.deps;
     const subAgentRunner = new SubAgentRunner(deps.getProvider, WORKSPACE_ROOT);
 
+    const [intentPrompt, designerPrompt, builderPrompt, handymanPromptContent] = await Promise.all([
+        readPrompt("intent.prompt.md"),
+        readPrompt("designer.prompt.md"),
+        readPrompt("main.prompt.md"),
+        readPrompt("handyman.prompt.md"),
+    ]);
+
+    const currentJsx = session.lastJsx || session.lastSnapshot?.jsx || "(empty)";
+
+    const { intent, enhanced } = await runIntentClassifier(
+        subAgentRunner, body.message, currentJsx, intentPrompt,
+    );
+
     let assistantText = "";
 
-    if (session.mode === "create")
+    if (intent === "create")
     {
-        const [enhancerPrompt, designerPrompt, builderPrompt] = await Promise.all([
-            readPrompt("enhancer.prompt.md"),
-            readPrompt("designer.prompt.md"),
-            readPrompt("main.prompt.md"),
-        ]);
-
-        const enhanced = await runEnhancer(subAgentRunner, body.message, enhancerPrompt);
         const tokens = await runDesigner(subAgentRunner, enhanced, designerPrompt);
 
         session.varStore.setTokens(tokens);
@@ -97,9 +103,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     }
     else
     {
-        const handymanPrompt = await readPrompt("handyman.prompt.md");
-        const currentJsx = session.lastJsx || session.lastSnapshot?.jsx || "(empty)";
-        const systemPrompt = handymanPrompt.replace("{{CURRENT_JSX}}", currentJsx);
+        const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", currentJsx);
 
         const handymanCtx = session.roleSessions.designer.contextManager;
         handymanCtx.setFigmaContext(systemPrompt);
@@ -140,7 +144,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         let loopResult: Awaited<ReturnType<typeof loop.runTurn>>;
         try
         {
-            loopResult = await loop.runTurn(body.message);
+            loopResult = await loop.runTurn(enhanced);
         }
         catch (err)
         {

@@ -22,6 +22,6 @@ export interface FigmaChatResponse
 
 export interface FigmaSnapshotRequest
 {
-    sessionId: string;
+    sessionId?: string;
     snapshot: FigmaPluginSnapshot;
 }

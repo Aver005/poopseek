@@ -25,12 +25,10 @@ export async function handlePushSnapshot(req: Request, context: FigmaHttpContext
         return invalidJson(context.getCorsHeaders);
     }
 
-    if (!body.sessionId || !body.snapshot || !Array.isArray(body.snapshot.tree))
-        return jsonWithCors({ error: "sessionId and snapshot are required" }, { status: 400 }, context.getCorsHeaders);
+    if (!body.snapshot || !Array.isArray(body.snapshot.tree))
+        return jsonWithCors({ error: "snapshot is required" }, { status: 400 }, context.getCorsHeaders);
 
-    const session = context.sessions.get(body.sessionId);
-    if (!session)
-        return jsonWithCors({ error: "Unknown session" }, { status: 404 }, context.getCorsHeaders);
+    const session = context.getOrCreateSession(body.sessionId);
 
     session.lastActivityAt = Date.now();
     session.lastSnapshot = body.snapshot;
@@ -57,5 +55,5 @@ export async function handlePushSnapshot(req: Request, context: FigmaHttpContext
         }
     }
 
-    return jsonWithCors({ ok: true }, undefined, context.getCorsHeaders);
+    return jsonWithCors({ ok: true, sessionId: session.id }, undefined, context.getCorsHeaders);
 }

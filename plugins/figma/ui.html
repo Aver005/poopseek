@@ -259,8 +259,10 @@
   async function checkStatus() {
     try {
       const r = await fetch(serverUrl + '/v1/status', { signal: AbortSignal.timeout(2500) });
-      if (r.ok) setStatus(true, 'Сервер подключён');
-      else setStatus(false, 'Ошибка сервера');
+      if (r.ok) {
+        setStatus(true, 'Сервер подключён');
+        syncSnapshotToServer();
+      } else setStatus(false, 'Ошибка сервера');
     } catch {
       setStatus(false, 'Сервер недоступен — запустите /figma');
     }
@@ -309,16 +311,20 @@
   }
 
   async function syncSnapshotToServer() {
-    if (!connected || !sessionId) return;
+    if (!connected) return;
 
     try {
       const snapshot = await requestSnapshotFromPlugin();
-      await fetch(serverUrl + '/v1/snapshot', {
+      const resp = await fetch(serverUrl + '/v1/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, snapshot }),
         signal: AbortSignal.timeout(5000),
       });
+      if (resp.ok && !sessionId) {
+        const data = await resp.json();
+        if (data.sessionId) sessionId = data.sessionId;
+      }
     } catch {
       /* snapshot sync is best-effort */
     }
