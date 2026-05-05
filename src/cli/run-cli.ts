@@ -39,6 +39,7 @@ import { runRoleCreation, type ActiveOperation } from "@/roles/creation";
 import { createDeepseekHistoryImporter } from "@/deepseek-client/history-import";
 import { FigmaServerManager, ScopeManager, FigmaLogger } from "@/figma";
 import { printWelcome } from "@/cli/welcome";
+import { warmCache as warmTheSvgCache } from "@/tools/defs/thesvg/cache";
 import { webToolsRegistry, webToolNames, WEB_TOOLS_PROMPT } from "@/tools/web-tools";
 import { createAskUser } from "@/cli/ask-user";
 import { createSubmitHandler } from "@/cli/submit-handler";
@@ -198,6 +199,7 @@ export async function runCli(): Promise<void>
     reportProgress?.(70);
     await syncMCP();
     reportProgress?.(80);
+    warmTheSvgCache();
 
     if (mcpManager.getServerCount() > 0)
     {

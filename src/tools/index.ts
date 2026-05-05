@@ -24,6 +24,7 @@ import { handler as skillReadHandler, name as skillReadName } from "./defs/skill
 import { handler as agentAskHandler, name as agentAskName } from "./defs/agent.ask";
 import { handler as agentParallelHandler, name as agentParallelName } from "./defs/agent.parallel";
 import { handler as grepHandler, name as grepName } from "./defs/grep";
+import { handler as thesvgSearchHandler, name as thesvgSearchName } from "./defs/thesvg/index";
 
 export const toolsRegistry: Record<string, ToolHandler> = {
     [toolsListName]: toolsListHandler,
@@ -50,6 +51,7 @@ export const toolsRegistry: Record<string, ToolHandler> = {
     [agentAskName]: agentAskHandler,
     [agentParallelName]: agentParallelHandler,
     [grepName]: grepHandler,
+    [thesvgSearchName]: thesvgSearchHandler,
 };
 
 export function getToolNames(): string[]
