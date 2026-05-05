@@ -1,174 +1,138 @@
-<Frame width={1920} height={1080} fill="#0A0A0F" name="CS2 HUD Overlay">
-
-  {/* TOP-LEFT: Round Timer & Bomb Status */}
-  <Frame ignoreAutoLayout x={24} y={24} width="fill" height="hug" autoLayout flow="horizontal" gap={16} name="TopLeftPanel">
-    <Frame autoLayout flow="vertical" width="hug" height="hug" fill="#14141C" radius={8} padX={16} padY={12} gap={4} stroke="#2A2A35" strokeWidth={1}>
-      <Text fill="#E8E8EE" fontSize={20} fontWeight="bold" letterSpacing={2}>01:24</Text>
-      <Text fill="#00FF41" fontSize={14} fontWeight="medium">BOMB ACTIVE</Text>
-    </Frame>
-    <Frame autoLayout flow="horizontal" width="hug" height="hug" fill="#14141C" radius={8} padX={16} padY={12} gap={8}>
-      <Ellipse width={12} height={12} fill="#FF4D4D" />
-      <Text fill="#E8E8EE" fontSize={16} fontWeight="medium">Terrorists</Text>
-      <Text fill="#00D93A" fontSize={16} fontWeight="bold">3</Text>
-      <Text fill="#8A8A9A" fontSize={16}>:</Text>
-      <Text fill="#E8E8EE" fontSize={16} fontWeight="bold">5</Text>
-      <Ellipse width={12} height={12} fill="#00D93A" />
-      <Text fill="#E8E8EE" fontSize={16} fontWeight="medium">CT</Text>
+<Frame width={1440} height={1024} fill="#0A0A0A" name="Dashboard" autoLayout flow="vertical">
+  <Frame width="fill" height="hug" autoLayout flow="horizontal" alignX="between" alignY="center" padX={32} padY={24} name="Header">
+    <Text fill="#FFFFFF" fontSize={28} fontWeight="bold" name="Logo">STUDIOS CMS</Text>
+    <Frame autoLayout flow="horizontal" gap={32} name="Nav">
+      <Text fill="#00F3FF" fontSize={16} fontWeight="medium" name="NavActive">DASHBOARD</Text>
+      <Text fill="#A0A0B0" fontSize={16} fontWeight="medium" name="NavEditor">EDITOR</Text>
+      <Text fill="#A0A0B0" fontSize={16} fontWeight="medium" name="NavList">STUDIOS</Text>
     </Frame>
   </Frame>
-
-  {/* TOP-RIGHT: Kill Feed */}
-  <Frame ignoreAutoLayout x={1392} y={24} width={504} height="hug" autoLayout flow="vertical" gap={8} name="KillFeed">
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="end" gap={12} padX={12} padY={8} fill="#14141C" radius={4} stroke="#2A2A35" strokeWidth={1}>
-      <Text fill="#00FF41" fontSize={14} fontWeight="bold">PlayerOne</Text>
-      <Text fill="#E8E8EE" fontSize={14}>🔫</Text>
-      <Text fill="#E8E8EE" fontSize={14} fontWeight="bold">EnemyKiller</Text>
-    </Frame>
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="end" gap={12} padX={12} padY={8} fill="#14141C" radius={4} opacity={0.85}>
-      <Text fill="#00FF41" fontSize={14} fontWeight="bold">SniperPro</Text>
-      <Text fill="#E8E8EE" fontSize={14}>🔪</Text>
-      <Text fill="#E8E8EE" fontSize={14} fontWeight="bold">Shadow</Text>
-    </Frame>
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="end" gap={12} padX={12} padY={8} fill="#14141C" radius={4} opacity={0.7}>
-      <Text fill="#00FF41" fontSize={14} fontWeight="bold">RushB</Text>
-      <Text fill="#E8E8EE" fontSize={14}>💥</Text>
-      <Text fill="#E8E8EE" fontSize={14} fontWeight="bold">AWPer</Text>
-    </Frame>
-  </Frame>
-
-  {/* BOTTOM-LEFT: Radar Map (Circular) */}
-  <Frame ignoreAutoLayout x={24} y={856} width={220} height={220} radius={110} fill="#14141C" stroke="#2A2A35" strokeWidth={2} shadow="modal" name="RadarMap">
-    <Ellipse width={200} height={200} fill="#1A1A24" radius={100} />
-    {/* Center point */}
-    <Ellipse ignoreAutoLayout x={100} y={100} width={8} height={8} fill="#00FF41" />
-    {/* Player dots */}
-    <Ellipse ignoreAutoLayout x={60} y={80} width={10} height={10} fill="#00D93A" stroke="#0A0A0F" strokeWidth={2} />
-    <Ellipse ignoreAutoLayout x={140} y={120} width={10} height={10} fill="#00D93A" stroke="#0A0A0F" strokeWidth={2} />
-    <Ellipse ignoreAutoLayout x={85} y={150} width={10} height={10} fill="#FF4D4D" stroke="#0A0A0F" strokeWidth={2} />
-    {/* Bomb plant zone */}
-    <Frame ignoreAutoLayout x={70} y={70} width={60} height={60} stroke="#00FF41" strokeWidth={2} radius={4} opacity={0.6} />
-    <Text ignoreAutoLayout x={90} y={95} fill="#00FF41" fontSize={10} fontWeight="bold">BOMB</Text>
-  </Frame>
-
-  {/* BOTTOM-CENTER: Health, Armor & Weapon Info */}
-  <Frame ignoreAutoLayout x={560} y={1008} width={800} height="hug" autoLayout flow="vertical" gap={8} name="CombatHUD">
-    
-    {/* Health Bar */}
-    <Frame autoLayout flow="vertical" width={800} height="hug" gap={4}>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between">
-        <Text fill="#E8E8EE" fontSize={12} fontWeight="bold">HEALTH</Text>
-        <Text fill="#00FF41" fontSize={12} fontWeight="bold">100</Text>
+  
+  <Frame width="fill" height="hug" autoLayout flow="vertical" padX={32} gap={24} name="StatsSection">
+    <Text fill="#FFFFFF" fontSize={20} fontWeight="semibold" name="StatsTitle">KEY METRICS</Text>
+    <Frame autoLayout flow="horizontal" gap={24} name="StatsRow">
+      <Frame width={280} height={160} fill="#121212" radius={16} stroke="#2A2A3A" strokeWidth={1} autoLayout flow="vertical" padX={24} padY={24} gap={12} name="StatCard1" shadow="modal" dropShadow="0:8:24:0:#00F3FF:0.15">
+        <Text fill="#00F3FF" fontSize={14} fontWeight="medium" name="StatLabel">TOTAL STUDIOS</Text>
+        <Text fill="#FFFFFF" fontSize={48} fontWeight="bold" name="StatValue">247</Text>
+        <Text fill="#A0A0B0" fontSize={12} name="StatTrend">↑ 12% from last month</Text>
       </Frame>
-      <Frame width={800} height={12} fill="#2A2A35" radius={100}>
-        <Frame width={720} height={12} fill="#FF3B3B" radius={100} gradient="#FF3B3B:#FF0000:90" />
+      <Frame width={280} height={160} fill="#121212" radius={16} stroke="#2A2A3A" strokeWidth={1} autoLayout flow="vertical" padX={24} padY={24} gap={12} name="StatCard2" shadow="modal" dropShadow="0:8:24:0:#FF00E0:0.15">
+        <Text fill="#FF00E0" fontSize={14} fontWeight="medium" name="StatLabel">ACTIVE EDITS</Text>
+        <Text fill="#FFFFFF" fontSize={48} fontWeight="bold" name="StatValue">38</Text>
+        <Text fill="#A0A0B0" fontSize={12} name="StatTrend">↑ 5 in progress</Text>
       </Frame>
-    </Frame>
-
-    {/* Armor Bar */}
-    <Frame autoLayout flow="vertical" width={800} height="hug" gap={4}>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between">
-        <Text fill="#E8E8EE" fontSize={12} fontWeight="bold">ARMOR</Text>
-        <Text fill="#E8E8EE" fontSize={12}>85</Text>
+      <Frame width={280} height={160} fill="#121212" radius={16} stroke="#2A2A3A" strokeWidth={1} autoLayout flow="vertical" padX={24} padY={24} gap={12} name="StatCard3" shadow="modal" dropShadow="0:8:24:0:#FFEE00:0.15">
+        <Text fill="#FFEE00" fontSize={14} fontWeight="medium" name="StatLabel">PUBLISHED</Text>
+        <Text fill="#FFFFFF" fontSize={48} fontWeight="bold" name="StatValue">189</Text>
+        <Text fill="#A0A0B0" fontSize={12} name="StatTrend">↑ 8 this week</Text>
       </Frame>
-      <Frame width={800} height={8} fill="#2A2A35" radius={100}>
-        <Frame width={680} height={8} fill="#F4B400" radius={100} />
-      </Frame>
-    </Frame>
-
-    {/* Weapon & Ammo */}
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" alignY="center" gap={16}>
-      <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={12} fill="#14141C" radius={8} padX={16} padY={12} stroke="#2A2A35" strokeWidth={1}>
-        <Text fill="#E8E8EE" fontSize={24} fontWeight="bold">AK-47</Text>
-        <Text fill="#00FF41" fontSize={32} fontWeight="bold">30</Text>
-        <Text fill="#8A8A9A" fontSize={20}>/</Text>
-        <Text fill="#E8E8EE" fontSize={24}>90</Text>
-      </Frame>
-      <Frame autoLayout flow="horizontal" width="hug" height="hug" gap={8} fill="#14141C" radius={8} padX={12} padY={8}>
-        <Ellipse width={24} height={24} fill="#00D93A" />
-        <Text fill="#E8E8EE" fontSize={14}>Fire Mode: Auto</Text>
-      </Frame>
+      <Ellipse width={120} height={120} fill="#00F3FF" opacity={0.15} name="GlowOrb" ignoreAutoLayout x={1100} y={80} dropShadow="0:0:40:#00F3FF:0.4" />
     </Frame>
   </Frame>
-
-  {/* BOTTOM-RIGHT: Equipment (Grenades, Defuse Kit) */}
-  <Frame ignoreAutoLayout x={1640} y={960} width={256} height="hug" autoLayout flow="vertical" gap={8} name="Equipment">
-    
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={12} alignX="end">
-      <Frame width={56} height={56} fill="#14141C" radius={12} stroke="#2A2A35" strokeWidth={1} center>
-        <Text fill="#E8E8EE" fontSize={28}>💣</Text>
+  
+  <Frame width="fill" height="hug" autoLayout flow="horizontal" padX={32} gap={24} name="MainContent" alignX="start">
+    <Frame width={600} height="hug" autoLayout flow="vertical" gap={24} name="LeftColumn">
+      <Frame width="fill" height="hug" autoLayout flow="vertical" fill="#121212" radius={24} stroke="#2A2A3A" strokeWidth={1} padX={28} padY={28} gap={20} name="Widget" dropShadow="0:4:20:0:#000000:0.3">
+        <Text fill="#FFFFFF" fontSize={18} fontWeight="bold" name="WidgetTitle">RECENT ACTIVITY</Text>
+        <Frame autoLayout flow="vertical" gap={16} width="fill" name="ActivityList">
+          <Frame autoLayout flow="horizontal" gap={12} alignY="center" name="Activity1" width="fill">
+            <Ellipse size={8} fill="#00F3FF" name="Dot" />
+            <Text fill="#FFFFFF" fontSize={14} width="fill" name="ActivityText">Studio "Aurora" was published</Text>
+            <Text fill="#A0A0B0" fontSize={12} name="ActivityTime">2h ago</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={12} alignY="center" name="Activity2" width="fill">
+            <Ellipse size={8} fill="#FF00E0" name="Dot" />
+            <Text fill="#FFFFFF" fontSize={14} width="fill" name="ActivityText">New editor joined "Nebula"</Text>
+            <Text fill="#A0A0B0" fontSize={12} name="ActivityTime">5h ago</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={12} alignY="center" name="Activity3" width="fill">
+            <Ellipse size={8} fill="#FFEE00" name="Dot" />
+            <Text fill="#FFFFFF" fontSize={14} width="fill" name="ActivityText">Asset pack "Cyber" uploaded</Text>
+            <Text fill="#A0A0B0" fontSize={12} name="ActivityTime">Yesterday</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={12} alignY="center" name="Activity4" width="fill">
+            <Ellipse size={8} fill="#A0A0B0" name="Dot" />
+            <Text fill="#FFFFFF" fontSize={14} width="fill" name="ActivityText">Template "Glitch" created</Text>
+            <Text fill="#A0A0B0" fontSize={12} name="ActivityTime">Yesterday</Text>
+          </Frame>
+        </Frame>
       </Frame>
-      <Frame width={56} height={56} fill="#14141C" radius={12} stroke="#2A2A35" strokeWidth={1} center>
-        <Text fill="#E8E8EE" fontSize={28}>🔥</Text>
-      </Frame>
-      <Frame width={56} height={56} fill="#14141C" radius={12} stroke="#2A2A35" strokeWidth={1} center>
-        <Text fill="#E8E8EE" fontSize={28}>💨</Text>
-      </Frame>
-      <Frame width={56} height={56} fill="#00D93A" radius={12} center opacity={0.9}>
-        <Text fill="#0A0A0F" fontSize={24}>🛠️</Text>
+      
+      <Frame width="fill" height={320} fill="#121212" radius={24} stroke="#2A2A3A" strokeWidth={1} autoLayout flow="vertical" padX={28} padY={28} gap={16} name="ChartWidget" dropShadow="0:4:20:0:#000000:0.3">
+        <Text fill="#FFFFFF" fontSize={18} fontWeight="bold" name="ChartTitle">PERFORMANCE</Text>
+        <Frame width="fill" height={180} name="ChartArea" autoLayout flow="horizontal" gap={32} alignX="center" alignY="center">
+          <Frame width="fill" height="fill" name="BarGroup" autoLayout flow="horizontal" gap={16} alignX="center" alignY="end">
+            <Frame width={40} height={120} fill="#00F3FF" radius={8} name="Bar1" />
+            <Frame width={40} height={160} fill="#FF00E0" radius={8} name="Bar2" />
+            <Frame width={40} height={90} fill="#FFEE00" radius={8} name="Bar3" />
+            <Frame width={40} height={140} fill="#A0A0B0" radius={8} name="Bar4" />
+            <Frame width={40} height={110} fill="#00F3FF" radius={8} name="Bar5" />
+          </Frame>
+        </Frame>
+        <Frame autoLayout flow="horizontal" gap={24} width="fill" alignX="center" name="Legend">
+          <Frame autoLayout flow="horizontal" gap={8} alignY="center" name="Legend1">
+            <Ellipse size={10} fill="#00F3FF" name="LegendDot1" />
+            <Text fill="#A0A0B0" fontSize={12} name="LegendText1">Views</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={8} alignY="center" name="Legend2">
+            <Ellipse size={10} fill="#FF00E0" name="LegendDot2" />
+            <Text fill="#A0A0B0" fontSize={12} name="LegendText2">Edits</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={8} alignY="center" name="Legend3">
+            <Ellipse size={10} fill="#FFEE00" name="LegendDot3" />
+            <Text fill="#A0A0B0" fontSize={12} name="LegendText3">Shares</Text>
+          </Frame>
+        </Frame>
       </Frame>
     </Frame>
     
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="end" gap={8}>
-      <Text fill="#8A8A9A" fontSize={12}>DEFUSE KIT</Text>
-      <Text fill="#00FF41" fontSize={12} fontWeight="bold">EQUIPPED</Text>
-    </Frame>
-  </Frame>
-
-  {/* SCOREBOARD (Translucent Dark Panel) - triggered state, overlay style */}
-  <Frame ignoreAutoLayout x={360} y={140} width={1200} height={600} fill="#14141C" opacity={0.92} radius={12} stroke="#2A2A35" strokeWidth={1} shadow="modal" name="Scoreboard">
-    
-    {/* Header Row */}
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between" padX={24} padY={16} stroke="#2A2A35" strokeWidth={1}>
-      <Text fill="#00FF41" fontSize={14} fontWeight="bold" width={200}>PLAYER</Text>
-      <Text fill="#E8E8EE" fontSize={14} fontWeight="bold" width={80} alignX="center">K</Text>
-      <Text fill="#E8E8EE" fontSize={14} fontWeight="bold" width={80} alignX="center">D</Text>
-      <Text fill="#E8E8EE" fontSize={14} fontWeight="bold" width={80} alignX="center">A</Text>
-      <Text fill="#E8E8EE" fontSize={14} fontWeight="bold" width={120} alignX="center">SCORE</Text>
-    </Frame>
-
-    {/* Team Terrorist */}
-    <Frame autoLayout flow="vertical" width="fill" height="hug" padX={24} gap={8}>
-      <Text fill="#FF4D4D" fontSize={12} fontWeight="bold" padY={8}>TERRORISTS</Text>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between">
-        <Text fill="#E8E8EE" fontSize={14} width={200}>PlayerOne</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">15</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">8</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">4</Text>
-        <Text fill="#00FF41" fontSize={14} fontWeight="bold" width={120} alignX="center">2430</Text>
+    <Frame width={520} height="hug" autoLayout flow="vertical" gap={24} name="RightColumn">
+      <Frame width="fill" height="hug" autoLayout flow="vertical" fill="#121212" radius={24} stroke="#2A2A3A" strokeWidth={1} padX={28} padY={28} gap={20} name="TopStudios" dropShadow="0:4:20:0:#000000:0.3">
+        <Text fill="#FFFFFF" fontSize={18} fontWeight="bold" name="TopTitle">TOP STUDIOS</Text>
+        <Frame autoLayout flow="vertical" gap={16} width="fill" name="StudioList">
+          <Frame autoLayout flow="horizontal" gap={16} alignY="center" name="StudioItem1" width="fill">
+            <Frame width={40} height={40} radius={12} fill="#00F3FF" name="StudioIcon1" center>
+              <Text fill="#0A0A0A" fontSize={18} fontWeight="bold">A</Text>
+            </Frame>
+            <Text fill="#FFFFFF" fontSize={16} width="fill" name="StudioName1">Aurora Studio</Text>
+            <Text fill="#00F3FF" fontSize={14} fontWeight="medium" name="StudioScore1">98</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={16} alignY="center" name="StudioItem2" width="fill">
+            <Frame width={40} height={40} radius={12} fill="#FF00E0" name="StudioIcon2" center>
+              <Text fill="#FFFFFF" fontSize={18} fontWeight="bold">N</Text>
+            </Frame>
+            <Text fill="#FFFFFF" fontSize={16} width="fill" name="StudioName2">Nebula Collective</Text>
+            <Text fill="#FF00E0" fontSize={14} fontWeight="medium" name="StudioScore2">94</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={16} alignY="center" name="StudioItem3" width="fill">
+            <Frame width={40} height={40} radius={12} fill="#FFEE00" name="StudioIcon3" center>
+              <Text fill="#0A0A0A" fontSize={18} fontWeight="bold">V</Text>
+            </Frame>
+            <Text fill="#FFFFFF" fontSize={16} width="fill" name="StudioName3">Void Labs</Text>
+            <Text fill="#FFEE00" fontSize={14} fontWeight="medium" name="StudioScore3">89</Text>
+          </Frame>
+          <Frame autoLayout flow="horizontal" gap={16} alignY="center" name="StudioItem4" width="fill">
+            <Frame width={40} height={40} radius={12} fill="#A0A0B0" name="StudioIcon4" center>
+              <Text fill="#0A0A0A" fontSize={18} fontWeight="bold">C</Text>
+            </Frame>
+            <Text fill="#FFFFFF" fontSize={16} width="fill" name="StudioName4">Cyberpulse</Text>
+            <Text fill="#A0A0B0" fontSize={14} fontWeight="medium" name="StudioScore4">85</Text>
+          </Frame>
+        </Frame>
       </Frame>
-      <Line length="fill" stroke="#2A2A35" strokeWidth={1} />
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between">
-        <Text fill="#E8E8EE" fontSize={14} width={200}>SniperPro</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">12</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">10</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">3</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={120} alignX="center">1980</Text>
-      </Frame>
-    </Frame>
-
-    {/* Team CT */}
-    <Frame autoLayout flow="vertical" width="fill" height="hug" padX={24} padY={16} gap={8}>
-      <Text fill="#00D93A" fontSize={12} fontWeight="bold">COUNTER-TERRORISTS</Text>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between">
-        <Text fill="#E8E8EE" fontSize={14} width={200}>EnemyKiller</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">18</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">6</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">5</Text>
-        <Text fill="#00FF41" fontSize={14} fontWeight="bold" width={120} alignX="center">3210</Text>
-      </Frame>
-      <Line length="fill" stroke="#2A2A35" strokeWidth={1} />
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" alignX="between">
-        <Text fill="#E8E8EE" fontSize={14} width={200}>AWPer</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">14</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">7</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={80} alignX="center">6</Text>
-        <Text fill="#E8E8EE" fontSize={14} width={120} alignX="center">2750</Text>
+      
+      <Frame width="fill" height="hug" autoLayout flow="vertical" fill="#121212" radius={24} stroke="#2A2A3A" strokeWidth={1} padX={28} padY={28} gap={16} name="AlertWidget" dropShadow="0:4:20:0:#000000:0.3">
+        <Text fill="#FF00E0" fontSize={16} fontWeight="bold" name="AlertTitle">SYSTEM ALERT</Text>
+        <Frame autoLayout flow="horizontal" gap={16} name="AlertContent" alignY="center">
+          <Frame width={4} height={40} fill="#FF00E0" radius={2} name="AlertBar" />
+          <Text fill="#FFFFFF" fontSize={14} name="AlertText">Server maintenance scheduled for 02:00 UTC</Text>
+        </Frame>
+        <Frame width="fill" height={2} fill="#2A2A3A" name="Divider" />
+        <Text fill="#00F3FF" fontSize={14} fontWeight="medium" name="AlertLink">VIEW DETAILS →</Text>
       </Frame>
     </Frame>
   </Frame>
-
-  {/* Neon accent lines on active elements (minimal) */}
-  <Frame ignoreAutoLayout x={0} y={0} width={4} height={1080} fill="#00FF41" opacity={0.15} />
-  <Frame ignoreAutoLayout x={1916} y={0} width={4} height={1080} fill="#00FF41" opacity={0.15} />
-
+  
+  <Ellipse width={300} height={300} fill="#FF00E0" opacity={0.08} name="BgBlob1" ignoreAutoLayout x={-50} y={700} dropShadow="0:0:80:#FF00E0:0.3" />
+  <Ellipse width={200} height={200} fill="#00F3FF" opacity={0.08} name="BgBlob2" ignoreAutoLayout x={1200} y={600} dropShadow="0:0:80:#00F3FF:0.3" />
 </Frame>

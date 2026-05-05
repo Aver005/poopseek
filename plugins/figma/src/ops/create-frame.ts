@@ -1,5 +1,5 @@
 ﻿import type { OpHandler } from "./types";
-import type { FigmaOp, ColorInput } from "../types";
+import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
 import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint } from "../helpers";
 
@@ -8,7 +8,7 @@ export const handler: OpHandler = {
     async execute(op, _nodeMap): Promise<number> {
         let frame: FrameNode | null = null;
         if (op.id) {
-            const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+            const existing = await figma.getNodeByIdAsync(nodeMap.get(String(op.id)) ?? "");
             if (existing && existing.type === "FRAME") frame = existing as FrameNode;
         }
         const isNewFrame = !frame;
@@ -28,9 +28,9 @@ export const handler: OpHandler = {
         if (op.cornerRadius !== undefined) frame.cornerRadius = Number(op.cornerRadius);
         applyCornerRadii(frame, op);
         if (op.clipContent !== undefined) frame.clipsContent = Boolean(op.clipContent);
+        applyLayoutSizing(frame, op);
         if (op.x !== undefined) frame.x = Number(op.x);
         if (op.y !== undefined) frame.y = Number(op.y);
-        applyLayoutSizing(frame, op);
         return 1;
     },
 };

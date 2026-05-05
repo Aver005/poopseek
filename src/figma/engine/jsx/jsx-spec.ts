@@ -40,6 +40,10 @@ export interface ClassNameProps
     letterSpacing?: number;
     textAlign?: "LEFT" | "CENTER" | "RIGHT";
     clipContent?: boolean;
+    wrap?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    strikethrough?: boolean;
 }
 
 // ============================================
@@ -65,6 +69,7 @@ const FRAME_PROPS = new Set([
     "shadow", "dropShadow", "innerShadow", "opacity", "clip",
     "gap", "padX", "padY", "padTop", "padRight", "padBottom", "padLeft",
     "alignX", "alignY", "center",
+    "wrap",
     "detach",
 ]);
 
@@ -74,6 +79,7 @@ const TEXT_PROPS = new Set([
     "width", "height", "w", "h",
     "alignX", "alignY",
     "lineHeight", "letterSpacing",
+    "italic", "underline", "strikethrough", "textDecoration",
     "content", "text",
     "opacity", "detach",
 ]);
@@ -91,7 +97,10 @@ const IMAGE_PROPS = new Set([
 const ELLIPSE_PROPS = new Set([
     "id", "name", "x", "y",
     "width", "height", "w", "h", "size",
-    "fill", "stroke", "strokeWidth", "strokeWeight",
+    "fill", "gradient", "stroke", "strokeWidth", "strokeWeight",
+    "radius",
+    "shadow", "dropShadow", "innerShadow",
+    "ignoreAutoLayout",
     "opacity", "detach",
 ]);
 
@@ -100,6 +109,8 @@ const LINE_PROPS = new Set([
     "length", "width", "w",
     "stroke", "strokeWidth", "strokeWeight", "weight",
     "vertical", "rotation",
+    "shadow", "dropShadow", "innerShadow",
+    "ignoreAutoLayout",
     "color", "opacity", "detach",
 ]);
 
@@ -231,6 +242,7 @@ const EXACT_TOKENS = new Set([
     "flex",
     "flex-col",
     "flex-wrap",
+    "flex-nowrap",
     "inline-block",
     "inline-flex",
     "items-start",
@@ -250,6 +262,11 @@ const EXACT_TOKENS = new Set([
     "font-medium",
     "font-semibold",
     "font-bold",
+    "italic",
+    "not-italic",
+    "underline",
+    "line-through",
+    "no-underline",
     "text-left",
     "text-center",
     "text-right",
@@ -438,6 +455,12 @@ export function resolveClassNameProps(className: string): ClassNameProps
                 if (!result.layoutMode)
                     result.layoutMode = "VERTICAL";
                 continue;
+            case "flex-wrap":
+                result.wrap = true;
+                continue;
+            case "flex-nowrap":
+                result.wrap = false;
+                continue;
             case "items-start":
                 result.align = "start";
                 continue;
@@ -490,6 +513,21 @@ export function resolveClassNameProps(className: string): ClassNameProps
                 continue;
             case "font-bold":
                 result.fontWeight = "Bold";
+                continue;
+            case "italic":
+                result.italic = true;
+                continue;
+            case "not-italic":
+                result.italic = false;
+                continue;
+            case "underline":
+                result.underline = true;
+                continue;
+            case "no-underline":
+                result.underline = false;
+                continue;
+            case "line-through":
+                result.strikethrough = true;
                 continue;
             case "text-left":
                 result.textAlign = "LEFT";
@@ -595,6 +633,7 @@ export function resolveClassNameProps(className: string): ClassNameProps
 
         if (token.startsWith("w-") && token !== "w-full")
         {
+            result.w = readScaleValue("w-", token);
             continue;
         }
 
@@ -662,8 +701,8 @@ export function describeAllowedUtilities(): string
         "size: w-*, h-*, w-full",
         "colors: bg-*, text-*, border-*",
         "theme aliases: bg-brand, bg-accent, bg-surface, text-text, text-muted, text-on-brand, border-default",
-        "typography: text-xs..text-5xl, font-*, leading-*, tracking-*",
+        "typography: text-xs..text-5xl, font-*, leading-*, tracking-*, italic, not-italic, underline, no-underline, line-through",
         "surface: rounded*, rounded-t-*, border, border-t, border-b, shadow*",
-        "misc: overflow-hidden",
+        "misc: overflow-hidden, flex-wrap, flex-nowrap",
     ].join("; ");
 }

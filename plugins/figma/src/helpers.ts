@@ -431,6 +431,8 @@ export function applyLayoutSizing(node: SceneNode, op: FigmaOp): void
         (node as SceneNode & { layoutSizingHorizontal: "FIXED" | "HUG" | "FILL" }).layoutSizingHorizontal = "FILL";
     if (op.fillParentHeight && "layoutSizingVertical" in node)
         (node as SceneNode & { layoutSizingVertical: "FIXED" | "HUG" | "FILL" }).layoutSizingVertical = "FILL";
+    if (op.ignoreAutoLayout && "layoutPositioning" in node)
+        (node as SceneNode & { layoutPositioning: "AUTO" | "ABSOLUTE" }).layoutPositioning = "ABSOLUTE";
 }
 
 export function applyCornerRadii(node: SceneNode, op: FigmaOp): void

@@ -1,5 +1,5 @@
 ﻿import type { OpHandler } from "./types";
-import type { FigmaOp, ColorInput } from "../types";
+import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
 import { resolveParent, applyLayoutSizing, solidPaint } from "../helpers";
 
@@ -8,7 +8,7 @@ export const handler: OpHandler = {
     async execute(op, _nodeMap): Promise<number> {
         let ellipse: EllipseNode | null = null;
         if (op.id) {
-            const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+            const existing = await figma.getNodeByIdAsync(nodeMap.get(String(op.id)) ?? "");
             if (existing && existing.type === "ELLIPSE") ellipse = existing as EllipseNode;
         }
         if (!ellipse) {
@@ -22,9 +22,9 @@ export const handler: OpHandler = {
             if (paint) ellipse.fills = [paint];
         }
         if (op.name) ellipse.name = String(op.name);
+        applyLayoutSizing(ellipse, op);
         if (op.x !== undefined) ellipse.x = Number(op.x);
         if (op.y !== undefined) ellipse.y = Number(op.y);
-        applyLayoutSizing(ellipse, op);
         return 1;
     },
 };

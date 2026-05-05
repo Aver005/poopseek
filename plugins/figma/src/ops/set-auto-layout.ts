@@ -43,6 +43,7 @@ export const handler: OpHandler = {
             if (op.paddingBottom !== undefined) frame.paddingBottom = Number(op.paddingBottom);
             if (op.align) frame.primaryAxisAlignItems = String(op.align) as "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
             if (op.counterAlign) frame.counterAxisAlignItems = String(op.counterAlign) as "MIN" | "MAX" | "CENTER" | "BASELINE";
+            if (op.wrap !== undefined) frame.layoutWrap = op.wrap ? "WRAP" : "NO_WRAP";
         }
         return 1;
     },

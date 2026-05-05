@@ -249,6 +249,7 @@ function compileFrame(node: JsxNode, state: State): void
             ...(p.padLeft   !== undefined ? { paddingLeft:   num(p.padLeft)   } : {}),
             ...(toFigmaAlign(primaryRaw, true)  ? { align:        toFigmaAlign(primaryRaw, true)  } : {}),
             ...(toFigmaAlign(crossRaw,   false) ? { counterAlign: toFigmaAlign(crossRaw,   false) } : {}),
+            ...(p.wrap !== undefined ? { wrap: !!p.wrap } : {}),
         });
     }
 
@@ -383,10 +384,17 @@ function compileEllipse(node: JsxNode, state: State): void
         ...parentRef(state, p),
         width:  size ?? num(p.width  ?? p.w) ?? 100,
         height: size ?? num(p.height ?? p.h) ?? 100,
-        ...(p.fill !== undefined ? { fill: p.fill } : {}),
+        ...(p.fill !== undefined && !p.gradient ? { fill: p.fill } : {}),
+        ...(p.x !== undefined ? { x: num(p.x) } : {}),
+        ...(p.y !== undefined ? { y: num(p.y) } : {}),
+        ...(p.ignoreAutoLayout ? { ignoreAutoLayout: true } : {}),
     });
 
+    if (p.gradient) applyGradient(state, id, p.gradient);
     applyStroke(state, id, p.stroke, p.strokeWidth ?? p.strokeWeight);
+    applyShadow(state, id, p.shadow);
+    applyDropShadow(state, id, p.dropShadow);
+    applyInnerShadow(state, id, p.innerShadow);
     applyOpacity(state, id, p.opacity);
 }
 
@@ -394,10 +402,11 @@ function compileLine(node: JsxNode, state: State): void
 {
     const p      = node.props;
     const parent = top(state);
+    const id     = str(p.id) ?? uid(state, "line");
 
     push(state, {
         type: "create_line",
-        id:   str(p.id) ?? uid(state, "line"),
+        id,
         name: str(p.name) ?? "Line",
         ...parentRef(state, p),
         x: num(p.x) ?? 0,
@@ -406,7 +415,13 @@ function compileLine(node: JsxNode, state: State): void
         color:  str(p.stroke) ?? "#E2E8F0",
         weight: num(p.strokeWidth ?? p.strokeWeight ?? p.weight) ?? 1,
         ...(p.vertical ? { rotation: 90 } : {}),
+        ...(p.ignoreAutoLayout ? { ignoreAutoLayout: true } : {}),
     });
+
+    applyShadow(state, id, p.shadow);
+    applyDropShadow(state, id, p.dropShadow);
+    applyInnerShadow(state, id, p.innerShadow);
+    applyOpacity(state, id, p.opacity);
 }
 
 function compileChildren(node: JsxNode, state: State): void

@@ -1,5 +1,5 @@
 ﻿import type { OpHandler } from "./types";
-import type { FigmaOp, ColorInput } from "../types";
+import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
 import { resolveParent, applyLayoutSizing, solidPaint } from "../helpers";
 
@@ -17,7 +17,7 @@ export const handler: OpHandler = {
 
         let text: TextNode | null = null;
         if (op.id) {
-            const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+            const existing = await figma.getNodeByIdAsync(nodeMap.get(String(op.id)) ?? "");
             if (existing && existing.type === "TEXT") text = existing as TextNode;
         }
         if (!text) {
@@ -37,9 +37,9 @@ export const handler: OpHandler = {
             if (paint) text.fills = [paint];
         }
         if (op.name) text.name = String(op.name);
+        applyLayoutSizing(text, op);
         if (op.x !== undefined) text.x = Number(op.x);
         if (op.y !== undefined) text.y = Number(op.y);
-        applyLayoutSizing(text, op);
         if (op.fillParent) text.textAutoResize = "HEIGHT";
         return 1;
     },
