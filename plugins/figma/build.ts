@@ -27,13 +27,10 @@ await fs.copyFile(
     path.join(pluginDir, "manifest.json"),
     path.join(outDir, "manifest.json"),
 );
-await fs.copyFile(
-    path.join(pluginDir, "ui.html"),
-    path.join(outDir, "ui.html"),
-);
-await fs.copyFile(
-    path.join(pluginDir, "ui.css"),
-    path.join(outDir, "ui.css"),
-);
+// Inline ui.css into ui.html
+const css = await fs.readFile(path.join(pluginDir, "ui.css"), "utf-8");
+let html = await fs.readFile(path.join(pluginDir, "ui.html"), "utf-8");
+html = html.replace("/* CSS_INLINE */", css);
+await fs.writeFile(path.join(outDir, "ui.html"), html, "utf-8");
 
-console.log("✅ build/plugins/figma/ (code.js + manifest.json + ui.html + ui.css)");
+console.log("✅ build/plugins/figma/ (code.js + manifest.json + ui.html)");
