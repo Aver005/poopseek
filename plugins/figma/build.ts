@@ -31,5 +31,9 @@ await fs.copyFile(
     path.join(pluginDir, "ui.html"),
     path.join(outDir, "ui.html"),
 );
+await fs.copyFile(
+    path.join(pluginDir, "ui.css"),
+    path.join(outDir, "ui.css"),
+);
 
-console.log("✅ build/plugins/figma/ (code.js + manifest.json + ui.html)");
+console.log("✅ build/plugins/figma/ (code.js + manifest.json + ui.html + ui.css)");
