@@ -114,14 +114,25 @@ const LINE_PROPS = new Set([
     "color", "opacity", "detach",
 ]);
 
+const RECT_PROPS = new Set([
+    "id", "name", "x", "y",
+    "width", "height", "w", "h",
+    "fill", "radius",
+    "radiusTL", "radiusTR", "radiusBL", "radiusBR",
+    "ignoreAutoLayout",
+    "opacity", "detach",
+]);
+
 export const COMPONENT_SPECS: Record<string, ComponentSpec> = {
-    Frame:   { allowedProps: FRAME_PROPS },
-    Text:    { allowedProps: TEXT_PROPS },
-    Image:   { noChildren: true, allowedProps: IMAGE_PROPS },
-    Ellipse: { noChildren: true, allowedProps: ELLIPSE_PROPS },
-    Circle:  { noChildren: true, allowedProps: ELLIPSE_PROPS },
-    Line:    { noChildren: true, allowedProps: LINE_PROPS },
-    Divider: { noChildren: true, allowedProps: LINE_PROPS },
+    Frame:     { allowedProps: FRAME_PROPS },
+    Text:      { allowedProps: TEXT_PROPS },
+    Image:     { noChildren: true, allowedProps: IMAGE_PROPS },
+    Rect:      { noChildren: true, allowedProps: RECT_PROPS },
+    Rectangle: { noChildren: true, allowedProps: RECT_PROPS },
+    Ellipse:   { noChildren: true, allowedProps: ELLIPSE_PROPS },
+    Circle:    { noChildren: true, allowedProps: ELLIPSE_PROPS },
+    Line:      { noChildren: true, allowedProps: LINE_PROPS },
+    Divider:   { noChildren: true, allowedProps: LINE_PROPS },
 };
 
 export const ALLOWED_TAGS = Object.keys(COMPONENT_SPECS);

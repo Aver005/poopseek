@@ -136,7 +136,7 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
         }
         const fc = getPrimaryColor(fills);
         if (fc) parts.push(`fill="${fc}"`);
-        return `${indent}<Frame ${parts.join(" ")} />`;
+        return `${indent}<Rect ${parts.join(" ")} />`;
     }
 
     if (!("children" in node)) return "";
