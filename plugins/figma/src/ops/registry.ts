@@ -26,6 +26,7 @@ import { handler as setFont } from "./set-font";
 import { handler as setAutoLayout } from "./set-auto-layout";
 import { handler as groupNodes } from "./group-nodes";
 import { handler as clearCanvas } from "./clear-canvas";
+import { handler as deleteNodesByName } from "./delete-nodes-by-name";
 
 const handlers: OpHandler[] = [
     // Variables
@@ -60,6 +61,7 @@ const handlers: OpHandler[] = [
     // Organisation
     groupNodes,
     clearCanvas,
+    deleteNodesByName,
 ];
 
 const handlerByType = new Map<string, OpHandler>();

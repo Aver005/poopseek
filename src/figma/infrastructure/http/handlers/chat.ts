@@ -51,7 +51,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         readPrompt("handyman.prompt.md"),
     ]);
 
-    const currentJsx = session.lastJsx || session.lastSnapshot?.jsx || "(empty)";
+    const currentJsx = session.lastSnapshot?.jsx || session.lastJsx || "(empty)";
 
     const { intent, enhanced } = await runIntentClassifier(
         subAgentRunner, body.message, currentJsx, intentPrompt,
@@ -107,6 +107,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
         const handymanCtx = session.roleSessions.designer.contextManager;
         handymanCtx.setFigmaContext(systemPrompt);
+        handymanCtx.clearHistory();
 
         session.buffer.reset();
         if (currentJsx !== "(empty)")
@@ -115,6 +116,8 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             catch { /* ignore parse errors — buffer stays empty */ }
         }
         session.buffer.markClean();
+
+        const originalRootNames = session.buffer.roots().map(n => String(n.props.name ?? n.id));
 
         const handymanTools = makeHandymanTools(session.buffer);
 
@@ -163,8 +166,11 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             if (bufferJsx)
             {
                 session.lastJsx = bufferJsx;
-                const ops = compileJsx(parseJsx(bufferJsx));
-                session.dispatchOps(ops);
+                const createOps = compileJsx(parseJsx(mapKeyToId(bufferJsx)));
+                const opsToDispatch: typeof createOps = originalRootNames.length > 0
+                    ? [{ type: "delete_nodes_by_name", names: originalRootNames }, ...createOps]
+                    : createOps;
+                session.dispatchOps(opsToDispatch);
             }
         }
 
