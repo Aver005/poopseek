@@ -11,7 +11,7 @@ import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
 import { setActiveTheme } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
-import { makeHandymanTools } from "@/figma/engine/handyman/handyman-tools";
+import { makeHandymanTools, loadNodesIntoBuffer } from "@/figma/engine/handyman/handyman-tools";
 import { saveHandymanHistory } from "@/figma/application/persistence/session-store";
 import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
 
@@ -104,6 +104,14 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         const handymanCtx = session.roleSessions.designer.contextManager;
         handymanCtx.setFigmaContext(systemPrompt);
 
+        session.buffer.reset();
+        if (currentJsx !== "(empty)")
+        {
+            try { loadNodesIntoBuffer(session.buffer, currentJsx); }
+            catch { /* ignore parse errors — buffer stays empty */ }
+        }
+        session.buffer.markClean();
+
         const handymanTools = makeHandymanTools(session.buffer);
 
         const toolExecutor = new ToolExecutor(
@@ -145,12 +153,15 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         }
         assistantText = loopResult.assistantText;
 
-        const bufferJsx = session.buffer.toJsx();
-        if (bufferJsx)
+        if (session.buffer.isDirty)
         {
-            session.lastJsx = bufferJsx;
-            const ops = compileJsx(parseJsx(bufferJsx));
-            session.dispatchOps(ops);
+            const bufferJsx = session.buffer.toJsx();
+            if (bufferJsx)
+            {
+                session.lastJsx = bufferJsx;
+                const ops = compileJsx(parseJsx(bufferJsx));
+                session.dispatchOps(ops);
+            }
         }
 
         if (session.documentName)

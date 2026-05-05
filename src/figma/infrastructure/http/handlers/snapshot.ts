@@ -36,6 +36,9 @@ export async function handlePushSnapshot(req: Request, context: FigmaHttpContext
     session.lastSnapshot = body.snapshot;
     session.mode = hasFrameNodes(body.snapshot.tree) ? "edit" : "create";
 
+    if (body.snapshot.jsx)
+        session.lastJsx = body.snapshot.jsx;
+
     const documentName = body.snapshot.documentName ?? "";
     if (documentName && documentName !== session.documentName)
     {

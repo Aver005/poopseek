@@ -88,6 +88,183 @@ function getLogicalId(figmaId: string): string
     return figmaId;
 }
 
+function rgbaToHex(rgb: { r: number; g: number; b: number }): string
+{
+    return "#" + [rgb.r, rgb.g, rgb.b]
+        .map(v => Math.round(v * 255).toString(16).padStart(2, "0"))
+        .join("");
+}
+
+function getPrimaryColor(paints: ReadonlyArray<Paint> | typeof figma.mixed): string | undefined
+{
+    if (paints === figma.mixed || !Array.isArray(paints)) return undefined;
+    const solid = (paints as Paint[]).find((p): p is SolidPaint => p.type === "SOLID" && p.visible !== false);
+    return solid ? rgbaToHex(solid.color) : undefined;
+}
+
+function fontWeightFromStyle(style: string): string
+{
+    const s = style.toLowerCase();
+    if (s.includes("semi") || s.includes("demi")) return "semibold";
+    if (s.includes("bold")) return "bold";
+    if (s.includes("medium")) return "medium";
+    return "regular";
+}
+
+function figmaAlignToJsx(align: string): string
+{
+    if (align === "CENTER") return "center";
+    if (align === "MAX") return "end";
+    if (align === "SPACE_BETWEEN") return "between";
+    return "start";
+}
+
+function nodeToFullJsx(node: SceneNode, depth: number): string
+{
+    const indent = "  ".repeat(depth);
+    const t = node.type;
+
+    if (t === "TEXT")
+    {
+        const tn = node as TextNode;
+        const parts: string[] = [`name="${tn.name.replace(/"/g, "&quot;")}"`];
+
+        const lsh = "layoutSizingHorizontal" in tn
+            ? (tn as unknown as { layoutSizingHorizontal: string }).layoutSizingHorizontal
+            : "FIXED";
+        if (lsh === "FILL") parts.push(`width="fill"`);
+        else if (tn.width > 0) parts.push(`width={${Math.round(tn.width)}}`);
+
+        const fc = getPrimaryColor(tn.fills);
+        if (fc) parts.push(`fill="${fc}"`);
+        if (tn.fontSize !== figma.mixed) parts.push(`fontSize={${tn.fontSize as number}}`);
+        if (tn.fontName !== figma.mixed)
+        {
+            const fw = fontWeightFromStyle((tn.fontName as FontName).style);
+            if (fw !== "regular") parts.push(`fontWeight="${fw}"`);
+        }
+        const taMap: Record<string, string> = { CENTER: "center", RIGHT: "right" };
+        const ta = taMap[tn.textAlignHorizontal];
+        if (ta) parts.push(`alignX="${ta}"`);
+        if (tn.opacity !== 1) parts.push(`opacity={${Math.round(tn.opacity * 100) / 100}}`);
+
+        return `${indent}<Text ${parts.join(" ")}>${escapeJsxText(tn.characters)}</Text>`;
+    }
+
+    if (t === "ELLIPSE")
+    {
+        const el = node as EllipseNode;
+        const parts = [
+            `name="${el.name.replace(/"/g, "&quot;")}"`,
+            `width={${Math.round(el.width)}}`,
+            `height={${Math.round(el.height)}}`,
+        ];
+        const fc = getPrimaryColor(el.fills);
+        if (fc) parts.push(`fill="${fc}"`);
+        const sc = getPrimaryColor(el.strokes);
+        if (sc) { parts.push(`stroke="${sc}"`); if (typeof el.strokeWeight === "number" && el.strokeWeight !== 1) parts.push(`strokeWidth={${el.strokeWeight}}`); }
+        return `${indent}<Ellipse ${parts.join(" ")} />`;
+    }
+
+    if (t === "LINE")
+    {
+        const ln = node as LineNode;
+        const parts = [`name="${ln.name.replace(/"/g, "&quot;")}"`];
+        parts.push(`length={${Math.round(Math.max(ln.width, ln.height))}}`);
+        if (ln.height > ln.width) parts.push("vertical");
+        const sc = getPrimaryColor(ln.strokes);
+        if (sc) { parts.push(`stroke="${sc}"`); if (typeof ln.strokeWeight === "number" && ln.strokeWeight !== 1) parts.push(`strokeWidth={${ln.strokeWeight}}`); }
+        return `${indent}<Line ${parts.join(" ")} />`;
+    }
+
+    if (t === "RECTANGLE")
+    {
+        const rect = node as RectangleNode;
+        const fills = Array.isArray(rect.fills) ? rect.fills as Paint[] : [];
+        const imgFill = fills.find((p): p is ImagePaint => p.type === "IMAGE");
+        const parts = [`name="${rect.name.replace(/"/g, "&quot;")}"`];
+        const lsh = "layoutSizingHorizontal" in rect
+            ? (rect as unknown as { layoutSizingHorizontal: string }).layoutSizingHorizontal
+            : "FIXED";
+        parts.push(lsh === "FILL" ? `width="fill"` : `width={${Math.round(rect.width)}}`);
+        parts.push(`height={${Math.round(rect.height)}}`);
+        if (typeof rect.cornerRadius === "number" && rect.cornerRadius > 0) parts.push(`radius={${rect.cornerRadius}}`);
+        if (imgFill)
+        {
+            parts.push(`src="${imgFill.imageHash ?? "image"}"`);
+            return `${indent}<Image ${parts.join(" ")} />`;
+        }
+        const fc = getPrimaryColor(fills);
+        if (fc) parts.push(`fill="${fc}"`);
+        return `${indent}<Frame ${parts.join(" ")} />`;
+    }
+
+    if (!("children" in node)) return "";
+
+    const f = node as FrameNode;
+    const parts: string[] = [`name="${f.name.replace(/"/g, "&quot;")}"`];
+
+    const isAL = "layoutMode" in f && (f as FrameNode).layoutMode !== "NONE";
+    if (isAL)
+    {
+        parts.push("autoLayout");
+        if ((f as FrameNode).layoutMode === "HORIZONTAL") parts.push(`flow="horizontal"`);
+    }
+
+    const lsh = "layoutSizingHorizontal" in f ? (f as FrameNode).layoutSizingHorizontal : "FIXED";
+    const lsv = "layoutSizingVertical"   in f ? (f as FrameNode).layoutSizingVertical   : "FIXED";
+    parts.push(lsh === "FILL" ? `width="fill"` : lsh === "HUG" ? `width="hug"` : `width={${Math.round(f.width)}}`);
+    parts.push(lsv === "FILL" ? `height="fill"` : lsv === "HUG" ? `height="hug"` : `height={${Math.round(f.height)}}`);
+
+    if ("fills" in f) { const fc = getPrimaryColor((f as FrameNode).fills); if (fc) parts.push(`fill="${fc}"`); }
+    if ("strokes" in f)
+    {
+        const sc = getPrimaryColor((f as FrameNode).strokes);
+        if (sc)
+        {
+            parts.push(`stroke="${sc}"`);
+            const sw = (f as FrameNode).strokeWeight;
+            if (typeof sw === "number" && sw > 0) parts.push(`strokeWidth={${sw}}`);
+        }
+    }
+    if ("cornerRadius" in f)
+    {
+        const cr = (f as FrameNode).cornerRadius;
+        if (cr !== figma.mixed && typeof cr === "number" && cr > 0) parts.push(`radius={${cr}}`);
+    }
+
+    if (isAL)
+    {
+        const ff = f as FrameNode;
+        if (ff.itemSpacing > 0) parts.push(`gap={${ff.itemSpacing}}`);
+        const pL = ff.paddingLeft ?? 0, pR = ff.paddingRight ?? 0;
+        const pT = ff.paddingTop  ?? 0, pB = ff.paddingBottom ?? 0;
+        if (pL === pR && pL > 0) parts.push(`padX={${pL}}`);
+        else { if (pL > 0) parts.push(`padLeft={${pL}}`); if (pR > 0) parts.push(`padRight={${pR}}`); }
+        if (pT === pB && pT > 0) parts.push(`padY={${pT}}`);
+        else { if (pT > 0) parts.push(`padTop={${pT}}`); if (pB > 0) parts.push(`padBottom={${pB}}`); }
+
+        const isH = ff.layoutMode === "HORIZONTAL";
+        const ax = figmaAlignToJsx(isH ? ff.primaryAxisAlignItems : ff.counterAxisAlignItems);
+        const ay = figmaAlignToJsx(isH ? ff.counterAxisAlignItems : ff.primaryAxisAlignItems);
+        if (ax !== "start") parts.push(`alignX="${ax}"`);
+        if (ay !== "start") parts.push(`alignY="${ay}"`);
+    }
+
+    if ("opacity" in f && typeof (f as FrameNode).opacity === "number" && (f as FrameNode).opacity !== 1)
+        parts.push(`opacity={${Math.round((f as FrameNode).opacity * 100) / 100}}`);
+    if ("clipsContent" in f && (f as FrameNode).clipsContent) parts.push("clip");
+
+    const childrenJsx = f.children
+        .map(c => nodeToFullJsx(c, depth + 1))
+        .filter(Boolean)
+        .join("\n");
+
+    const propsStr = ` ${parts.join(" ")}`;
+    if (!childrenJsx) return `${indent}<Frame${propsStr} />`;
+    return `${indent}<Frame${propsStr}>\n${childrenJsx}\n${indent}</Frame>`;
+}
+
 function serializeNode(node: BaseNode): FigmaSnapshotNode | null
 {
     if ("type" in node === false) return null;
@@ -169,19 +346,21 @@ function countSnapshotNodes(nodes: FigmaSnapshotNode[]): number
 
 function buildPluginSnapshot(): FigmaPluginSnapshot
 {
-    const roots = (figma.currentPage.selection.length > 0
-        ? figma.currentPage.selection
-        : figma.currentPage.children)
+    const rawNodes = figma.currentPage.selection.length > 0
+        ? [...figma.currentPage.selection]
+        : [...figma.currentPage.children];
+
+    const tree = rawNodes
         .map((node) => serializeNode(node))
         .filter((node): node is FigmaSnapshotNode => node !== null);
 
     return {
         source: "plugin",
         receivedAt: Date.now(),
-        nodeCount: countSnapshotNodes(roots),
+        nodeCount: countSnapshotNodes(tree),
         selectedNodeIds: figma.currentPage.selection.map((node) => getLogicalId(node.id)),
-        tree: roots,
-        jsx: roots.map((node) => snapshotNodeToJsx(node, 0, true)).join("\n"),
+        tree,
+        jsx: rawNodes.map((node) => nodeToFullJsx(node, 0)).filter(Boolean).join("\n"),
         documentName: figma.root.name || undefined,
     };
 }

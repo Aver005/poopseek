@@ -11,6 +11,11 @@ function makeUniqueId(buffer: JsxBuffer, base: string): string
     return `${base}_${n}`;
 }
 
+export function loadNodesIntoBuffer(buffer: JsxBuffer, jsx: string, parentId?: string): void
+{
+    loadNodes(buffer, jsx, parentId);
+}
+
 function loadNodes(buffer: JsxBuffer, jsx: string, parentId?: string): void
 {
     const mapped = mapKeyToId(jsx);

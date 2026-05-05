@@ -11,6 +11,10 @@ export class JsxBuffer
 {
     private readonly nodes = new Map<string, BufferNode>();
     private counter = 0;
+    private _dirty = false;
+
+    get isDirty(): boolean { return this._dirty; }
+    markClean(): void { this._dirty = false; }
 
     private genId(type: string): string
     {
@@ -38,6 +42,7 @@ export class JsxBuffer
         if (parentId)
             this.nodes.get(parentId)!.children.push(id);
 
+        this._dirty = true;
         return node;
     }
 
@@ -72,6 +77,7 @@ export class JsxBuffer
             if (key !== "id") node.props[key] = value;
         }
 
+        this._dirty = true;
         return node;
     }
 
@@ -86,6 +92,7 @@ export class JsxBuffer
             if (parent) parent.children = parent.children.filter(c => c !== id);
         }
 
+        this._dirty = true;
         this.pruneSubtree(id);
     }
 
@@ -178,6 +185,7 @@ export class JsxBuffer
         else
             newParent.children.push(id);
 
+        this._dirty = true;
         node.parentId = newParentId;
         return node;
     }
@@ -186,6 +194,7 @@ export class JsxBuffer
     {
         this.nodes.clear();
         this.counter = 0;
+        this._dirty = false;
     }
 
     snapshot(): { nodes: Map<string, BufferNode>; counter: number }
