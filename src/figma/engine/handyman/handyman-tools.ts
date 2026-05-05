@@ -3,6 +3,14 @@ import type { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 
+function makeUniqueId(buffer: JsxBuffer, base: string): string
+{
+    if (!buffer.get(base)) return base;
+    let n = 2;
+    while (buffer.get(`${base}_${n}`)) n++;
+    return `${base}_${n}`;
+}
+
 function loadNodes(buffer: JsxBuffer, jsx: string, parentId?: string): void
 {
     const mapped = mapKeyToId(jsx);
@@ -10,35 +18,44 @@ function loadNodes(buffer: JsxBuffer, jsx: string, parentId?: string): void
 
     function insertNode(node: typeof nodes[0], pid: string | undefined): void
     {
-        const id = String(node.props.id ?? node.props.key ?? "");
+        // Priority: explicit id/key (from handyman JSX via mapKeyToId), then name, then auto-generate
+        const explicitId = String(node.props.id ?? "").trim();
+        const nameId     = String(node.props.name ?? "").trim();
+        const baseId     = explicitId || nameId;
+        const resolvedId = baseId ? makeUniqueId(buffer, baseId) : "";
 
-        // Preserve text content from string children into the `text` prop
         const textChild = node.children
             .filter((c): c is string => typeof c === "string")
             .map(s => s.trim())
             .filter(Boolean)
             .join(" ");
 
-        const props: Record<string, unknown> = { ...node.props, id };
+        const props: Record<string, unknown> = { ...node.props };
+        if (resolvedId) props.id = resolvedId;
         if (textChild && !props.text && !props.content)
             props.text = textChild;
 
-        buffer.create(node.type, props, pid);
+        const created = buffer.create(node.type, props, pid);
 
         for (const child of node.children)
             if (typeof child === "object")
-                insertNode(child, id);
+                insertNode(child, created.id);
     }
 
     for (const node of nodes)
         insertNode(node, parentId);
 }
 
+function fencedJsx(jsx: string): string
+{
+    return `\`\`\`jsx\n${jsx}\n\`\`\``;
+}
+
 export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler>
 {
     const get: ToolHandler = async (args) =>
     {
-        const key = String(args.key ?? "");
+        const key  = String(args.key ?? "");
         const node = buffer.get(key);
         if (!node) return { ok: false, output: `Node "${key}" not found`, error: `Node "${key}" not found` };
 
@@ -55,9 +72,9 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
         {
             const n = buffer.get(id);
             if (!n) return "";
-            const indent = "  ".repeat(depth);
+            const indent  = "  ".repeat(depth);
             const textVal = n.props.text ?? n.props.content;
-            const attrs = [`key="${n.id}"`, ...Object.entries(n.props)
+            const attrs   = [`key="${n.id}"`, ...Object.entries(n.props)
                 .filter(([k]) => k !== "id" && k !== "text" && k !== "content")
                 .map(([k, v]) => renderAttr(k, v))
                 .filter(Boolean)].join(" ");
@@ -70,18 +87,19 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
             return `${indent}<${tag} ${attrs}>\n${children}\n${indent}</${tag}>`;
         }
 
-        return { ok: true, output: toJsx(key, 0) };
+        return { ok: true, output: fencedJsx(toJsx(key, 0)) };
     };
 
     const list: ToolHandler = async () =>
     {
-        return { ok: true, output: buffer.toJsx() || "(empty)" };
+        const jsx = buffer.toJsx();
+        return { ok: true, output: jsx ? fencedJsx(jsx) : "(empty)" };
     };
 
     const setInner: ToolHandler = async (args) =>
     {
-        const key = String(args.key ?? "");
-        const jsx = String(args.jsx ?? "");
+        const key  = String(args.key ?? "");
+        const jsx  = String(args.jsx ?? "");
         const node = buffer.get(key);
         if (!node) return { ok: false, output: `Node "${key}" not found`, error: `Node "${key}" not found` };
 
@@ -101,8 +119,8 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
 
     const setOuter: ToolHandler = async (args) =>
     {
-        const key = String(args.key ?? "");
-        const jsx = String(args.jsx ?? "");
+        const key  = String(args.key ?? "");
+        const jsx  = String(args.jsx ?? "");
         const node = buffer.get(key);
         if (!node) return { ok: false, output: `Node "${key}" not found`, error: `Node "${key}" not found` };
 
@@ -111,7 +129,7 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
 
         try
         {
-            loadNodes(buffer, jsx, parentId!);
+            loadNodes(buffer, jsx, parentId);
             return { ok: true, output: `Node "${key}" replaced` };
         }
         catch (err)
@@ -136,8 +154,8 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
 
     const create: ToolHandler = async (args) =>
     {
-        const key = String(args.key ?? "");
-        const name = String(args.name ?? key);
+        const key       = String(args.key ?? "");
+        const name      = String(args.name ?? key);
         const parentKey = args.parentKey !== undefined ? String(args.parentKey) : undefined;
 
         try
@@ -152,11 +170,11 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
     };
 
     return {
-        "figma.get": get,
-        "figma.list": list,
+        "figma.get":      get,
+        "figma.list":     list,
         "figma.set-inner": setInner,
         "figma.set-outer": setOuter,
-        "figma.remove": remove,
-        "figma.create": create,
+        "figma.remove":   remove,
+        "figma.create":   create,
     };
 }

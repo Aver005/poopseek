@@ -17,6 +17,8 @@ export interface BuilderFailure
 
 export type BuilderResult = BuilderSuccess | BuilderFailure;
 
+type Message = { role: "user" | "assistant"; content: string };
+
 function extractJsx(text: string): string
 {
     const fenced = text.match(/```(?:jsx|tsx)?\s*([\s\S]*?)```/);
@@ -44,44 +46,58 @@ export async function runBuilderOneShot(
 ): Promise<BuilderResult>
 {
     const basePrompt = buildPrompt(promptContent, enhanced, tokens);
-    let currentPrompt = basePrompt;
-    let lastRaw = "";
+    const provider   = await getProvider().clone();
+
+    const messages: Message[] = [{ role: "user", content: basePrompt }];
+    let lastError = "";
 
     for (let attempt = 1; attempt <= maxRetries; attempt++)
     {
         try
         {
-            const provider = await getProvider().clone();
             const chunks: string[] = [];
-            for await (const chunk of provider.complete([{ role: "user", content: currentPrompt }], ""))
+            for await (const chunk of provider.complete(messages, ""))
                 chunks.push(chunk);
 
             const raw = chunks.join("");
-            lastRaw = raw;
             const jsx = extractJsx(raw);
 
             if (!jsx.includes("<") || !jsx.includes(">"))
+            {
+                lastError = "No valid JSX found in response";
+                if (attempt < maxRetries)
+                {
+                    messages.push({ role: "assistant", content: raw });
+                    messages.push({ role: "user", content: "Response contained no valid JSX. Output only the JSX inside a ```jsx block." });
+                }
                 continue;
+            }
 
-            const nodes = parseJsx(jsx);
+            const nodes  = parseJsx(jsx);
             const errors = validateJsxTree(nodes);
 
             if (errors.length === 0)
                 return { ok: true, jsx };
 
-            if (attempt < maxRetries)
-                currentPrompt = basePrompt + "\n\nPrevious attempt produced invalid JSX. Fix ALL issues:\n\n" + formatJsxValidationErrors(errors);
+            lastError = formatJsxValidationErrors(errors);
 
-            lastRaw = formatJsxValidationErrors(errors);
+            if (attempt < maxRetries)
+            {
+                messages.push({ role: "assistant", content: raw });
+                messages.push({
+                    role: "user",
+                    content: `JSX validation failed. Fix ALL listed issues and resubmit:\n\n${lastError}`,
+                });
+            }
         }
         catch (err)
         {
-            lastRaw = err instanceof Error ? err.message : String(err);
+            lastError = err instanceof Error ? err.message : String(err);
         }
     }
 
     return {
         ok: false,
-        error: `Builder failed after ${maxRetries} attempts. Last response:\n${lastRaw.slice(0, 400)}`,
+        error: `Builder failed after ${maxRetries} attempts. Last error:\n${lastError.slice(0, 400)}`,
     };
 }

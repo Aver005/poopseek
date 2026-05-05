@@ -74,9 +74,6 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
             );
         }
 
-        session.lastJsx = result.jsx;
-        session.mode = "edit";
-
         const mapped = mapKeyToId(result.jsx);
         const parsedNodes = parseJsx(mapped);
         const validationErrors = validateJsxTree(parsedNodes);
@@ -89,6 +86,9 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                 context.getCorsHeaders,
             );
         }
+
+        session.lastJsx = result.jsx;
+        session.mode = "edit";
 
         const ops = compileJsx(parsedNodes);
         session.dispatchOps(ops);
