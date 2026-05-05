@@ -57,6 +57,12 @@ export class DeepseekWebProvider implements ILLMProvider
                     .map((m) =>
                     {
                         if (m.role === "tool") return `[TOOL:${m.name ?? "unknown"}]\n${m.content}`;
+                        if (m.role === "assistant")
+                        {
+                            // Strip code blocks >300 chars — stale JSX trees are redundant once we have a fresh snapshot
+                            const stripped = m.content.replace(/```[\s\S]{300,}?```/g, "[...]");
+                            return `[ASSISTANT]\n${stripped.trim()}`;
+                        }
                         return `[${m.role.toUpperCase()}]\n${m.content}`;
                     })
                     .join("\n\n");

@@ -265,11 +265,12 @@ export function countSnapshotNodes(nodes: FigmaSnapshotNode[]): number
 
 export function buildPluginSnapshot(): FigmaPluginSnapshot
 {
-    const rawNodes = figma.currentPage.selection.length > 0
+    const allRootNodes = [...figma.currentPage.children];
+    const selectedNodes = figma.currentPage.selection.length > 0
         ? [...figma.currentPage.selection]
-        : [...figma.currentPage.children];
+        : allRootNodes;
 
-    const tree = rawNodes
+    const tree = selectedNodes
         .map((node) => serializeNode(node))
         .filter((node): node is FigmaSnapshotNode => node !== null);
 
@@ -279,7 +280,7 @@ export function buildPluginSnapshot(): FigmaPluginSnapshot
         nodeCount: countSnapshotNodes(tree),
         selectedNodeIds: figma.currentPage.selection.map((node) => getLogicalId(node.id)),
         tree,
-        jsx: rawNodes.map((node) => nodeToFullJsx(node, 0)).filter(Boolean).join("\n"),
+        jsx: allRootNodes.map((node) => nodeToFullJsx(node, 0)).filter(Boolean).join("\n"),
         documentName: figma.root.name || undefined,
     };
 }
