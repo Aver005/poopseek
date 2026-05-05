@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { toStringValue } from "../args";
+import { toNumberValue, toStringValue } from "../args";
 import type { ToolHandler } from "../types";
 
 export const name = "file.read";
@@ -9,6 +9,17 @@ interface ReadResult
     path: string;
     content: string;
     error?: string;
+}
+
+/** Extract a range of lines: offset is 1-based, limit caps line count */
+function sliceContent(raw: string, offset: number | undefined, limit: number | undefined): string
+{
+    if (offset === undefined && limit === undefined) return raw;
+
+    const lines = raw.split("\n");
+    const start = Math.max(0, (offset ?? 1) - 1);
+    const end = limit !== undefined ? start + limit : undefined;
+    return lines.slice(start, end).join("\n");
 }
 
 export const handler: ToolHandler = async (args, context) =>
@@ -30,6 +41,9 @@ export const handler: ToolHandler = async (args, context) =>
         throw new Error("Missing required args.path or args.paths");
     }
 
+    const offset = toNumberValue(args.offset) ?? undefined;
+    const limit = toNumberValue(args.limit) ?? undefined;
+
     const results: ReadResult[] = [];
     const errors: string[] = [];
 
@@ -38,8 +52,8 @@ export const handler: ToolHandler = async (args, context) =>
         const targetPath = context.resolvePath(requestedPath);
         try
         {
-            const content = await fs.promises.readFile(targetPath, "utf8");
-            results.push({ path: requestedPath, content });
+            const raw = await fs.promises.readFile(targetPath, "utf8");
+            results.push({ path: requestedPath, content: sliceContent(raw, offset, limit) });
         }
         catch (err)
         {
@@ -60,7 +74,7 @@ export const handler: ToolHandler = async (args, context) =>
         return {
             ok: true,
             output: r.content,
-            data: { path: r.path, content: r.content },
+            data: { path: r.path, content: r.content, offset, limit },
         };
     }
 
