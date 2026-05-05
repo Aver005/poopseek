@@ -581,7 +581,19 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
 
                 case "create_frame":
                 {
-                    const frame = figma.createFrame();
+                    let frame: FrameNode | null = null;
+                    if (op.id)
+                    {
+                        const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+                        if (existing && existing.type === "FRAME") frame = existing as FrameNode;
+                    }
+                    const isNewFrame = !frame;
+                    if (!frame)
+                    {
+                        frame = figma.createFrame();
+                        resolveParent(op.frameId).appendChild(frame);
+                        if (op.id) nodeMap.set(op.id, frame.id);
+                    }
                     frame.name = String(op.name ?? "Frame");
                     frame.resize(Number(op.width ?? 100), Number(op.height ?? 100));
                     if (op.fill !== undefined)
@@ -589,27 +601,34 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         const paint = await solidPaint(op.fill as ColorInput);
                         frame.fills = paint ? [paint] : [];
                     }
-                    else
+                    else if (isNewFrame)
                     {
-                        frame.fills = [];  // Transparent — no white box for layout containers
+                        frame.fills = [];
                     }
                     if (op.cornerRadius !== undefined) frame.cornerRadius = Number(op.cornerRadius);
                     applyCornerRadii(frame, op);
                     if (op.clipContent !== undefined) frame.clipsContent = Boolean(op.clipContent);
-                    const parent = resolveParent(op.frameId);
-                    parent.appendChild(frame);
-                    if (op.x !== undefined) frame.x = Number(op.x);  // Position after append (relative to parent)
+                    if (op.x !== undefined) frame.x = Number(op.x);
                     if (op.y !== undefined) frame.y = Number(op.y);
                     applyLayoutSizing(frame, op);
-                    if (op.id) nodeMap.set(op.id, frame.id);
                     count++;
                     break;
                 }
 
                 case "create_rect":
                 {
-                    const parent = resolveParent(op.frameId);
-                    const rect = figma.createRectangle();
+                    let rect: RectangleNode | null = null;
+                    if (op.id)
+                    {
+                        const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+                        if (existing && existing.type === "RECTANGLE") rect = existing as RectangleNode;
+                    }
+                    if (!rect)
+                    {
+                        rect = figma.createRectangle();
+                        resolveParent(op.frameId).appendChild(rect);
+                        if (op.id) nodeMap.set(op.id, rect.id);
+                    }
                     rect.resize(Number(op.width ?? 100), Number(op.height ?? 100));
                     if (op.fill !== undefined)
                     {
@@ -619,19 +638,27 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     if (op.cornerRadius !== undefined) rect.cornerRadius = Number(op.cornerRadius);
                     applyCornerRadii(rect, op);
                     if (op.name) rect.name = String(op.name);
-                    parent.appendChild(rect);
                     if (op.x !== undefined) rect.x = Number(op.x);
                     if (op.y !== undefined) rect.y = Number(op.y);
                     applyLayoutSizing(rect, op);
-                    if (op.id) nodeMap.set(op.id, rect.id);
                     count++;
                     break;
                 }
 
                 case "create_ellipse":
                 {
-                    const parent = resolveParent(op.frameId);
-                    const ellipse = figma.createEllipse();
+                    let ellipse: EllipseNode | null = null;
+                    if (op.id)
+                    {
+                        const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+                        if (existing && existing.type === "ELLIPSE") ellipse = existing as EllipseNode;
+                    }
+                    if (!ellipse)
+                    {
+                        ellipse = figma.createEllipse();
+                        resolveParent(op.frameId).appendChild(ellipse);
+                        if (op.id) nodeMap.set(op.id, ellipse.id);
+                    }
                     ellipse.resize(Number(op.width ?? 100), Number(op.height ?? 100));
                     if (op.fill !== undefined)
                     {
@@ -639,24 +666,31 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         if (paint) ellipse.fills = [paint];
                     }
                     if (op.name) ellipse.name = String(op.name);
-                    parent.appendChild(ellipse);
                     if (op.x !== undefined) ellipse.x = Number(op.x);
                     if (op.y !== undefined) ellipse.y = Number(op.y);
                     applyLayoutSizing(ellipse, op);
-                    if (op.id) nodeMap.set(op.id, ellipse.id);
                     count++;
                     break;
                 }
 
                 case "create_image":
                 {
-                    const parent = resolveParent(op.frameId);
-                    const rect = figma.createRectangle();
+                    let rect: RectangleNode | null = null;
+                    if (op.id)
+                    {
+                        const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+                        if (existing && existing.type === "RECTANGLE") rect = existing as RectangleNode;
+                    }
+                    if (!rect)
+                    {
+                        rect = figma.createRectangle();
+                        resolveParent(op.frameId).appendChild(rect);
+                        if (op.id) nodeMap.set(op.id, rect.id);
+                    }
                     rect.resize(Number(op.width ?? 160), Number(op.height ?? 100));
                     rect.name = String(op.name ?? "Image");
                     if (op.cornerRadius !== undefined) rect.cornerRadius = Number(op.cornerRadius);
                     applyCornerRadii(rect, op);
-                    parent.appendChild(rect);
                     if (op.x !== undefined) rect.x = Number(op.x);
                     if (op.y !== undefined) rect.y = Number(op.y);
                     applyLayoutSizing(rect, op);
@@ -691,14 +725,12 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         if (paint) rect.fills = [paint];
                     }
 
-                    if (op.id) nodeMap.set(op.id, rect.id);
                     count++;
                     break;
                 }
 
                 case "create_text":
                 {
-                    const parent = resolveParent(op.frameId);
                     const weightMap: Record<string, string> = {
                         Bold: "Bold", SemiBold: "Semi Bold", Medium: "Medium",
                         Regular: "Regular", Light: "Light",
@@ -707,7 +739,19 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                     };
                     const style = weightMap[String(op.fontWeight ?? "Regular")] ?? "Regular";
                     await figma.loadFontAsync({ family: "Inter", style });
-                    const text = figma.createText();
+
+                    let text: TextNode | null = null;
+                    if (op.id)
+                    {
+                        const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+                        if (existing && existing.type === "TEXT") text = existing as TextNode;
+                    }
+                    if (!text)
+                    {
+                        text = figma.createText();
+                        resolveParent(op.frameId).appendChild(text);
+                        if (op.id) nodeMap.set(op.id, text.id);
+                    }
                     text.characters = String(op.content ?? "");
                     text.fontName = { family: "Inter", style };
                     if (op.fontSize !== undefined) text.fontSize = Number(op.fontSize);
@@ -722,30 +766,36 @@ async function executeOps(ops: FigmaOp[]): Promise<number>
                         if (paint) text.fills = [paint];
                     }
                     if (op.name) text.name = String(op.name);
-                    parent.appendChild(text);
                     if (op.x !== undefined) text.x = Number(op.x);
                     if (op.y !== undefined) text.y = Number(op.y);
                     applyLayoutSizing(text, op);
                     if (op.fillParent) text.textAutoResize = "HEIGHT";
-                    if (op.id) nodeMap.set(op.id, text.id);
                     count++;
                     break;
                 }
 
                 case "create_line":
                 {
-                    const parent = resolveParent(op.frameId);
-                    const line = figma.createLine();
+                    let line: LineNode | null = null;
+                    if (op.id)
+                    {
+                        const existing = figma.getNodeById(nodeMap.get(String(op.id)) ?? "");
+                        if (existing && existing.type === "LINE") line = existing as LineNode;
+                    }
+                    if (!line)
+                    {
+                        line = figma.createLine();
+                        resolveParent(op.frameId).appendChild(line);
+                        if (op.id) nodeMap.set(op.id, line.id);
+                    }
                     line.resize(Number(op.length ?? 100), 0);
                     if (op.rotation !== undefined) line.rotation = Number(op.rotation);
                     const linePaint = await solidPaint((op.color as ColorInput | undefined) ?? "#E5E5E5");
                     if (linePaint) line.strokes = [linePaint];
                     line.strokeWeight = op.weight !== undefined ? Number(op.weight) : 1;
                     if (op.name) line.name = String(op.name);
-                    parent.appendChild(line);
                     if (op.x !== undefined) line.x = Number(op.x);
                     if (op.y !== undefined) line.y = Number(op.y);
-                    if (op.id) nodeMap.set(op.id, line.id);
                     count++;
                     break;
                 }
