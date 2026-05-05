@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "build": "bun run build.ts",
-    "watch": "bun run --watch build.ts"
+    "watch": "bun run --watch build.ts",
+    "check": "tsc --noEmit"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.108.0"
