@@ -3,6 +3,16 @@ export interface SendMessageOptions {
     search_enabled?: boolean;
     model_type?: ModelType;
     signal?: AbortSignal;
+    ref_file_ids?: string[];
+}
+
+export type DeepseekFileStatus = "PENDING" | "SUCCESS" | "FAILED";
+
+export interface DeepseekFileInfo {
+    id: string;
+    status: DeepseekFileStatus;
+    file_name: string;
+    is_image: boolean;
 }
 
 export type ModelType = "default" | "expert";

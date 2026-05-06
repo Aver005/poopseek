@@ -11,6 +11,7 @@ export class DeepseekWebProvider implements ILLMProvider
 
     private session: ChatSession | null = null;
     private systemSentForSession = false;
+    private pendingFileIds: string[] = [];
 
     constructor(private readonly client: DeepseekClient) {}
 
@@ -96,11 +97,13 @@ export class DeepseekWebProvider implements ILLMProvider
         }
 
         const modelType: ModelType = options?.modelVariant === "expert" ? "expert" : "default";
+        const fileIds = this.pendingFileIds.splice(0);
         const response = await this.client.sendMessage(content, this.session!, {
             model_type: modelType,
             search_enabled: options?.searchEnabled,
             thinking_enabled: options?.thinkingEnabled,
             signal: options?.signal,
+            ref_file_ids: fileIds.length > 0 ? fileIds : undefined,
         });
 
         let parentMessageId: number | null = null;
@@ -117,6 +120,13 @@ export class DeepseekWebProvider implements ILLMProvider
     async listModels(): Promise<string[]>
     {
         return ["default", "expert"];
+    }
+
+    async uploadFile(filePath: string, signal?: AbortSignal): Promise<string>
+    {
+        const fileId = await this.client.uploadFile(filePath, signal);
+        this.pendingFileIds.push(fileId);
+        return fileId;
     }
 
     getClient(): DeepseekClient

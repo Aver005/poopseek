@@ -92,6 +92,9 @@ export type CommandHandlerDeps = {
     enterFigmaScope: () => Promise<void>;
     exitFigmaScope: () => void;
     loadFigmaJam: (sessionId: string) => Promise<{ error?: string }>;
+
+    // File attachments
+    attachFile?: (path: string, signal?: AbortSignal) => Promise<{ id: string; name: string }>;
 };
 
 function formatSessionDate(value: string): string
@@ -460,6 +463,7 @@ export function buildCommandHandlers(
         enterFigmaScope: deps.enterFigmaScope,
         exitFigmaScope: deps.exitFigmaScope,
         loadFigmaJam: deps.loadFigmaJam,
+        attachFile: deps.attachFile,
 
         saveUserConfig: async (update) =>
         {

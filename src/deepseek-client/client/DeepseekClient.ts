@@ -4,23 +4,31 @@ import type { ChatPayload, DeepseekHistoryData, SendMessageOptions } from "../ty
 import { getRecord, isRecord } from "../utils/record";
 import ChatSession from "./ChatSession";
 import PowService from "../services/PowService";
+import FileService from "../services/FileService";
 
 export default class DeepseekClient
 {
     private static readonly HISTORY_TIMEOUT_MS = 8000;
     private readonly token: string;
     private readonly powService: PowService;
+    private readonly fileService: FileService;
     private currentSession: ChatSession | null = null;
 
     constructor(token: string)
     {
         this.token = token;
         this.powService = new PowService();
+        this.fileService = new FileService(token, this.powService);
     }
 
     async initialize(): Promise<void>
     {
         await this.powService.initialize();
+    }
+
+    async uploadFile(filePath: string, signal?: AbortSignal): Promise<string>
+    {
+        return this.fileService.uploadFile(filePath, signal);
     }
 
     async createSession(): Promise<ChatSession>
@@ -67,7 +75,7 @@ export default class DeepseekClient
             stream: true,
             temperature: CHAT_CONFIG.DEFAULT_TEMPERATURE,
             max_tokens: CHAT_CONFIG.DEFAULT_MAX_TOKENS,
-            ref_file_ids: [],
+            ref_file_ids: options.ref_file_ids ?? [],
             thinking_enabled: options.thinking_enabled ?? false,
             search_enabled: options.search_enabled ?? false,
             chat_session_id: chatSession.getId(),

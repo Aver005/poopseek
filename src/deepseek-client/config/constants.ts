@@ -6,7 +6,15 @@ export const API_ENDPOINTS = {
     CREATE_SESSION: `https://${DEEPSEEK_HOST}/api/v0/chat_session/create`,
     HISTORY_MESSAGES: `https://${DEEPSEEK_HOST}/api/v0/chat/history_messages`,
     USERS_CURRENT: `https://${DEEPSEEK_HOST}/api/v0/users/current`,
+    UPLOAD_FILE: `https://${DEEPSEEK_HOST}/api/v0/file/upload_file`,
+    FETCH_FILES: `https://${DEEPSEEK_HOST}/api/v0/file/fetch_files`,
     TARGET_PATH: "/api/v0/chat/completion",
+    FILE_TARGET_PATH: "/api/v0/file/upload_file",
+} as const;
+
+export const FILE_CONFIG = {
+    POLL_INTERVAL_MS: 1000,
+    POLL_TIMEOUT_MS: 30000,
 } as const;
 
 export const WASM_CONFIG = {

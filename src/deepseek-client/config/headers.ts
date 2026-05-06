@@ -24,10 +24,29 @@ export class HeadersBuilder
     static getChatHeaders(
         token: string,
         powDataB64: string,
-    ): Record<string, string> 
+    ): Record<string, string>
 {
         return {
             ...HeadersBuilder.getAuthHeaders(token),
+            "x-ds-pow-response": powDataB64,
+        };
+    }
+
+    static getUploadHeaders(
+        token: string,
+        powDataB64: string,
+    ): Record<string, string>
+{
+        return {
+            Host: BASE_HEADERS.Host,
+            "User-Agent": BASE_HEADERS["User-Agent"],
+            Accept: BASE_HEADERS.Accept,
+            "Accept-Encoding": BASE_HEADERS["Accept-Encoding"],
+            "x-client-platform": BASE_HEADERS["x-client-platform"],
+            "x-client-version": BASE_HEADERS["x-client-version"],
+            "x-client-locale": BASE_HEADERS["x-client-locale"],
+            "accept-charset": BASE_HEADERS["accept-charset"],
+            Authorization: `Bearer ${token}`,
             "x-ds-pow-response": powDataB64,
         };
     }

@@ -1,6 +1,7 @@
 ﻿import { writeLine } from "./io";
 import type { Command, CommandsContext } from "./types";
 
+import { createAttachCommand } from "./defs/attach";
 import { createBtwCommand } from "./defs/btw";
 import { createLoadCommand } from "./defs/load";
 import { createLogoutCommand, createReloginCommand } from "./defs/logout";
@@ -54,6 +55,7 @@ export function createCommandHandlers(
     };
 
     registerCommand(createHelpCommand(() => commands));
+    registerCommand(createAttachCommand(context));
     registerCommand(createBtwCommand(context));
     registerCommand(createExitCommand(rl));
     registerCommand(createQuitCommand(rl));

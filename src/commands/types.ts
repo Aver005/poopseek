@@ -97,6 +97,7 @@ export interface CommandsContext
     enterFigmaScope?: () => Promise<void>;
     exitFigmaScope?: () => void;
     loadFigmaJam?: (sessionId: string) => Promise<{ error?: string }>;
+    attachFile?: (path: string, signal?: AbortSignal) => Promise<{ id: string; name: string }>;
 }
 
 export interface CommandModule

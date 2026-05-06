@@ -571,6 +571,17 @@ export async function runCli(): Promise<void>
             return p instanceof DeepseekWebProvider ? createDeepseekHistoryImporter(p) : undefined;
         },
         figmaServerManager,
+        attachFile: async (path, signal) =>
+        {
+            const p = providerStore.getProvider();
+            if (!(p instanceof DeepseekWebProvider))
+            {
+                throw new Error("Прикрепление файлов поддерживается только провайдером DeepSeek Web");
+            }
+            const fileId = await p.uploadFile(path, signal);
+            const name = path.split(/[\\/]/).pop() ?? path;
+            return { id: fileId, name };
+        },
         getAgentScope: () => scopeManager.scope,
         getFigmaJamId: () => scopeManager.jamId,
         enterFigmaScope,
