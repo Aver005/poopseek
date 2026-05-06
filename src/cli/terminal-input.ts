@@ -36,6 +36,7 @@ type TerminalInputController = {
     setRenderEnabled: (enabled: boolean) => void;
     setQueueCallbacks: (callbacks: QueueCallbacks) => void;
     setStatusLine: (getter: () => string) => void;
+    setPendingFiles: (files: { id: string; name: string }[]) => void;
     setPromptPrefix: (prefix: string) => void;
     choose: (title: string, items: TerminalChoiceItem[]) => Promise<string | null>;
     confirm: (message: string) => Promise<boolean>;
@@ -308,6 +309,30 @@ async function createTerminalDriver(): Promise<TerminalDriver>
     }
 }
 
+function buildAttachmentLines(files: { id: string; name: string }[]): string[]
+{
+    const visible = files.slice(0, 10);
+    const rest = files.length - visible.length;
+
+    if (visible.length <= 3)
+    {
+        const inline = visible
+            .map((f, i) => `${colors.dim(`${i + 1}:`)}${f.name}`)
+            .join(colors.dim("  "));
+        const suffix = rest > 0 ? colors.dim(`  +${rest}`) : "";
+        return [`${colors.yellow("~")} ${inline}${suffix}`];
+    }
+
+    const result: string[] = [];
+    for (let i = 0; i < visible.length; i++)
+    {
+        const prefix = i === 0 ? colors.yellow("~") : " ";
+        result.push(`${prefix} ${colors.dim(`${i + 1}:`)}${visible[i]!.name}`);
+    }
+    if (rest > 0) result.push(`  ${colors.dim(`+${rest} ещё`)}`);
+    return result;
+}
+
 function buildRenderedBlock(
     value: string,
     _cursor: number,
@@ -317,6 +342,7 @@ function buildRenderedBlock(
     workspaceRoot: string,
     fileCompletionState: FileCompletionState,
     fileSelectionIndex: number,
+    pendingFiles: { id: string; name: string }[],
     statusLine: string,
     pasteBlocks: Map<string, string>,
     showPasteHint: boolean,
@@ -341,6 +367,11 @@ function buildRenderedBlock(
 
     if (mode !== "queue")
     {
+        if (pendingFiles.length > 0)
+        {
+            lines.push(...buildAttachmentLines(pendingFiles));
+        }
+
         if (statusLine.length > 0)
         {
             lines.push(statusLine);
@@ -424,6 +455,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
     let queueCallbacks: QueueCallbacks = {};
     let getStatusLine: () => string = () => "";
     let activePromptPrefix = PROMPT_PREFIX;
+    let pendingFiles: { id: string; name: string }[] = [];
 
     const notifyValueChange = (): void =>
     {
@@ -813,6 +845,7 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
                 getWorkspaceRoot(),
                 getActiveFileCompletionState(),
                 fileSelectionIndex,
+                pendingFiles,
                 getStatusLine(),
                 pasteBlocks,
                 showPasteHint,
@@ -878,6 +911,12 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         getStatusLine = getter;
     };
 
+    const setPendingFiles = (files: { id: string; name: string }[]): void =>
+    {
+        pendingFiles = files;
+        vm.invalidate();
+    };
+
     const setPromptPrefix = (prefix: string): void =>
     {
         activePromptPrefix = prefix;
@@ -906,5 +945,5 @@ export function createTerminalInput(options: TerminalInputOptions = {}): Termina
         vm.destroy();
     };
 
-    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, setStatusLine, setPromptPrefix, choose, confirm, close, viewManager: vm };
+    return { start, onSubmit, setMode, setQueueSize, setRenderEnabled, setQueueCallbacks, setStatusLine, setPendingFiles, setPromptPrefix, choose, confirm, close, viewManager: vm };
 }

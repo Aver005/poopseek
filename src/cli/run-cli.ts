@@ -174,6 +174,13 @@ export async function runCli(): Promise<void>
         contextManager.markSessionReset();
     };
 
+    const syncAttachmentDisplay = (): void =>
+    {
+        const p = providerStore.getProvider();
+        const files = p instanceof DeepseekWebProvider ? p.getPendingFiles() : [];
+        terminalInput.setPendingFiles(files);
+    };
+
     // --- Skills ---
 
     const skillManager = new SkillManager();
@@ -578,9 +585,26 @@ export async function runCli(): Promise<void>
             {
                 throw new Error("Прикрепление файлов поддерживается только провайдером DeepSeek Web");
             }
-            const fileId = await p.uploadFile(path, signal);
-            const name = path.split(/[\\/]/).pop() ?? path;
-            return { id: fileId, name };
+            const entry = await p.uploadFile(path, signal);
+            syncAttachmentDisplay();
+            return entry;
+        },
+        getPendingFiles: () =>
+        {
+            const p = providerStore.getProvider();
+            return p instanceof DeepseekWebProvider ? p.getPendingFiles() : [];
+        },
+        clearPendingFiles: () =>
+        {
+            const p = providerStore.getProvider();
+            if (p instanceof DeepseekWebProvider) p.clearPendingFiles();
+            syncAttachmentDisplay();
+        },
+        removePendingFiles: (indices) =>
+        {
+            const p = providerStore.getProvider();
+            if (p instanceof DeepseekWebProvider) p.removePendingFiles(indices);
+            syncAttachmentDisplay();
         },
         getAgentScope: () => scopeManager.scope,
         getFigmaJamId: () => scopeManager.jamId,

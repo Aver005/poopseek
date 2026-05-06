@@ -11,7 +11,7 @@ export class DeepseekWebProvider implements ILLMProvider
 
     private session: ChatSession | null = null;
     private systemSentForSession = false;
-    private pendingFileIds: string[] = [];
+    private pendingFiles: { id: string; name: string }[] = [];
 
     constructor(private readonly client: DeepseekClient) {}
 
@@ -97,7 +97,8 @@ export class DeepseekWebProvider implements ILLMProvider
         }
 
         const modelType: ModelType = options?.modelVariant === "expert" ? "expert" : "default";
-        const fileIds = this.pendingFileIds.splice(0);
+        const files = this.pendingFiles.splice(0);
+        const fileIds = files.map((f) => f.id);
         const response = await this.client.sendMessage(content, this.session!, {
             model_type: modelType,
             search_enabled: options?.searchEnabled,
@@ -122,11 +123,32 @@ export class DeepseekWebProvider implements ILLMProvider
         return ["default", "expert"];
     }
 
-    async uploadFile(filePath: string, signal?: AbortSignal): Promise<string>
+    async uploadFile(filePath: string, signal?: AbortSignal): Promise<{ id: string; name: string }>
     {
         const fileId = await this.client.uploadFile(filePath, signal);
-        this.pendingFileIds.push(fileId);
-        return fileId;
+        const name = filePath.split(/[\\/]/).pop() ?? filePath;
+        const entry = { id: fileId, name };
+        this.pendingFiles.push(entry);
+        return entry;
+    }
+
+    getPendingFiles(): { id: string; name: string }[]
+    {
+        return this.pendingFiles;
+    }
+
+    clearPendingFiles(): void
+    {
+        this.pendingFiles = [];
+    }
+
+    removePendingFiles(indices: number[]): void
+    {
+        const sorted = [...new Set(indices)].sort((a, b) => b - a);
+        for (const i of sorted)
+        {
+            if (i >= 0 && i < this.pendingFiles.length) this.pendingFiles.splice(i, 1);
+        }
     }
 
     getClient(): DeepseekClient

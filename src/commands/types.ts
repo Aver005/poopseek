@@ -98,6 +98,9 @@ export interface CommandsContext
     exitFigmaScope?: () => void;
     loadFigmaJam?: (sessionId: string) => Promise<{ error?: string }>;
     attachFile?: (path: string, signal?: AbortSignal) => Promise<{ id: string; name: string }>;
+    getPendingFiles?: () => { id: string; name: string }[];
+    clearPendingFiles?: () => void;
+    removePendingFiles?: (indices: number[]) => void;
 }
 
 export interface CommandModule

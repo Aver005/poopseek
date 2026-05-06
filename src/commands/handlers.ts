@@ -95,6 +95,9 @@ export type CommandHandlerDeps = {
 
     // File attachments
     attachFile?: (path: string, signal?: AbortSignal) => Promise<{ id: string; name: string }>;
+    getPendingFiles?: () => { id: string; name: string }[];
+    clearPendingFiles?: () => void;
+    removePendingFiles?: (indices: number[]) => void;
 };
 
 function formatSessionDate(value: string): string
@@ -158,6 +161,7 @@ export function buildCommandHandlers(
             deps.startNewLocalSession();
             await deps.resetMainProvider();
             await deps.saveCurrentLocalSession();
+            deps.clearPendingFiles?.();
         },
 
         resetSession: async () =>
@@ -166,6 +170,7 @@ export function buildCommandHandlers(
             deps.startNewLocalSession();
             await deps.resetMainProvider();
             await deps.saveCurrentLocalSession();
+            deps.clearPendingFiles?.();
         },
 
         openSessions: async () =>
@@ -464,6 +469,9 @@ export function buildCommandHandlers(
         exitFigmaScope: deps.exitFigmaScope,
         loadFigmaJam: deps.loadFigmaJam,
         attachFile: deps.attachFile,
+        getPendingFiles: deps.getPendingFiles,
+        clearPendingFiles: deps.clearPendingFiles,
+        removePendingFiles: deps.removePendingFiles,
 
         saveUserConfig: async (update) =>
         {
