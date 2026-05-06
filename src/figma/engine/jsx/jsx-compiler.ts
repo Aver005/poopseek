@@ -188,7 +188,11 @@ function compileFrame(node: JsxNode, state: State): void
     const parent = top(state);
     const id = str(p.id) ?? uid(state, "frm");
 
-    const hasAutoLayout = !!p.autoLayout || !!p.center;
+    const hasLayoutProps = p.padX !== undefined || p.padY !== undefined
+        || p.padTop !== undefined || p.padRight !== undefined
+        || p.padBottom !== undefined || p.padLeft !== undefined
+        || p.gap !== undefined || p.alignX !== undefined || p.alignY !== undefined;
+    const hasAutoLayout = !!p.autoLayout || !!p.center || hasLayoutProps;
     const isVertical = str(p.flow)?.toLowerCase() !== "horizontal";
     const flow: "HORIZONTAL" | "VERTICAL" = isVertical ? "VERTICAL" : "HORIZONTAL";
 
