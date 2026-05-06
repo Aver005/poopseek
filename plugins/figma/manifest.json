@@ -6,7 +6,7 @@
   "ui": "ui.html",
   "editorType": ["figma"],
   "networkAccess": {
-    "allowedDomains": ["http://localhost:7331"],
+    "allowedDomains": ["http://localhost:7331", "https://thesvg.org/icons/"],
     "reasoning": "Connects to the local PoopSeek agent server"
   }
 }
