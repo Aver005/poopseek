@@ -41,6 +41,11 @@ export class DeepseekWebProvider implements ILLMProvider
     {
         if (!this.session) await this.reset();
 
+        // clearHistory() was called externally (fresh conversation) — create a new DeepSeek session
+        // so the updated system prompt (e.g. with fresh JSX tree) is actually sent.
+        if (this.systemSentForSession && messages.length === 1)
+            await this.reset();
+
         const lastMsg = messages[messages.length - 1];
         if (!lastMsg) return;
 

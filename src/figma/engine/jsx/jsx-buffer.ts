@@ -195,6 +195,8 @@ export class JsxBuffer
             cursor = this.nodes.get(cursor)?.parentId ?? null;
         }
 
+        this.touchRoot(id); // mark old root dirty before reparenting
+
         if (node.parentId)
         {
             const old = this.nodes.get(node.parentId);
@@ -208,6 +210,7 @@ export class JsxBuffer
 
         this._dirty = true;
         node.parentId = newParentId;
+        this.touchRoot(id); // mark new root dirty after reparenting
         return node;
     }
 

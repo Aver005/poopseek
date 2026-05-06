@@ -195,16 +195,32 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
         }
     };
 
-    const create: ToolHandler = async (args) =>
+    const insert: ToolHandler = async (args) =>
     {
-        const key       = String(args.key ?? "");
-        const name      = String(args.name ?? key);
+        const jsx       = String(args.jsx ?? "");
         const parentKey = args.parentKey !== undefined ? String(args.parentKey) : undefined;
+        const index     = args.index !== undefined ? Number(args.index) : undefined;
+
+        if (!jsx.trim())
+            return { ok: false, output: "jsx is required", error: "jsx is required" };
+
+        const parentNode = parentKey ? buffer.get(parentKey) : undefined;
+        if (parentKey && !parentNode)
+            return { ok: false, output: `Parent "${parentKey}" not found`, error: `Parent "${parentKey}" not found` };
 
         try
         {
-            buffer.create("Frame", { id: key, name }, parentKey);
-            return { ok: true, output: `Node "${key}" created` };
+            const priorChildCount = parentNode?.children.length ?? 0;
+            loadNodes(buffer, jsx, parentKey);
+
+            if (index !== undefined && parentNode)
+            {
+                const added = parentNode.children.slice(priorChildCount);
+                parentNode.children.splice(priorChildCount, added.length);
+                parentNode.children.splice(Math.min(index, priorChildCount), 0, ...added);
+            }
+
+            return { ok: true, output: `Nodes inserted under "${parentKey ?? "root"}"` };
         }
         catch (err)
         {
@@ -212,13 +228,75 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
         }
     };
 
+    const move: ToolHandler = async (args) =>
+    {
+        const key          = String(args.key ?? "");
+        const newParentKey = String(args.newParentKey ?? "");
+        const index        = args.index !== undefined ? Number(args.index) : undefined;
+
+        try
+        {
+            buffer.move(key, newParentKey, index);
+            return { ok: true, output: `Node "${key}" moved to "${newParentKey}"${index !== undefined ? ` at index ${index}` : ""}` };
+        }
+        catch (err)
+        {
+            return { ok: false, output: String(err), error: String(err) };
+        }
+    };
+
+    const find: ToolHandler = async (args) =>
+    {
+        const filter: Parameters<typeof buffer.find>[0] = {};
+        if (args.type)      filter.type      = String(args.type);
+        if (args.text)      filter.text      = String(args.text);
+        if (args.parentKey !== undefined)
+            filter.parentId = args.parentKey === null ? null : String(args.parentKey);
+
+        const results = buffer.find(filter);
+        if (results.length === 0) return { ok: true, output: "(no results)" };
+
+        const lines = results.map(n =>
+        {
+            const textVal = n.props.text ?? n.props.content;
+            const preview = textVal ? ` text="${String(textVal).slice(0, 60)}"` : "";
+            return `key="${n.id}" type="${n.type}" parent="${n.parentId ?? "root"}"${preview}`;
+        });
+
+        return { ok: true, output: lines.join("\n") };
+    };
+
+    const children: ToolHandler = async (args) =>
+    {
+        const key  = String(args.key ?? "");
+        const node = buffer.get(key);
+        if (!node) return { ok: false, output: `Node "${key}" not found`, error: `Node "${key}" not found` };
+
+        if (node.children.length === 0) return { ok: true, output: "(no children)" };
+
+        const lines = node.children.map(childId =>
+        {
+            const child = buffer.get(childId);
+            if (!child) return `"${childId}" (missing)`;
+            const textVal = child.props.text ?? child.props.content;
+            const preview = textVal ? ` → "${String(textVal).slice(0, 40)}"` : "";
+            const childCount = child.children.length > 0 ? ` [${child.children.length} children]` : "";
+            return `key="${childId}" type="${child.type}"${preview}${childCount}`;
+        });
+
+        return { ok: true, output: lines.join("\n") };
+    };
+
     return {
         "figma.get":       get,
         "figma.list":      list,
+        "figma.find":      find,
+        "figma.children":  children,
+        "figma.patch":     patch,
         "figma.set-inner": setInner,
         "figma.set-outer": setOuter,
-        "figma.patch":     patch,
+        "figma.insert":    insert,
+        "figma.move":      move,
         "figma.remove":    remove,
-        "figma.create":    create,
     };
 }

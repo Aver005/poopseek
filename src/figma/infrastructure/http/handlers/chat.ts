@@ -181,12 +181,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                 }
                 else
                 {
-                    const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", currentJsx);
-
-                    const handymanCtx = session.roleSessions.designer.contextManager;
-                    handymanCtx.setFigmaContext(systemPrompt);
-                    handymanCtx.clearHistory();
-
+                    // Load buffer first so we can use its canonical JSX (with unique IDs) in the prompt.
                     session.buffer.reset();
                     if (currentJsx !== "(empty)")
                     {
@@ -194,6 +189,13 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         catch { /* ignore parse errors */ }
                     }
                     session.buffer.markClean();
+
+                    const canonicalJsx = session.buffer.toJsx() || "(empty)";
+                    const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", canonicalJsx);
+
+                    const handymanCtx = session.roleSessions.designer.contextManager;
+                    handymanCtx.setFigmaContext(systemPrompt);
+                    handymanCtx.clearHistory();
 
                     const originalRootNames = session.buffer.roots().map(n => String(n.props.name ?? n.id));
                     const handymanTools = makeHandymanTools(session.buffer);
@@ -247,18 +249,18 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                         const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
-                        const namesToDelete = dirtyNames.filter(n => originalSet.has(n));
-                        if (namesToDelete.length > 0)
-                            opsToDispatch.push({ type: "delete_nodes_by_name", names: namesToDelete });
-
                         for (const name of dirtyNames)
                         {
                             const root = currentRootByName.get(name);
-                            if (root)
-                            {
-                                const subtreeJsx = session.buffer.subtreeToJsx(root.id);
-                                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
-                            }
+                            // Only delete a root if we can immediately recreate it.
+                            // Emitting delete without recreate would wipe the frame from Figma.
+                            if (!root) continue;
+
+                            if (originalSet.has(name))
+                                opsToDispatch.push({ type: "delete_nodes_by_name", names: [name] });
+
+                            const subtreeJsx = session.buffer.subtreeToJsx(root.id);
+                            opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
                         }
 
                         if (opsToDispatch.length > 0)
@@ -353,12 +355,6 @@ async function handleChatLegacy(
     }
     else
     {
-        const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", currentJsx);
-
-        const handymanCtx = session.roleSessions.designer.contextManager;
-        handymanCtx.setFigmaContext(systemPrompt);
-        handymanCtx.clearHistory();
-
         session.buffer.reset();
         if (currentJsx !== "(empty)")
         {
@@ -366,6 +362,13 @@ async function handleChatLegacy(
             catch { /* ignore parse errors */ }
         }
         session.buffer.markClean();
+
+        const canonicalJsx = session.buffer.toJsx() || "(empty)";
+        const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", canonicalJsx);
+
+        const handymanCtx = session.roleSessions.designer.contextManager;
+        handymanCtx.setFigmaContext(systemPrompt);
+        handymanCtx.clearHistory();
 
         const originalRootNames = session.buffer.roots().map(n => String(n.props.name ?? n.id));
 
@@ -423,18 +426,16 @@ async function handleChatLegacy(
 
             const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
-            const namesToDelete = dirtyNames.filter(n => originalSet.has(n));
-            if (namesToDelete.length > 0)
-                opsToDispatch.push({ type: "delete_nodes_by_name", names: namesToDelete });
-
             for (const name of dirtyNames)
             {
                 const root = currentRootByName.get(name);
-                if (root)
-                {
-                    const subtreeJsx = session.buffer.subtreeToJsx(root.id);
-                    opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
-                }
+                if (!root) continue;
+
+                if (originalSet.has(name))
+                    opsToDispatch.push({ type: "delete_nodes_by_name", names: [name] });
+
+                const subtreeJsx = session.buffer.subtreeToJsx(root.id);
+                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
             }
 
             if (opsToDispatch.length > 0)
