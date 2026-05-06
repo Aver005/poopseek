@@ -13,8 +13,25 @@ export class JsxBuffer
     private counter = 0;
     private _dirty = false;
 
+    private _dirtyRootNames = new Set<string>();
+
     get isDirty(): boolean { return this._dirty; }
-    markClean(): void { this._dirty = false; }
+    markClean(): void { this._dirty = false; this._dirtyRootNames.clear(); }
+    getDirtyRootNames(): string[] { return Array.from(this._dirtyRootNames); }
+
+    private findRootNode(id: string): BufferNode | undefined
+    {
+        let node = this.nodes.get(id);
+        while (node?.parentId)
+            node = this.nodes.get(node.parentId);
+        return node;
+    }
+
+    private touchRoot(id: string): void
+    {
+        const root = this.findRootNode(id);
+        if (root) this._dirtyRootNames.add(String(root.props.name ?? root.id));
+    }
 
     private genId(type: string): string
     {
@@ -43,6 +60,7 @@ export class JsxBuffer
             this.nodes.get(parentId)!.children.push(id);
 
         this._dirty = true;
+        this.touchRoot(id);
         return node;
     }
 
@@ -78,6 +96,7 @@ export class JsxBuffer
         }
 
         this._dirty = true;
+        this.touchRoot(id);
         return node;
     }
 
@@ -85,6 +104,8 @@ export class JsxBuffer
     {
         const node = this.nodes.get(id);
         if (!node) throw new Error(`Node "${id}" not found`);
+
+        this.touchRoot(id);
 
         if (node.parentId)
         {
@@ -195,6 +216,14 @@ export class JsxBuffer
         this.nodes.clear();
         this.counter = 0;
         this._dirty = false;
+        this._dirtyRootNames.clear();
+    }
+
+    subtreeToJsx(rootId: string): string
+    {
+        const node = this.nodes.get(rootId);
+        if (!node) return "";
+        return this.serializeNode(node, 0);
     }
 
     snapshot(): { nodes: Map<string, BufferNode>; counter: number }

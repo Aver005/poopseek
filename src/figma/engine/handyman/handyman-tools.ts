@@ -130,12 +130,50 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
         if (!node) return { ok: false, output: `Node "${key}" not found`, error: `Node "${key}" not found` };
 
         const parentId = node.parentId ?? undefined;
+
+        let savedIndex: number | undefined;
+        if (parentId)
+        {
+            const parent = buffer.get(parentId);
+            if (parent) savedIndex = parent.children.indexOf(key);
+        }
+
         buffer.delete(key);
 
         try
         {
+            const siblingsLen = parentId ? (buffer.get(parentId)?.children.length ?? 0) : 0;
             loadNodes(buffer, jsx, parentId);
+
+            if (savedIndex !== undefined && savedIndex < siblingsLen && parentId)
+            {
+                const parent = buffer.get(parentId);
+                if (parent)
+                {
+                    const inserted = parent.children.splice(siblingsLen);
+                    parent.children.splice(savedIndex, 0, ...inserted);
+                }
+            }
+
             return { ok: true, output: `Node "${key}" replaced` };
+        }
+        catch (err)
+        {
+            return { ok: false, output: String(err), error: String(err) };
+        }
+    };
+
+    const patch: ToolHandler = async (args) =>
+    {
+        const key   = String(args.key ?? "");
+        const props = (typeof args.props === "object" && args.props !== null)
+            ? args.props as Record<string, unknown>
+            : {};
+
+        try
+        {
+            buffer.edit(key, props);
+            return { ok: true, output: `Props of "${key}" updated` };
         }
         catch (err)
         {
@@ -175,11 +213,12 @@ export function makeHandymanTools(buffer: JsxBuffer): Record<string, ToolHandler
     };
 
     return {
-        "figma.get":      get,
-        "figma.list":     list,
+        "figma.get":       get,
+        "figma.list":      list,
         "figma.set-inner": setInner,
         "figma.set-outer": setOuter,
-        "figma.remove":   remove,
-        "figma.create":   create,
+        "figma.patch":     patch,
+        "figma.remove":    remove,
+        "figma.create":    create,
     };
 }

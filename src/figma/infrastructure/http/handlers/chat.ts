@@ -163,15 +163,32 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         if (session.buffer.isDirty)
         {
             const bufferJsx = session.buffer.toJsx();
-            if (bufferJsx)
+            if (bufferJsx) session.lastJsx = bufferJsx;
+
+            const dirtyNames = session.buffer.getDirtyRootNames();
+            const originalSet = new Set(originalRootNames);
+            const currentRootByName = new Map(
+                session.buffer.roots().map(n => [String(n.props.name ?? n.id), n]),
+            );
+
+            const opsToDispatch: ReturnType<typeof compileJsx> = [];
+
+            const namesToDelete = dirtyNames.filter(n => originalSet.has(n));
+            if (namesToDelete.length > 0)
+                opsToDispatch.push({ type: "delete_nodes_by_name", names: namesToDelete });
+
+            for (const name of dirtyNames)
             {
-                session.lastJsx = bufferJsx;
-                const createOps = compileJsx(parseJsx(mapKeyToId(bufferJsx)));
-                const opsToDispatch: typeof createOps = originalRootNames.length > 0
-                    ? [{ type: "delete_nodes_by_name", names: originalRootNames }, ...createOps]
-                    : createOps;
-                session.dispatchOps(opsToDispatch);
+                const root = currentRootByName.get(name);
+                if (root)
+                {
+                    const subtreeJsx = session.buffer.subtreeToJsx(root.id);
+                    opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
+                }
             }
+
+            if (opsToDispatch.length > 0)
+                session.dispatchOps(opsToDispatch);
         }
 
         if (session.documentName)
