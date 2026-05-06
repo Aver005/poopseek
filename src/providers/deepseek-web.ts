@@ -91,7 +91,17 @@ export class DeepseekWebProvider implements ILLMProvider
         {
             if (lastMsg.role === "tool")
             {
-                content = `### TOOL RESULT: ${lastMsg.name ?? "unknown"}\n${lastMsg.content}`;
+                // Collect all consecutive tool results at the end (entire batch from this step)
+                let i = messages.length - 1;
+                const toolBatch: ProviderMessage[] = [];
+                while (i >= 0 && messages[i].role === "tool")
+                {
+                    toolBatch.unshift(messages[i]);
+                    i--;
+                }
+                content = toolBatch
+                    .map(m => `### TOOL RESULT: ${m.name ?? "unknown"}\n${m.content}`)
+                    .join("\n\n");
             }
             else
             {

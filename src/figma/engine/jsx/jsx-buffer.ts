@@ -15,10 +15,13 @@ export class JsxBuffer
 
     // nodeId → { parentId (null if IS a root), name at time of touch }
     private _dirtyLevel1 = new Map<string, { parentId: string | null; name: string }>();
+    // logical IDs of nodes explicitly deleted during a turn (top-level of each deletion)
+    private _deletedIds = new Set<string>();
 
     get isDirty(): boolean { return this._dirty; }
-    markClean(): void { this._dirty = false; this._dirtyLevel1.clear(); }
+    markClean(): void { this._dirty = false; this._dirtyLevel1.clear(); this._deletedIds.clear(); }
     getDirtyLevel1Map(): Map<string, { parentId: string | null; name: string }> { return this._dirtyLevel1; }
+    getDeletedIds(): Set<string> { return this._deletedIds; }
 
     private findLevel1Node(id: string): BufferNode | undefined
     {
@@ -125,6 +128,7 @@ export class JsxBuffer
         }
 
         this._dirty = true;
+        this._deletedIds.add(id);
         this.pruneSubtree(id);
     }
 
@@ -231,6 +235,7 @@ export class JsxBuffer
         this.counter = 0;
         this._dirty = false;
         this._dirtyLevel1.clear();
+        this._deletedIds.clear();
     }
 
     subtreeToJsx(rootId: string): string
@@ -254,6 +259,7 @@ export class JsxBuffer
         for (const [id, node] of snap.nodes)
             this.nodes.set(id, { ...node, props: { ...node.props }, children: [...node.children] });
         this.counter = snap.counter;
+        this._deletedIds.clear();
     }
 
     get size(): number

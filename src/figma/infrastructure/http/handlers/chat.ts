@@ -242,6 +242,9 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                         const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
+                        for (const deletedId of session.buffer.getDeletedIds())
+                            opsToDispatch.push({ type: "delete_node", nodeId: deletedId });
+
                         for (const [nodeId, { parentId }] of session.buffer.getDirtyLevel1Map())
                         {
                             if (!session.buffer.get(nodeId)) continue;
@@ -403,6 +406,9 @@ async function handleChatLegacy(
             if (bufferJsx) session.lastJsx = bufferJsx;
 
             const opsToDispatch: ReturnType<typeof compileJsx> = [];
+
+            for (const deletedId of session.buffer.getDeletedIds())
+                opsToDispatch.push({ type: "delete_node", nodeId: deletedId });
 
             for (const [nodeId, { parentId }] of session.buffer.getDirtyLevel1Map())
             {
