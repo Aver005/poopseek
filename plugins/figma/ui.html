@@ -42,6 +42,7 @@
   let sessionId = null;
   let busy = false;
   let connected = false;
+  let usingSse = false;
   let pendingSnapshotResolve = null;
   let pendingSnapshotReject = null;
 
@@ -79,7 +80,7 @@
   // ── CLI ops polling ──────────────────────────────────
   let totalOpsThisTurn = 0;
   async function pollOps() {
-    if (!connected) return;
+    if (!connected || usingSse) return;
     try {
       const r = await fetch(serverUrl + '/v1/poll-ops', { signal: AbortSignal.timeout(2500) });
       if (!r.ok) return;
@@ -148,19 +149,23 @@
     return el;
   }
 
-  // ── Thinking dots (JS-based, shows live op count) ────
-  function startThinking(el) {
+  // ── Status animation (cycling dots with updatable label) ────
+  function startStatusAnim(el, initialLabel) {
+    let label = initialLabel;
     let n = 0;
-    el.textContent = 'Думаю';
+    el.textContent = label;
     el.style.opacity = '0';
     requestAnimationFrame(() => { el.style.opacity = '1'; });
-    const timer = setInterval(() => {
+    const timerId = setInterval(() => {
       n = (n + 1) % 4;
       const dots = '.'.repeat(n || 3);
       const suffix = totalOpsThisTurn > 0 ? ` [${totalOpsThisTurn} элем.]` : '';
-      el.textContent = 'Думаю' + dots + suffix;
+      el.textContent = label + dots + suffix;
     }, 350);
-    return timer;
+    return {
+      setLabel(newLabel) { label = newLabel; n = 0; el.textContent = newLabel; },
+      stop() { clearInterval(timerId); },
+    };
   }
 
   // ── Send ──────────────────────────────────────────────
@@ -169,42 +174,113 @@
     if (!text || busy) return;
 
     busy = true;
+    usingSse = false;
     sendBtn.disabled = true;
     inputEl.value = '';
     autoResize();
 
     resetTurnOps();
     addMsg(text, 'user');
-    const thinkEl = addMsg('Думаю', 'thinking');
-    const thinkTimer = startThinking(thinkEl);
+    const thinkEl = addMsg('', 'thinking');
+    const anim = startStatusAnim(thinkEl, 'Запрос получен');
+
+    let currentIntent = null;
 
     try {
       await syncSnapshotToServer();
 
       const resp = await fetch(serverUrl + '/v1/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
         body: JSON.stringify({ sessionId, message: text }),
         signal: AbortSignal.timeout(600_000),
       });
 
-      clearInterval(thinkTimer);
-
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
-      const data = await resp.json();
-      sessionId = data.sessionId;
+      const contentType = resp.headers.get('content-type') || '';
 
-      thinkEl.className = 'msg assistant';
-      thinkEl.textContent = data.text || '✓';
+      if (contentType.includes('text/event-stream')) {
+        usingSse = true;
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
 
-      // ops already executed via polling; data.ops is empty
+        outer: while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const blocks = buf.split('\n\n');
+          buf = blocks.pop();
+
+          for (const block of blocks) {
+            if (!block.trim()) continue;
+            let eName = 'message', eData = null;
+            for (const line of block.split('\n')) {
+              if (line.startsWith('event: ')) eName = line.slice(7).trim();
+              else if (line.startsWith('data: ')) {
+                try { eData = JSON.parse(line.slice(6)); } catch { /* ignore */ }
+              }
+            }
+            if (!eData) continue;
+            if (eData.sessionId) sessionId = eData.sessionId;
+
+            switch (eName) {
+              case 'intent':
+                currentIntent = eData.intent;
+                if (eData.intent === 'create') {
+                  anim.setLabel('Запрос улучшен');
+                  setTimeout(() => anim.setLabel('Выбран режим «Создание»'), 700);
+                } else {
+                  anim.setLabel('Выбран режим «Редактирование»');
+                  setTimeout(() => anim.setLabel('Рукастый мастерски взял Ваши пожелания'), 700);
+                }
+                break;
+              case 'tokens':
+                anim.setLabel('Строитель уже кладёт кирпичики');
+                break;
+              case 'ops':
+                if (eData.ops?.length > 0) {
+                  totalOpsThisTurn += eData.ops.length;
+                  parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: eData.ops } }, '*');
+                }
+                break;
+              case 'done':
+                anim.stop();
+                thinkEl.className = 'msg assistant';
+                thinkEl.textContent = currentIntent === 'create'
+                  ? '✓ Дизайн создан и выложен на холст'
+                  : (eData.text?.trim() || '✓ Изменения применены');
+                break outer;
+              case 'error':
+                anim.stop();
+                thinkEl.className = 'msg error';
+                thinkEl.textContent = 'Ошибка: ' + (eData.error || 'неизвестная ошибка');
+                break outer;
+            }
+          }
+        }
+
+        if (thinkEl.className === 'msg thinking') {
+          anim.stop();
+          thinkEl.className = 'msg assistant';
+          thinkEl.textContent = '✓ Готово';
+        }
+      } else {
+        // fallback: legacy JSON
+        const data = await resp.json();
+        sessionId = data.sessionId;
+        anim.stop();
+        thinkEl.className = 'msg assistant';
+        thinkEl.textContent = '✓ Готово';
+      }
     } catch (err) {
-      clearInterval(thinkTimer);
+      anim.stop();
       thinkEl.className = 'msg error';
       thinkEl.textContent = 'Ошибка: ' + err.message;
       setStatus(false, 'Нет соединения');
     } finally {
+      usingSse = false;
       busy = false;
       sendBtn.disabled = !connected;
     }

@@ -42,6 +42,7 @@ export class FigmaServerManager
         if (this.server) return;
         this.server = Bun.serve({
             port: this.port,
+            idleTimeout: 0,
             fetch: (req) => this.handleRequest(req),
         });
         this.cleanupTimer = setInterval(() => this.cleanupSessions(), 5 * 60 * 1000);
