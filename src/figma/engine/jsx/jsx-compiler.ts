@@ -129,18 +129,25 @@ function applyOpacity(state: State, nodeId: string, value: JsxPropValue | undefi
     push(state, { type: "set_opacity", nodeId, opacity: resolved });
 }
 
-// Parses "x:y:blur[:spread]:color:opacity" → shadow object, or null if invalid
+function isHexColor(s: string): boolean
+{
+    return /^#[0-9a-fA-F]{3,8}$/.test(s);
+}
+
+// Parses "x:y:blur[:spread]:color:opacity" → shadow object, or null if invalid/non-hex color
 function parseShadow(part: string): Record<string, unknown> | null
 {
     const segs = part.trim().split(":");
     if (segs.length === 5)
     {
         const [x, y, blur, color, opacity] = segs;
+        if (!isHexColor(color)) return null;
         return { x: Number(x), y: Number(y), blur: Number(blur), spread: 0, color, opacity: Number(opacity) };
     }
     if (segs.length === 6)
     {
         const [x, y, blur, spread, color, opacity] = segs;
+        if (!isHexColor(color)) return null;
         return { x: Number(x), y: Number(y), blur: Number(blur), spread: Number(spread), color, opacity: Number(opacity) };
     }
     return null;
@@ -487,7 +494,7 @@ function compile(node: JsxNode, state: State): void
     }
 }
 
-export function compileJsx(nodes: JsxNode[]): FigmaOp[]
+export function compileJsx(nodes: JsxNode[], parentFrameId?: string): FigmaOp[]
 {
     const state: State = {
         ops: [
@@ -495,7 +502,9 @@ export function compileJsx(nodes: JsxNode[]): FigmaOp[]
             createEnsureColorVariablesOp() as unknown as FigmaOp,
         ],
         counter: 0,
-        stack: [],
+        stack: parentFrameId
+            ? [{ id: parentFrameId, width: 0, height: 0, isAutoLayout: true, flow: "VERTICAL" }]
+            : [],
     };
 
     for (const node of nodes)

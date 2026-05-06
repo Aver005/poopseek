@@ -12,9 +12,19 @@ export const handler: OpHandler = {
             if (existing && existing.type === "RECTANGLE") rect = existing as RectangleNode;
         }
         if (!rect) {
-            rect = figma.createRectangle();
-            resolveParent(op.frameId).appendChild(rect);
-            if (op.id) nodeMap.set(op.id, rect.id);
+            const parent = resolveParent(op.frameId);
+            const searchName = String(op.name ?? op.id ?? "");
+            if ("children" in parent && searchName) {
+                const found = parent.children.find(
+                    n => n.name === searchName && n.type === "RECTANGLE",
+                ) as RectangleNode | undefined;
+                if (found) { rect = found; if (op.id) nodeMap.set(String(op.id), rect.id); }
+            }
+            if (!rect) {
+                rect = figma.createRectangle();
+                parent.appendChild(rect);
+                if (op.id) nodeMap.set(String(op.id), rect.id);
+            }
         }
         rect.resize(Number(op.width ?? 100), Number(op.height ?? 100));
         if (op.fill !== undefined) {

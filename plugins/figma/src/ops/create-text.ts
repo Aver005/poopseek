@@ -21,9 +21,19 @@ export const handler: OpHandler = {
             if (existing && existing.type === "TEXT") text = existing as TextNode;
         }
         if (!text) {
-            text = figma.createText();
-            resolveParent(op.frameId).appendChild(text);
-            if (op.id) nodeMap.set(op.id, text.id);
+            const parent = resolveParent(op.frameId);
+            const searchName = String(op.name ?? op.id ?? "");
+            if ("children" in parent && searchName) {
+                const found = parent.children.find(
+                    n => n.name === searchName && n.type === "TEXT",
+                ) as TextNode | undefined;
+                if (found) { text = found; if (op.id) nodeMap.set(String(op.id), text.id); }
+            }
+            if (!text) {
+                text = figma.createText();
+                parent.appendChild(text);
+                if (op.id) nodeMap.set(String(op.id), text.id);
+            }
         }
         text.characters = String(op.content ?? "");
         text.fontName = { family: "Inter", style };

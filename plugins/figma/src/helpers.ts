@@ -403,6 +403,14 @@ export function resolveParent(frameId: unknown): FrameNode | PageNode
             const node = figma.getNodeById(figmaId);
             if (node && node.type === "FRAME") return node as FrameNode;
         }
+        // Fallback: search top-level page children by name (handles stale/empty nodeMap)
+        const byName = figma.currentPage.children.find(
+            n => n.name === frameId && n.type === "FRAME",
+        ) as FrameNode | undefined;
+        if (byName) {
+            nodeMap.set(frameId, byName.id);
+            return byName;
+        }
     }
     return figma.currentPage;
 }

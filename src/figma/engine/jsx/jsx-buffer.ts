@@ -13,24 +13,35 @@ export class JsxBuffer
     private counter = 0;
     private _dirty = false;
 
-    private _dirtyRootNames = new Set<string>();
+    // nodeId → { parentId (null if IS a root), name at time of touch }
+    private _dirtyLevel1 = new Map<string, { parentId: string | null; name: string }>();
 
     get isDirty(): boolean { return this._dirty; }
-    markClean(): void { this._dirty = false; this._dirtyRootNames.clear(); }
-    getDirtyRootNames(): string[] { return Array.from(this._dirtyRootNames); }
+    markClean(): void { this._dirty = false; this._dirtyLevel1.clear(); }
+    getDirtyLevel1Map(): Map<string, { parentId: string | null; name: string }> { return this._dirtyLevel1; }
 
-    private findRootNode(id: string): BufferNode | undefined
+    private findLevel1Node(id: string): BufferNode | undefined
     {
         let node = this.nodes.get(id);
-        while (node?.parentId)
-            node = this.nodes.get(node.parentId);
+        if (!node) return undefined;
+        if (!node.parentId) return node;
+        while (node.parentId)
+        {
+            const parent = this.nodes.get(node.parentId);
+            if (!parent || !parent.parentId) return node;
+            node = parent;
+        }
         return node;
     }
 
-    private touchRoot(id: string): void
+    private touchLevel1(id: string): void
     {
-        const root = this.findRootNode(id);
-        if (root) this._dirtyRootNames.add(String(root.props.name ?? root.id));
+        const level1 = this.findLevel1Node(id);
+        if (!level1) return;
+        this._dirtyLevel1.set(level1.id, {
+            parentId: level1.parentId,
+            name: String(level1.props.name ?? level1.id),
+        });
     }
 
     private genId(type: string): string
@@ -60,7 +71,7 @@ export class JsxBuffer
             this.nodes.get(parentId)!.children.push(id);
 
         this._dirty = true;
-        this.touchRoot(id);
+        this.touchLevel1(id);
         return node;
     }
 
@@ -96,7 +107,7 @@ export class JsxBuffer
         }
 
         this._dirty = true;
-        this.touchRoot(id);
+        this.touchLevel1(id);
         return node;
     }
 
@@ -105,7 +116,7 @@ export class JsxBuffer
         const node = this.nodes.get(id);
         if (!node) throw new Error(`Node "${id}" not found`);
 
-        this.touchRoot(id);
+        this.touchLevel1(id);
 
         if (node.parentId)
         {
@@ -195,7 +206,7 @@ export class JsxBuffer
             cursor = this.nodes.get(cursor)?.parentId ?? null;
         }
 
-        this.touchRoot(id); // mark old root dirty before reparenting
+        this.touchLevel1(id); // mark old level-1 dirty before reparenting
 
         if (node.parentId)
         {
@@ -210,7 +221,7 @@ export class JsxBuffer
 
         this._dirty = true;
         node.parentId = newParentId;
-        this.touchRoot(id); // mark new root dirty after reparenting
+        this.touchLevel1(id); // mark new level-1 dirty after reparenting
         return node;
     }
 
@@ -219,7 +230,7 @@ export class JsxBuffer
         this.nodes.clear();
         this.counter = 0;
         this._dirty = false;
-        this._dirtyRootNames.clear();
+        this._dirtyLevel1.clear();
     }
 
     subtreeToJsx(rootId: string): string

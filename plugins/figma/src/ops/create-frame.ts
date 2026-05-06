@@ -13,9 +13,19 @@ export const handler: OpHandler = {
         }
         const isNewFrame = !frame;
         if (!frame) {
-            frame = figma.createFrame();
-            resolveParent(op.frameId).appendChild(frame);
-            if (op.id) nodeMap.set(op.id, frame.id);
+            const parent = resolveParent(op.frameId);
+            const searchName = String(op.name ?? op.id ?? "");
+            if ("children" in parent && searchName) {
+                const found = parent.children.find(
+                    n => n.name === searchName && n.type === "FRAME",
+                ) as FrameNode | undefined;
+                if (found) { frame = found; if (op.id) nodeMap.set(String(op.id), frame.id); }
+            }
+            if (!frame) {
+                frame = figma.createFrame();
+                parent.appendChild(frame);
+                if (op.id) nodeMap.set(String(op.id), frame.id);
+            }
         }
         frame.name = String(op.name ?? "Frame");
         frame.resize(Number(op.width ?? 100), Number(op.height ?? 100));

@@ -197,7 +197,6 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     handymanCtx.setFigmaContext(systemPrompt);
                     handymanCtx.clearHistory();
 
-                    const originalRootNames = session.buffer.roots().map(n => String(n.props.name ?? n.id));
                     const handymanTools = makeHandymanTools(session.buffer);
 
                     const toolExecutor = new ToolExecutor(
@@ -241,26 +240,13 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         const bufferJsx = session.buffer.toJsx();
                         if (bufferJsx) session.lastJsx = bufferJsx;
 
-                        const dirtyNames = session.buffer.getDirtyRootNames();
-                        const originalSet = new Set(originalRootNames);
-                        const currentRootByName = new Map(
-                            session.buffer.roots().map(n => [String(n.props.name ?? n.id), n]),
-                        );
-
                         const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
-                        for (const name of dirtyNames)
+                        for (const [nodeId, { parentId }] of session.buffer.getDirtyLevel1Map())
                         {
-                            const root = currentRootByName.get(name);
-                            // Only delete a root if we can immediately recreate it.
-                            // Emitting delete without recreate would wipe the frame from Figma.
-                            if (!root) continue;
-
-                            if (originalSet.has(name))
-                                opsToDispatch.push({ type: "delete_nodes_by_name", names: [name] });
-
-                            const subtreeJsx = session.buffer.subtreeToJsx(root.id);
-                            opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
+                            if (!session.buffer.get(nodeId)) continue;
+                            const subtreeJsx = session.buffer.subtreeToJsx(nodeId);
+                            opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx)), parentId ?? undefined));
                         }
 
                         if (opsToDispatch.length > 0)
@@ -370,8 +356,6 @@ async function handleChatLegacy(
         handymanCtx.setFigmaContext(systemPrompt);
         handymanCtx.clearHistory();
 
-        const originalRootNames = session.buffer.roots().map(n => String(n.props.name ?? n.id));
-
         const handymanTools = makeHandymanTools(session.buffer);
 
         const toolExecutor = new ToolExecutor(
@@ -418,24 +402,13 @@ async function handleChatLegacy(
             const bufferJsx = session.buffer.toJsx();
             if (bufferJsx) session.lastJsx = bufferJsx;
 
-            const dirtyNames = session.buffer.getDirtyRootNames();
-            const originalSet = new Set(originalRootNames);
-            const currentRootByName = new Map(
-                session.buffer.roots().map(n => [String(n.props.name ?? n.id), n]),
-            );
-
             const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
-            for (const name of dirtyNames)
+            for (const [nodeId, { parentId }] of session.buffer.getDirtyLevel1Map())
             {
-                const root = currentRootByName.get(name);
-                if (!root) continue;
-
-                if (originalSet.has(name))
-                    opsToDispatch.push({ type: "delete_nodes_by_name", names: [name] });
-
-                const subtreeJsx = session.buffer.subtreeToJsx(root.id);
-                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
+                if (!session.buffer.get(nodeId)) continue;
+                const subtreeJsx = session.buffer.subtreeToJsx(nodeId);
+                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx)), parentId ?? undefined));
             }
 
             if (opsToDispatch.length > 0)

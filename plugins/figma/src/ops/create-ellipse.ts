@@ -12,9 +12,19 @@ export const handler: OpHandler = {
             if (existing && existing.type === "ELLIPSE") ellipse = existing as EllipseNode;
         }
         if (!ellipse) {
-            ellipse = figma.createEllipse();
-            resolveParent(op.frameId).appendChild(ellipse);
-            if (op.id) nodeMap.set(op.id, ellipse.id);
+            const parent = resolveParent(op.frameId);
+            const searchName = String(op.name ?? op.id ?? "");
+            if ("children" in parent && searchName) {
+                const found = parent.children.find(
+                    n => n.name === searchName && n.type === "ELLIPSE",
+                ) as EllipseNode | undefined;
+                if (found) { ellipse = found; if (op.id) nodeMap.set(String(op.id), ellipse.id); }
+            }
+            if (!ellipse) {
+                ellipse = figma.createEllipse();
+                parent.appendChild(ellipse);
+                if (op.id) nodeMap.set(String(op.id), ellipse.id);
+            }
         }
         ellipse.resize(Number(op.width ?? 100), Number(op.height ?? 100));
         if (op.fill !== undefined) {

@@ -12,9 +12,19 @@ export const handler: OpHandler = {
             if (existing && existing.type === "LINE") line = existing as LineNode;
         }
         if (!line) {
-            line = figma.createLine();
-            resolveParent(op.frameId).appendChild(line);
-            if (op.id) nodeMap.set(op.id, line.id);
+            const parent = resolveParent(op.frameId);
+            const searchName = String(op.name ?? op.id ?? "");
+            if ("children" in parent && searchName) {
+                const found = parent.children.find(
+                    n => n.name === searchName && n.type === "LINE",
+                ) as LineNode | undefined;
+                if (found) { line = found; if (op.id) nodeMap.set(String(op.id), line.id); }
+            }
+            if (!line) {
+                line = figma.createLine();
+                parent.appendChild(line);
+                if (op.id) nodeMap.set(String(op.id), line.id);
+            }
         }
         line.resize(Number(op.length ?? 100), 0);
         if (op.rotation !== undefined) line.rotation = Number(op.rotation);
