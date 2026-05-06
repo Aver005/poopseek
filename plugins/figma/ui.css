@@ -201,8 +201,8 @@ textarea {
   font-family: inherit;
   resize: none;
   outline: none;
-  min-height: 56px;
-  max-height: 140px;
+  min-height: 80px;
+  max-height: 160px;
   line-height: 1.45;
   transition: border-color .3s var(--ease-out-expo), box-shadow .3s var(--ease-out-expo), background .2s var(--ease-out-expo);
   scrollbar-width: none;
@@ -221,14 +221,13 @@ textarea:focus {
   color: #fff;
   border: none;
   border-radius: var(--radius);
-  width: 40px;
-  height: 40px;
+  width: 64px;
   cursor: pointer;
-  font-size: 17px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  align-self: stretch;
   box-shadow: 0 4px 14px rgba(24,160,251,.3);
   transition: transform .3s var(--spring), box-shadow .3s var(--ease-out-expo), opacity .25s var(--ease-out-expo), filter .2s var(--ease-out-expo);
 }
