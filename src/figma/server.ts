@@ -1,3 +1,4 @@
+﻿import { EnhanceCache } from '@/figma/application/pipeline/enhance-cache';
 import type { Server } from "bun";
 type BunServer = Server<unknown>;
 import type { FigmaOp } from "@/figma/api/contracts";
@@ -23,6 +24,7 @@ export class FigmaServerManager
     private readonly pendingOps: FigmaOp[] = [];
     private cleanupTimer: ReturnType<typeof setInterval> | null = null;
     private readonly deps: FigmaServerDeps;
+    private readonly enhanceCache = new EnhanceCache();
 
     constructor(deps: FigmaServerDeps, port: number = DEFAULT_PORT)
     {
@@ -75,6 +77,7 @@ export class FigmaServerManager
             getOrCreateSession: (sessionId?: string) => this.getOrCreateSession(sessionId),
             getCorsHeaders: () => this.corsHeaders(),
             deps: this.deps,
+            enhanceCache: this.enhanceCache,
         };
     }
 
@@ -131,3 +134,14 @@ export class FigmaServerManager
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+

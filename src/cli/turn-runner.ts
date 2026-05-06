@@ -141,14 +141,8 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
                         generationIndicator.stop();
                         if (!wroteAnyChunk)
                         {
-                            if (hadToolInThisTurn)
-                            {
-                                output.write("\n" + colors.dim("─".repeat(48)) + "\n");
-                            }
-                            else
-                            {
+                            if (!hadToolInThisTurn)
                                 output.write("\n");
-                            }
                             wroteAnyChunk = true;
                         }
                         output.write(renderMarkdown(chunk));
@@ -160,7 +154,7 @@ export async function runMainLoop(deps: MainLoopDeps): Promise<void>
                         generationIndicator.stop();
                         const detail = getToolDetail(toolName, toolArgs);
                         const suffix = detail ? ` ${colors.dim(`(${detail})`)}` : "";
-                        output.write(`${colors.yellow(getToolProgressMessage(toolName))}${suffix}\n`);
+                        output.write(`${colors.yellow(getToolProgressMessage(toolName))}\n${suffix}\n`);
                     },
                     onToolDone: (toolName, toolResult) =>
                     {

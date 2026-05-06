@@ -1,6 +1,9 @@
-import type { FigmaSession } from "@/figma/application/session/session-types";
+﻿import type { FigmaSession } from "@/figma/application/session/session-types";
 import type { FigmaChatResponse, FigmaOp } from "@/figma/api/contracts";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
+import type { EnhanceCache } from "@/figma/application/pipeline/enhance-cache";
+
+export interface SseEvent { event: string; data: unknown; }
 
 export interface FigmaHttpContext
 {
@@ -9,6 +12,7 @@ export interface FigmaHttpContext
     getOrCreateSession: (sessionId?: string) => FigmaSession;
     getCorsHeaders: () => Record<string, string>;
     deps: FigmaServerDeps;
+    enhanceCache: EnhanceCache;
 }
 
 export function jsonWithCors(body: unknown, init?: ResponseInit & { status?: number }, getCorsHeaders?: () => Record<string, string>): Response
