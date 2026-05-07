@@ -21,11 +21,49 @@ function normalizeRelativeAssetPath(inputPath: string): string
     return inputPath.replace(/^[./\\]+/, "");
 }
 
+function getExecutableDir(): string
+{
+    // В скомпилированном Bun-приложении на Windows:
+    // - process.execPath → виртуальная ФС бандла (B:\~BUN\root\...)
+    // - Bun.main → аналогично
+    // - process.argv[0] — как запустили: может быть просто "poopseek.exe"
+    //
+    // Стратегия: собираем кандидатов, возвращаем первый,
+    // рядом с которым реально есть подпапка assets или docs.
+    const argv0 = process.argv[0];
+    const candidateDirs: string[] = [];
+
+    if (path.isAbsolute(argv0))
+    {
+        candidateDirs.push(path.dirname(argv0));
+    }
+    else
+    {
+        // argv[0] — просто имя, резолвим относительно cwd
+        candidateDirs.push(path.dirname(path.resolve(process.cwd(), argv0)));
+    }
+
+    candidateDirs.push(path.dirname(process.execPath));
+    candidateDirs.push(path.resolve(import.meta.dir, "../.."));
+
+    // Возвращаем первую директорию, рядом с которой есть assets или docs
+    for (const dir of candidateDirs)
+    {
+        if (fs.existsSync(path.join(dir, "assets")) || fs.existsSync(path.join(dir, "docs")))
+        {
+            return dir;
+        }
+    }
+
+    // Фолбэк: первая из списка (для информативной ошибки)
+    return candidateDirs[0];
+}
+
 function collectAssetCandidates(relativePath: string): string[]
 {
     const sanitizedRelativePath = normalizeRelativeAssetPath(relativePath);
     const runtimeBases = {
-        executableDirectory: path.dirname(process.execPath),
+        executableDirectory: getExecutableDir(),
         projectRoot: path.resolve(import.meta.dir, "../.."),
         cwd: process.cwd(),
     };
@@ -36,7 +74,8 @@ function collectAssetCandidates(relativePath: string): string[]
         .map((basePath) => path.resolve(basePath, sanitizedRelativePath));
     const cwdResolvedPath = path.resolve(process.cwd(), relativePath);
 
-    return Array.from(new Set([cwdResolvedPath, ...resolvedPaths]));
+    // executableDirectory должен быть первым — приоритет exe над cwd
+    return Array.from(new Set([...resolvedPaths, cwdResolvedPath]));
 }
 
 function resolveExistingAssetPath(relativePath: string): string
