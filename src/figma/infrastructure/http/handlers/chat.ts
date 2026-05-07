@@ -214,15 +214,15 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                         const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
-                        for (const deletedId of session.buffer.getDeletedIds())
-                            opsToDispatch.push({ type: "delete_node", nodeId: deletedId });
-
-                        for (const [nodeId, { parentId }] of session.buffer.getDirtyLevel1Map())
+                        for (const root of session.buffer.roots())
                         {
-                            if (!session.buffer.get(nodeId)) continue;
-                            const subtreeJsx = session.buffer.subtreeToJsx(nodeId);
-                            opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx)), parentId ?? undefined));
+                            const frameName = String(root.props.name ?? root.id);
+                            if (frameName)
+                                opsToDispatch.push({ type: "clear_frame_children", frameName });
                         }
+
+                        if (bufferJsx)
+                            opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(bufferJsx))));
 
                         if (opsToDispatch.length > 0)
                         {
@@ -350,15 +350,14 @@ async function handleChatLegacy(
 
             const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
-            for (const deletedId of session.buffer.getDeletedIds())
-                opsToDispatch.push({ type: "delete_node", nodeId: deletedId });
+            const rootNames = session.buffer.roots()
+                .map(n => String(n.props.name ?? n.id))
+                .filter(Boolean);
+            if (rootNames.length > 0)
+                opsToDispatch.push({ type: "delete_nodes_by_name", names: rootNames });
 
-            for (const [nodeId, { parentId }] of session.buffer.getDirtyLevel1Map())
-            {
-                if (!session.buffer.get(nodeId)) continue;
-                const subtreeJsx = session.buffer.subtreeToJsx(nodeId);
-                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx)), parentId ?? undefined));
-            }
+            if (bufferJsx)
+                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(bufferJsx))));
 
             if (opsToDispatch.length > 0)
                 session.dispatchOps(opsToDispatch);

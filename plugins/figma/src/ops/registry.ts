@@ -27,6 +27,7 @@ import { handler as setAutoLayout } from "./set-auto-layout";
 import { handler as groupNodes } from "./group-nodes";
 import { handler as clearCanvas } from "./clear-canvas";
 import { handler as deleteNodesByName } from "./delete-nodes-by-name";
+import { handler as clearFrameChildren } from "./clear-frame-children";
 
 const handlers: OpHandler[] = [
     // Variables
@@ -61,6 +62,7 @@ const handlers: OpHandler[] = [
     // Organisation
     groupNodes,
     clearCanvas,
+    clearFrameChildren,
     deleteNodesByName,
 ];
 
