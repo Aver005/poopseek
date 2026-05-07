@@ -1,21 +1,19 @@
 ﻿import path from "node:path";
-import type { FigmaChatRequest, FigmaChatResponse, FigmaOp } from "@/figma/api/contracts";
+import type { FigmaChatRequest, FigmaChatResponse } from "@/figma/api/contracts";
 import type { FigmaSession } from "@/figma/application/session/session-types";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
 import { runIntentClassifier } from "@/figma/application/pipeline/intent";
 import { runDesigner } from "@/figma/application/pipeline/designer";
 import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
+import { runHandymanEdit } from "@/figma/application/pipeline/handyman";
 import { SubAgentRunner } from "@/agent/sub-agent";
-import StreamingAgentLoop from "@/agent/streaming-loop";
-import ToolExecutor from "@/agent/tool-executor";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
 import { setActiveTheme } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
-import { makeHandymanTools, loadNodesIntoBuffer } from "@/figma/engine/handyman/handyman-tools";
-import { saveHandymanHistory } from "@/figma/application/persistence/session-store";
-import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext, type SseEvent } from "./common";
+import { loadNodesIntoBuffer } from "@/figma/engine/handyman/handyman-tools";
+import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
 
 const WORKSPACE_ROOT = process.cwd();
 
@@ -181,7 +179,6 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                 }
                 else
                 {
-                    // Load buffer first so we can use its canonical JSX (with unique IDs) in the prompt.
                     session.buffer.reset();
                     if (currentJsx !== "(empty)")
                     {
@@ -193,44 +190,19 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     const canonicalJsx = session.buffer.toJsx() || "(empty)";
                     const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", canonicalJsx);
 
-                    const handymanCtx = session.roleSessions.designer.contextManager;
-                    handymanCtx.setFigmaContext(systemPrompt);
-                    handymanCtx.clearHistory();
-
-                    const handymanTools = makeHandymanTools(session.buffer);
-
-                    const toolExecutor = new ToolExecutor(
-                        WORKSPACE_ROOT,
-                        undefined,
-                        deps.getSkillContent,
-                        (name) => handymanTools[name],
-                        () => Object.keys(handymanTools),
-                        subAgentRunner,
-                        undefined,
-                    );
-
-                    const loop = new StreamingAgentLoop(
-                        deps.getProvider,
-                        handymanCtx,
-                        toolExecutor,
-                        {
-                            maxStepsPerTurn: 16,
-                            maxToolsPerStep: 12,
-                            getCallOptions: deps.getCallOptions,
-                            getRequestDelay: deps.getRequestDelay,
-                        },
-                    );
-
                     const snap = session.buffer.snapshot();
-                    let loopResult: Awaited<ReturnType<typeof loop.runTurn>>;
-                    try
-                    {
-                        loopResult = await loop.runTurn(enhanced);
-                    }
-                    catch (err)
+                    const handymanResult = await runHandymanEdit(
+                        deps.getProvider,
+                        systemPrompt,
+                        enhanced,
+                        session.buffer,
+                        deps.getCallOptions?.(),
+                    );
+
+                    if (!handymanResult.ok)
                     {
                         session.buffer.restore(snap);
-                        send("error", { error: err instanceof Error ? err.message : String(err), sessionId: session.id });
+                        send("error", { error: handymanResult.error, sessionId: session.id });
                         controller.close();
                         return;
                     }
@@ -259,12 +231,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         }
                     }
 
-                    if (session.documentName)
-                    {
-                        await saveHandymanHistory(session.documentName, handymanCtx.exportState()).catch(() => {});
-                    }
-
-                    send("done", { sessionId: session.id, text: loopResult.assistantText });
+                    send("done", { sessionId: session.id, text: handymanResult.assistantText });
                 }
             }
             catch (err)
@@ -355,50 +322,26 @@ async function handleChatLegacy(
         const canonicalJsx = session.buffer.toJsx() || "(empty)";
         const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", canonicalJsx);
 
-        const handymanCtx = session.roleSessions.designer.contextManager;
-        handymanCtx.setFigmaContext(systemPrompt);
-        handymanCtx.clearHistory();
-
-        const handymanTools = makeHandymanTools(session.buffer);
-
-        const toolExecutor = new ToolExecutor(
-            WORKSPACE_ROOT,
-            undefined,
-            deps.getSkillContent,
-            (name) => handymanTools[name],
-            () => Object.keys(handymanTools),
-            subAgentRunner,
-            undefined,
-        );
-
-        const loop = new StreamingAgentLoop(
-            deps.getProvider,
-            handymanCtx,
-            toolExecutor,
-            {
-                maxStepsPerTurn: 16,
-                maxToolsPerStep: 12,
-                getCallOptions: deps.getCallOptions,
-                getRequestDelay: deps.getRequestDelay,
-            },
-        );
-
         const snap = session.buffer.snapshot();
-        let loopResult: Awaited<ReturnType<typeof loop.runTurn>>;
-        try
-        {
-            loopResult = await loop.runTurn(enhanced);
-        }
-        catch (err)
+        const handymanResult = await runHandymanEdit(
+            deps.getProvider,
+            systemPrompt,
+            enhanced,
+            session.buffer,
+            deps.getCallOptions?.(),
+        );
+
+        if (!handymanResult.ok)
         {
             session.buffer.restore(snap);
             return jsonWithCors(
-                { error: err instanceof Error ? err.message : String(err), sessionId: session.id },
+                { error: handymanResult.error, sessionId: session.id },
                 { status: 500 },
                 context.getCorsHeaders,
             );
         }
-        assistantText = loopResult.assistantText;
+
+        assistantText = handymanResult.assistantText;
 
         if (session.buffer.isDirty)
         {
@@ -419,11 +362,6 @@ async function handleChatLegacy(
 
             if (opsToDispatch.length > 0)
                 session.dispatchOps(opsToDispatch);
-        }
-
-        if (session.documentName)
-        {
-            await saveHandymanHistory(session.documentName, handymanCtx.exportState()).catch(() => {});
         }
     }
 

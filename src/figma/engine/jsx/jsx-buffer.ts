@@ -229,6 +229,15 @@ export class JsxBuffer
         return node;
     }
 
+    reorder(parentId: string, orderedChildIds: string[]): void
+    {
+        const parent = this.nodes.get(parentId);
+        if (!parent) throw new Error(`Node "${parentId}" not found`);
+        parent.children = orderedChildIds;
+        this._dirty = true;
+        this.touchLevel1(parentId);
+    }
+
     reset(): void
     {
         this.nodes.clear();
