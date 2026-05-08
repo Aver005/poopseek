@@ -72,6 +72,37 @@ src/commands/defs/mcp.ts  — /mcp command (list/tools/resources/prompts/connect
 ### Tool naming: `mcp__serverName__toolName`
 ### Primitives: Tools (callable), Resources (auto-injected as context), Prompts (as Skills)
 
+## Figma editing pipeline (Handyman)
+
+Two distinct flows:
+- **Create flow** (`runBuilderOneShot`): LLM produces fresh JSX → `compileJsx` → ops to plugin. JSX→Tailwind compile-time concerns live in `src/figma/engine/jsx/{classname,jsx-spec,jsx-compiler,jsx-validator}.ts`.
+- **Edit flow** (`runHandymanEdit`): existing snapshot loaded into a `JsxBuffer`, LLM emits a partial DIFF, applier merges into the buffer, the **whole buffer is recompiled** and dispatched. See [memory: project_figma_edit_pipeline.md] for the full chain.
+
+### Edit-flow files
+```
+src/figma/infrastructure/http/handlers/chat.ts   — orchestrates loadNodesIntoBuffer → runHandymanEdit → applyDiff → compile → dispatch + SSE "debug-jsx"
+src/figma/application/pipeline/handyman.ts        — LLM call + applyDiff result handling (returns ok:false on dup-keys)
+src/figma/engine/jsx/jsx-diff-applier.ts          — applyDiff: partial-merge, `old` skips subtree, dup-key validation, auto-move
+src/figma/engine/jsx/jsx-buffer.ts                — JsxBuffer: in-memory tree, edit({parentId}) re-parents, toJsx() serializes
+src/figma/engine/handyman/handyman-tools.ts       — loadNodesIntoBuffer + tool-call edit handlers (figma.get/find/patch/insert/move/...)
+assets/prompts/figma/handyman.prompt.md           — single source of truth for the DIFF format the model must produce
+```
+
+### `old` diff semantics (current contract — was reworked from the original "reconcile-and-delete" model)
+- `old` on a node = **subtree fully preserved**. Both props and children are skipped. Anything written inside `<Foo old>…</Foo>` is ignored.
+- Node WITHOUT `old` = partial merge: listed props overwrite/add, omitted props kept; listed children processed recursively, **omitted children kept** (no implicit deletion). Deletions go through `## REMOVED` exclusively.
+- Auto-move: existing key referenced under a different parent → moved.
+- Duplicate keys in DIFF are **rejected** before applying (entire diff bounces back as error).
+
+### Figma plugin (`plugins/figma/src/`) — defensive invariants
+The plugin executes `FigmaOp[]` from the server. Several non-obvious patterns exist *because* of past cascade failures — leave them in:
+- `handlers.ts`: `nodeMap.clear()` at every EXECUTE_OPS batch start. Stale entries between turns aliased multiple keys onto orphan nodes.
+- `create_*` handlers skip find-by-name fallback when `op.id` is provided. Generic `name="Text"` was matching siblings.
+- `helpers.ts::ensureCorrectParent` re-parents a REUSE-by-id node if its actual figma parent ≠ `op.frameId`.
+- `helpers.ts::applyLayoutSizing` and `ops/set-auto-layout.ts` **never throw** on bad parent — log `❌ skipping FILL` and fall back to FIXED. Throwing cascaded into many failed ops in batch.
+- `ops/clear-frame-children.ts` does two-pass orphan cleanup: top-level non-target FRAMES, then `currentPage.findAll` for any of the 5 primitives outside the target subtree.
+- Debug logging via `plugins/figma/src/debug.ts`: `dlog`/`derr` auto-prefixed with `[ops/N/M]` via `setCurrentOpTag`. Toggle with `DEBUG = true|false`. When debugging, ask user for trace around the first `❌` — root cause is almost always one `[resolveParent] ❌` or stale REUSE-by-id.
+
 ## Code conventions
 - No comments unless WHY is non-obvious
 - No error handling for impossible cases
