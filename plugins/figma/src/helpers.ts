@@ -530,6 +530,18 @@ export async function findTextStyleByName(name: string): Promise<TextStyle | nul
     return found ?? null;
 }
 
+// Scopes restrict where a variable shows up in Figma's UI when binding.
+// More importantly, an empty / wrong scope can prevent setBoundVariable
+// from taking effect on certain fields, so we set them explicitly.
+function scopesForKind(kind: "color" | "spacing" | "radius"): VariableScope[]
+{
+    if (kind === "color")   return ["ALL_FILLS", "STROKE_COLOR"];
+    if (kind === "radius")  return ["CORNER_RADIUS"];
+    // spacing covers gap + padding (which Figma treats as GAP scope) and
+    // can also be used for stroke weight in some designs.
+    return ["GAP", "WIDTH_HEIGHT", "STROKE_FLOAT"];
+}
+
 /**
  * Unified token-variables ensure op. Creates/updates COLOR variables for
  * `kind=color` tokens and FLOAT variables for `kind=spacing|radius`. Used
@@ -565,6 +577,7 @@ export async function ensureTokenVariables(op: EnsureTokenVariablesOp): Promise<
             }
             const c = parseColor(t.value);
             if (c) variable.setValueForMode(modeId, c);
+            try { variable.scopes = scopesForKind("color"); } catch { /* ignore */ }
             colorVariableCache.set(`${op.collection}::${t.variableName}`, variable);
         }
         else
@@ -577,6 +590,7 @@ export async function ensureTokenVariables(op: EnsureTokenVariablesOp): Promise<
             }
             const n = Number(t.value);
             if (Number.isFinite(n)) variable.setValueForMode(modeId, n);
+            try { variable.scopes = scopesForKind(t.kind); } catch { /* ignore */ }
             numberVariableCache.set(`${op.collection}::${t.variableName}`, variable);
         }
     }
@@ -615,8 +629,10 @@ export async function findNumberVariableByName(variableName: string): Promise<Va
 }
 
 /**
- * Bind a FLOAT variable to a node's numeric property. Falls back to plain
- * value-set if binding API isn't supported on this node type.
+ * Bind a FLOAT variable to a node's numeric property. After the call, we
+ * read back `node.boundVariables[field]` to confirm the binding actually
+ * stuck — figma's setBoundVariable can silently no-op when scopes / types
+ * don't match, so verifying is the only way to know.
  */
 export async function bindNumberVariable(
     node: SceneNode,
@@ -638,6 +654,19 @@ export async function bindNumberVariable(
             setBoundVariable?: (field: string, variable: Variable) => void;
         };
         target.setBoundVariable?.(field as never, v);
+
+        // Verify it took. boundVariables[field] should now be a VariableAlias
+        // pointing at v.id. If empty after set, the API silently rejected us.
+        const after = (node as SceneNode & { boundVariables?: Record<string, VariableAlias | undefined> }).boundVariables;
+        const alias = after?.[field];
+        if (alias && alias.id === v.id)
+        {
+            dlog(tag, `bound ${field} → "${variableName}" (id=${v.id}) on ${node.type}#${node.id}`);
+        }
+        else
+        {
+            derr(tag, `❌ bound ${field}="${variableName}" did NOT take effect on ${node.type}#${node.id}/"${node.name}". boundVariables[${field}]=${alias ? alias.id : "empty"}. Check variable scopes / field validity.`);
+        }
     }
     catch (err)
     {

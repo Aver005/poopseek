@@ -51,9 +51,12 @@ export const handler: OpHandler = {
                 parent.appendChild(frame);
                 if (op.id) nodeMap.set(opId, frame.id);
                 dlog("create_frame", `"${opId}" → NEW under ${describeNode(parent)} → ${describeNode(frame)}`);
-                if (parent.type === "PAGE")
+                // Warn only when frameId was given but resolved to PAGE —
+                // that's a parent-resolution failure. Root frames legitimately
+                // have undefined frameId and live at PAGE level.
+                if (parent.type === "PAGE" && op.frameId !== undefined)
                 {
-                    derr("create_frame", `⚠ "${opId}" was just attached to PAGE (currentPage). If op.frameId="${op.frameId}" was supposed to point at an auto-layout frame, layoutSizing ops on this node will fail.`);
+                    derr("create_frame", `⚠ "${opId}" was just attached to PAGE (currentPage) — frameId="${op.frameId}" did not resolve. layoutSizing ops on this node will likely fail.`);
                 }
             }
         }

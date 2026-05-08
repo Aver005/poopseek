@@ -299,7 +299,47 @@
     }
     if (msg.type === 'OPS_ERROR') addMsg('Ошибка холста: ' + msg.error, 'error');
     if (msg.type === 'SNAPSHOT' && pendingSnapshotResolve) pendingSnapshotResolve(msg.snapshot);
+    if (msg.type === 'DEBUG_LOG' && Array.isArray(msg.lines)) renderDebugLogCard(msg.lines);
   };
+
+  // Render the per-batch log buffer as a copyable card with a single
+  // "Copy" button. One click puts the whole log on the clipboard ready
+  // to paste back into chat with the assistant.
+  function renderDebugLogCard(lines) {
+    if (lines.length === 0) return;
+    const errCount = lines.filter(l => l.startsWith('ERR')).length;
+    const okCount = lines.length - errCount;
+    const blob = lines.join('\n');
+
+    const el = document.createElement('div');
+    el.className = 'msg debug-log';
+    const summary = document.createElement('div');
+    summary.className = 'debug-log-summary';
+    summary.textContent = '🔍 Debug log: ' + lines.length + ' lines (' + okCount + ' ok, ' + errCount + ' err)';
+    const btn = document.createElement('button');
+    btn.className = 'debug-log-copy';
+    btn.textContent = '📋 Copy';
+    btn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(blob);
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+      } catch (err) {
+        // Fallback: select the hidden textarea.
+        const ta = document.createElement('textarea');
+        ta.value = blob; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); btn.textContent = '✓ Copied'; }
+        catch { btn.textContent = '✗ Failed'; }
+        document.body.removeChild(ta);
+        setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+      }
+    };
+    summary.appendChild(btn);
+    el.appendChild(summary);
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
 
   // ── Input helpers ─────────────────────────────────────
   function autoResize() {

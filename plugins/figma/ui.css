@@ -193,6 +193,36 @@ body {
   padding: 8px 10px;
 }
 
+.msg.debug-log {
+  align-self: stretch;
+  max-width: 100%;
+  background: rgba(120, 100, 200, .06);
+  border: 1px solid rgba(160, 140, 220, .18);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+.debug-log-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.debug-log-copy {
+  margin-left: auto;
+  padding: 4px 10px;
+  background: rgba(160, 140, 220, .18);
+  color: var(--text);
+  border: 1px solid rgba(160, 140, 220, .35);
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.debug-log-copy:hover {
+  background: rgba(160, 140, 220, .30);
+}
+
 .input-area {
   display: flex;
   gap: 8px;

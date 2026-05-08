@@ -91,9 +91,12 @@ export const handler: OpHandler = {
             {
                 try
                 {
-                    if (ts.fontName.family !== "Inter" || ts.fontName.style !== style)
-                        await figma.loadFontAsync(ts.fontName);
+                    await figma.loadFontAsync(ts.fontName);
                     await text.setTextStyleIdAsync(ts.id);
+                    if (text.textStyleId === ts.id)
+                        dlog("create_text", `bound textStyle="${textStyleName}" (id=${ts.id}) on TEXT#${text.id}`);
+                    else
+                        derr("create_text", `❌ setTextStyleIdAsync("${textStyleName}") did NOT take effect — textStyleId is "${String(text.textStyleId)}"`);
                 }
                 catch (err)
                 {
@@ -102,7 +105,7 @@ export const handler: OpHandler = {
             }
             else
             {
-                dlog("create_text", `textStyleName="${textStyleName}" not found — using inline font props`);
+                derr("create_text", `❌ textStyleName="${textStyleName}" not found in local text styles — using inline font props`);
             }
         }
         if (typeof op.color === "string") {

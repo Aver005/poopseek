@@ -33,15 +33,57 @@ function prefix(tag: string): string
     return currentOpTag ? `[${currentOpTag}][${tag}]` : `[${tag}]`;
 }
 
+// In-memory buffer mirroring everything we wrote via dlog/derr in the
+// current batch. Drained by handlers.ts after EXECUTE_OPS and posted to
+// the plugin chat as a single copyable card — way easier to share than
+// scrolling the figma plugin console.
+const LOG_BUFFER_LIMIT = 10000;
+const logBuffer: string[] = [];
+
+function bufferLine(level: "log" | "err", line: string): void
+{
+    if (logBuffer.length >= LOG_BUFFER_LIMIT) logBuffer.shift();
+    const stamp = level === "err" ? "ERR " : "    ";
+    logBuffer.push(`${stamp}${line}`);
+}
+
+function fmtArgs(args: unknown[]): string
+{
+    return args
+        .map((a) =>
+        {
+            if (typeof a === "string") return a;
+            if (a instanceof Error) return `${a.message}\n${a.stack ?? ""}`;
+            try { return JSON.stringify(a); } catch { return String(a); }
+        })
+        .join(" ");
+}
+
 export function dlog(tag: string, ...args: unknown[]): void
 {
     if (!DEBUG) return;
-    console.log(prefix(tag), ...args);
+    const pfx = prefix(tag);
+    console.log(pfx, ...args);
+    bufferLine("log", `${pfx} ${fmtArgs(args)}`);
 }
 
 export function derr(tag: string, ...args: unknown[]): void
 {
-    console.error(prefix(tag), ...args);
+    const pfx = prefix(tag);
+    console.error(pfx, ...args);
+    bufferLine("err", `${pfx} ${fmtArgs(args)}`);
+}
+
+export function drainLogBuffer(): string[]
+{
+    const out = logBuffer.slice();
+    logBuffer.length = 0;
+    return out;
+}
+
+export function logBufferSize(): number
+{
+    return logBuffer.length;
 }
 
 type AnyNode = BaseNode & {

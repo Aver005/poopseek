@@ -6,7 +6,27 @@
   "ui": "ui.html",
   "editorType": ["figma"],
   "networkAccess": {
-    "allowedDomains": ["http://localhost:7331", "https://thesvg.org/icons/"],
-    "reasoning": "Connects to the local PoopSeek agent server"
+    "allowedDomains": [
+      "http://localhost:7331",
+      "https://thesvg.org/icons/",
+      "https://api.iconify.design/",
+      "https://unpkg.com/",
+      "https://cdn.jsdelivr.net/",
+      "https://placehold.co/",
+      "https://picsum.photos/",
+      "https://images.unsplash.com/",
+      "https://source.unsplash.com/",
+      "https://dummyimage.com/",
+      "https://fakeimg.pl/",
+      "https://loremflickr.com/",
+      "https://via.placeholder.com/",
+      "https://placekitten.com/",
+      "https://placebear.com/",
+      "https://avatars.githubusercontent.com/",
+      "https://i.pravatar.cc/",
+      "https://ui-avatars.com/",
+      "https://www.gravatar.com/"
+    ],
+    "reasoning": "Connects to the local PoopSeek agent server, fetches generic UI icons (Iconify), brand icons (theSVG), and placeholder/avatar imagery used in mock layouts."
   }
 }

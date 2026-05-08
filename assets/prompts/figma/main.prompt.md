@@ -173,11 +173,47 @@
 
 ---
 
-## Иконки брендов — theSVG
+## Иконки
+
+Два разных источника — выбирай по типу иконки:
+
+### 1. UI-иконки (search, cart, menu, heart, settings, bell, user, plus, minus, arrow-*, chevron-*, eye, edit, trash и т.д.) — **Iconify + Lucide**
+
+```jsx
+<Image src="https://api.iconify.design/lucide/{name}.svg" width={24} height={24} />
+```
+
+Lucide содержит **1400+** иконок с предсказуемыми именами в kebab-case. Покрывает практически любую UI-иконку, какую можешь придумать. **Для UI-иконок это правильный выбор по умолчанию.**
+
+Опционально — цвет через query: `?color=%23ffffff` (URL-encoded hex). Без него иконка чёрная (мономерная).
+
+```jsx
+<Image src="https://api.iconify.design/lucide/heart.svg?color=%23e8590c" width={24} height={24} />
+<Image src="https://api.iconify.design/lucide/shopping-cart.svg" width={24} height={24} />
+<Image src="https://api.iconify.design/lucide/chevron-right.svg" width={20} height={20} />
+```
+
+**Часто нужные имена** (для подсказки — но Lucide-CDN принимает любые имена из их каталога):
+`search` `shopping-cart` `shopping-bag` `heart` `bell` `user` `users` `settings` `menu` `more-horizontal` `more-vertical` `home` `compass` `map-pin` `calendar` `clock` `mail` `phone` `message-circle` `send` `share-2` `bookmark` `eye` `eye-off` `lock` `unlock` `edit` `edit-2` `edit-3` `trash-2` `download` `upload` `external-link` `arrow-left` `arrow-right` `arrow-up` `arrow-down` `chevron-left` `chevron-right` `chevron-up` `chevron-down` `plus` `minus` `x` `check` `check-circle` `alert-circle` `info` `help-circle` `star` `play` `pause` `volume-2` `wifi` `battery` `camera` `image` `video` `paperclip` `filter` `sliders-horizontal` `grid` `list` `layout-grid` `bar-chart-3` `pie-chart` `trending-up` `package` `truck` `credit-card` `wallet` `tag` `gift` `flame` `zap` `sparkles` `moon` `sun`
+
+Если нужен другой набор кроме `lucide` — Iconify поддерживает 200+ icon-сетов, формат тот же:
+
+```jsx
+<Image src="https://api.iconify.design/material-symbols/cart.svg" width={24} height={24} />
+<Image src="https://api.iconify.design/heroicons/sparkles.svg" width={24} height={24} />
+<Image src="https://api.iconify.design/tabler/notification.svg" width={24} height={24} />
+<Image src="https://api.iconify.design/phosphor/heart-fill.svg" width={24} height={24} />
+```
+
+Но **default-выбор — `lucide`**. Не переключайся на другой сет без причины.
+
+### 2. Брендовые логотипы (Apple, Google, Visa, GitHub, Discord и т.д.) — **theSVG**
 
 ```jsx
 <Image src="https://thesvg.org/icons/{slug}/{variant}.svg" width={24} height={24} />
 ```
+
+theSVG специально про **бренд-логотипы** в правильных корпоративных цветах. Используй ТОЛЬКО для известных брендов из таблицы:
 
 Варианты: `default` (цветной) · `light` (белый, для тёмного фона) · `dark` (чёрный) · `mono`
 
@@ -189,7 +225,17 @@
 | Платформы | `appstore` `googleplay` `android` |
 | Технологии | `react` `nodejs` `typescript` `python` `openai` `figma` `vercel` `firebase` `docker` |
 
-**Пример — кнопки авторизации:**
+**Если бренда нет в таблице — НЕ выдумывай слаг.** Возьми Lucide-иконку похожего смысла (`globe`, `package`, `tag` и т.д.) или просто прямоугольник-плейсхолдер.
+
+### Жёсткое правило
+
+- UI-иконка → `api.iconify.design/lucide/{name}.svg`
+- Бренд из таблицы выше → `thesvg.org/icons/{slug}/{variant}.svg`
+- Никаких других CDN с иконками (вариативный контракт у каждого, многие отдадут 404).
+
+### Примеры
+
+**Соц-кнопки авторизации (бренды):**
 
 ```jsx
 <Frame autoLayout flow="vertical" width="fill" height="hug" gap={12} name="SocialAuth">
@@ -208,12 +254,51 @@
 </Frame>
 ```
 
-**Пример — метод оплаты:**
+**UI-иконки (Lucide):**
 
 ```jsx
-<Frame center width={56} height={36} fill="#F8FAFC" stroke="#E2E8F0" strokeWidth={1} radius={8} name="Visa">
-  <Image src="https://thesvg.org/icons/visa/default.svg" width={36} height={22} />
+<Frame autoLayout flow="horizontal" gap={12} alignY="center" name="ToolbarRow">
+  <Image src="https://api.iconify.design/lucide/search.svg" width={20} height={20} />
+  <Image src="https://api.iconify.design/lucide/bell.svg" width={20} height={20} />
+  <Image src="https://api.iconify.design/lucide/shopping-cart.svg" width={20} height={20} />
+  <Image src="https://api.iconify.design/lucide/user.svg" width={20} height={20} />
 </Frame>
+```
+
+**Кнопка с цветной Lucide-иконкой:**
+
+```jsx
+<Frame autoLayout flow="horizontal" gap={8} padX={16} padY={10}
+       fill="primary" radius="md" alignX="center" alignY="center" name="LikeBtn">
+  <Image src="https://api.iconify.design/lucide/heart.svg?color=%23ffffff" width={18} height={18} />
+  <Text variant="body" fill="text">В избранное</Text>
+</Frame>
+```
+
+---
+
+## Картинки-плейсхолдеры (если нужно фейк-фото)
+
+| Источник | Когда |
+|---|---|
+| `https://picsum.photos/{w}/{h}` | Случайное фото произвольной тематики |
+| `https://picsum.photos/seed/{seed}/{w}/{h}` | Стабильное фото по seed (повторяемое) |
+| `https://images.unsplash.com/photo-{id}?w={w}` | Конкретное фото с Unsplash (по id) |
+| `https://placehold.co/{w}x{h}/{bg}/{fg}?text={label}` | Плашка с подписью (любой цвет) |
+| `https://i.pravatar.cc/{size}` или `?u={seed}` | Случайный аватар-фото |
+| `https://ui-avatars.com/api/?name={name}&size={size}&background={hex}` | Аватар-инициалы |
+| `https://avatars.githubusercontent.com/u/{id}?s={size}` | Реальный аватар GitHub-юзера (если уверен в id) |
+
+**Пример — карточка товара с фото:**
+
+```jsx
+<Image src="https://picsum.photos/seed/iphone-15/343/240" width="fill" height={240} radius="md" />
+```
+
+**Пример — аватар:**
+
+```jsx
+<Image src="https://i.pravatar.cc/96?u=user-42" width={48} height={48} radius={24} />
 ```
 
 ---
