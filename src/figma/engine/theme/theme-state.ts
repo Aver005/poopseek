@@ -94,23 +94,51 @@ function normalizeKey(key: string): string
     return key.trim().toLowerCase();
 }
 
+/**
+ * Additive theme update.
+ * - On first real call (current state is the FALLBACK_TOKENS), the incoming
+ *   theme replaces fallback wholesale.
+ * - Subsequent calls MERGE: new keys are added; conflicting `kind:key` pairs
+ *   keep the EXISTING value. This protects already-bound nodes from a
+ *   second `create` run silently changing their colors/spacings while still
+ *   letting the new design extend the palette with what it needs.
+ *
+ * Empty `theme.tokens` is a no-op (keeps current state intact).
+ */
 export function setActiveTheme(theme: ThemeDefinition): void
 {
-    if (theme.tokens.length === 0)
+    if (theme.tokens.length === 0) return;
+
+    const isFallback = activeTheme.tokens === FALLBACK_TOKENS;
+
+    if (isFallback)
     {
-        activeTheme = { name: "fallback", tokens: FALLBACK_TOKENS };
+        const seen = new Map<string, ThemeToken>();
+        for (const t of theme.tokens)
+        {
+            const key = normalizeKey(t.key);
+            const value = t.kind === "color" ? normalizeHex(t.value) : String(t.value).trim();
+            seen.set(`${t.kind}:${key}`, { kind: t.kind, key, value, description: t.description?.trim() });
+        }
+        activeTheme = { name: theme.name?.trim() || "custom", tokens: [...seen.values()] };
         return;
     }
 
-    const seen = new Map<string, ThemeToken>();
+    // Merge — existing wins on collision.
+    const merged = new Map<string, ThemeToken>();
+    for (const t of activeTheme.tokens)
+        merged.set(`${t.kind}:${normalizeKey(t.key)}`, t);
+
     for (const t of theme.tokens)
     {
         const key = normalizeKey(t.key);
+        const lookupKey = `${t.kind}:${key}`;
+        if (merged.has(lookupKey)) continue;
         const value = t.kind === "color" ? normalizeHex(t.value) : String(t.value).trim();
-        seen.set(`${t.kind}:${key}`, { kind: t.kind, key, value, description: t.description?.trim() });
+        merged.set(lookupKey, { kind: t.kind, key, value, description: t.description?.trim() });
     }
 
-    activeTheme = { name: theme.name?.trim() || "custom", tokens: [...seen.values()] };
+    activeTheme = { name: activeTheme.name, tokens: [...merged.values()] };
 }
 
 export function getActiveTheme(): ThemeDefinition

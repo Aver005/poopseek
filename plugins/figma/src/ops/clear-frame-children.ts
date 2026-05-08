@@ -61,15 +61,25 @@ export const handler: OpHandler = {
         // frames at currentPage level (because resolveParent fell through to
         // page when nodeMap had stale entries). Anything at page level that
         // isn't this root is orphan garbage from prior failures — kill it.
+        // Server passes the names of every root we own this turn. Frames
+        // matching a name in this set are siblings (other designs created
+        // earlier in the session) and must NOT be vacuumed.
+        const keepNames = new Set<string>(
+            Array.isArray(op.keepNames)
+                ? (op.keepNames as unknown[]).filter((v): v is string => typeof v === "string")
+                : []
+        );
+        keepNames.add(frameName);
+
         const pageChildren = [...figma.currentPage.children];
         let orphans = 0;
         const orphanNames: string[] = [];
         for (const node of pageChildren)
         {
-            // Only kill stranded FRAMES that aren't the target. Leave loose
-            // text/rect/etc. at page level alone — those are likely user
-            // content, not our debris.
-            if (node.id !== frame.id && node.type === "FRAME")
+            // Only kill stranded FRAMES that aren't the target AND aren't a
+            // sibling we want to keep. Leave loose text/rect/etc. at page
+            // level alone — those are likely user content, not our debris.
+            if (node.id !== frame.id && node.type === "FRAME" && !keepNames.has(node.name))
             {
                 orphanNames.push(`${node.type}#${node.id}/"${node.name}"`);
                 node.remove();
@@ -83,8 +93,8 @@ export const handler: OpHandler = {
 
         // Deep sweep — some orphans hide nested inside surviving page-level
         // siblings or as detached subtrees still attached somewhere on the
-        // page. Anything that isn't the target frame and isn't a descendant
-        // of the target is debris. Restrict to our 5 primitive types so we
+        // page. Anything that isn't a descendant of the target frame OR of
+        // any kept-root is debris. Restrict to our 5 primitive types so we
         // don't trash unrelated user content (sections, components, etc.).
         const targetSubtree = new Set<string>();
         const collectIds = (n: SceneNode): void =>
@@ -94,6 +104,12 @@ export const handler: OpHandler = {
                 for (const c of (n as SceneNode & { children: ReadonlyArray<SceneNode> }).children) collectIds(c);
         };
         collectIds(frame);
+        // Preserve kept-roots' subtrees too.
+        for (const node of pageChildren)
+        {
+            if (node.id !== frame.id && node.type === "FRAME" && keepNames.has(node.name))
+                collectIds(node);
+        }
 
         let deepOrphans = 0;
         const deepOrphanNames: string[] = [];

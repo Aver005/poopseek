@@ -2,6 +2,7 @@
 import type { FigmaChatRequest, FigmaChatResponse } from "@/figma/api/contracts";
 import type { FigmaSession } from "@/figma/application/session/session-types";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
+import type { FigmaPluginSnapshot } from "@/figma/domain/plugin/snapshot-types";
 import { runIntentClassifier } from "@/figma/application/pipeline/intent";
 import { runDesigner } from "@/figma/application/pipeline/designer";
 import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
@@ -23,6 +24,26 @@ const EDIT_KEYWORDS = [
     "change", "replace", "swap", "update", "edit", "modify", "remove", "delete", "add",
     "move", "resize", "increase", "decrease", "fix", "adjust", "tweak", "revert",
 ];
+
+/**
+ * Find the rightmost edge of any existing top-level frame on the canvas
+ * and return `that + 80` (gutter). Used to place a new "create" root next
+ * to existing designs instead of on top of them. Returns 0 if there's
+ * nothing to dodge.
+ */
+function computeNextRootX(snapshot?: FigmaPluginSnapshot | null): number
+{
+    const tree = snapshot?.tree ?? [];
+    if (tree.length === 0) return 0;
+    let rightmost = 0;
+    for (const root of tree)
+    {
+        const x = typeof root.x === "number" ? root.x : 0;
+        const w = typeof root.width === "number" ? root.width : 0;
+        rightmost = Math.max(rightmost, x + w);
+    }
+    return rightmost > 0 ? rightmost + 80 : 0;
+}
 
 function looksLikeEdit(message: string): boolean
 {
@@ -174,6 +195,25 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     session.mode = "edit";
 
                     const ops = compileJsx(parsedNodes);
+
+                    // If we already have a design on the canvas, place the
+                    // new root next to it instead of on top. We mutate the
+                    // first parent-less create_frame op (= the new root) and
+                    // set its `x` to the rightmost edge + 80px gutter.
+                    if (hasDesign)
+                    {
+                        const offsetX = computeNextRootX(session.lastSnapshot);
+                        if (offsetX > 0)
+                        {
+                            const rootOp = ops.find((o) =>
+                                (o as Record<string, unknown>).type === "create_frame"
+                                && (o as Record<string, unknown>).frameId === undefined
+                            ) as Record<string, unknown> | undefined;
+                            if (rootOp && rootOp.x === undefined)
+                                rootOp.x = offsetX;
+                        }
+                    }
+
                     session.dispatchOps(ops);
 
                     send("ops", { ops, sessionId: session.id });
@@ -218,11 +258,17 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                         const opsToDispatch: ReturnType<typeof compileJsx> = [];
 
-                        for (const root of session.buffer.roots())
+                        // All frame names we own — sent on each clear so the
+                        // plugin's orphan cleanup doesn't wipe sibling roots
+                        // that belong to OTHER designs created with `create`
+                        // earlier in the session.
+                        const keepNames = session.buffer.roots()
+                            .map((r) => String(r.props.name ?? r.id))
+                            .filter(Boolean);
+
+                        for (const frameName of keepNames)
                         {
-                            const frameName = String(root.props.name ?? root.id);
-                            if (frameName)
-                                opsToDispatch.push({ type: "clear_frame_children", frameName });
+                            opsToDispatch.push({ type: "clear_frame_children", frameName, keepNames });
                         }
 
                         if (bufferJsx)
