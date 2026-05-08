@@ -205,7 +205,12 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
             parts.push(radTok ? `radius="${radTok}"` : `radius={${rect.cornerRadius}}`);
         }
         if (imgFill) {
-            parts.push(`src="${imgFill.imageHash ?? "image"}"`);
+            // Prefer the original URL stored as pluginData by create-image.
+            // imageHash is a Figma-internal id and round-tripping it back
+            // through the LLM would just confuse it.
+            const stored = rect.getPluginData("imgSrc");
+            const srcStr = stored || imgFill.imageHash || "image";
+            parts.push(`src="${srcStr.replace(/"/g, "&quot;")}"`);
             return `${indent}<Image ${parts.join(" ")} />`;
         }
         const fillTok = getPrimaryColorTokenKey(fills);
@@ -217,6 +222,22 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
     if (!("children" in node)) return "";
 
     const f = node as FrameNode;
+
+    // SVG-icon round-trip. createNodeFromSvg returns a Frame whose vector
+    // children we cannot serialize back into our 6-component JSX. Instead
+    // of leaking that internal structure (or losing it entirely on edits),
+    // we tag the wrapper Frame with svgSrc on creation and replay it as
+    // `<Image src="…" />` here.
+    const svgSrc = f.getPluginData ? f.getPluginData("svgSrc") : "";
+    if (svgSrc)
+    {
+        const iconParts: string[] = [`name="${f.name.replace(/"/g, "&quot;")}"`];
+        if (f.width  > 0) iconParts.push(`width={${Math.round(f.width)}}`);
+        if (f.height > 0) iconParts.push(`height={${Math.round(f.height)}}`);
+        iconParts.push(`src="${svgSrc.replace(/"/g, "&quot;")}"`);
+        return `${indent}<Image ${iconParts.join(" ")} />`;
+    }
+
     const parts: string[] = [`name="${f.name.replace(/"/g, "&quot;")}"`];
     const isAL = "layoutMode" in f && (f as FrameNode).layoutMode !== "NONE";
     if (isAL) {

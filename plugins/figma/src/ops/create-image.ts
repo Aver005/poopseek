@@ -3,6 +3,20 @@ import { nodeMap } from "../cache";
 import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, ensureCorrectParent } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
+// Per-batch fetch cache. The same icon (e.g. lucide/star.svg) is often used
+// multiple times in one design (5 rating stars, repeated category icons…).
+// Without this we'd hit the network N times per batch. Keyed by URL.
+const svgFetchCache = new Map<string, string>();
+
+async function fetchSvgCached(url: string): Promise<string>
+{
+    const cached = svgFetchCache.get(url);
+    if (cached !== undefined) return cached;
+    const text = await (await fetch(url)).text();
+    svgFetchCache.set(url, text);
+    return text;
+}
+
 export const handler: OpHandler = {
     type: "create_image",
     async execute(op, _nodeMap): Promise<number> {
@@ -27,14 +41,26 @@ export const handler: OpHandler = {
 
                 if (isSvg)
                 {
-                    const srcCode = await (await fetch(src)).text();
+                    const srcCode = await fetchSvgCached(src);
                     node = figma.createNodeFromSvg(srcCode);
+                    // Round-trip preservation: tag the figma node with its
+                    // source URL. nodeToFullJsx reads this on snapshot to
+                    // re-emit `<Image src="…" />` instead of an empty
+                    // `<Frame>` (the SVG's vector children are unserializable
+                    // by our JSX system, so without this tag every edit that
+                    // re-renders a root would silently strip every icon).
+                    node.setPluginData("svgSrc", src);
                 }
                 else
                 {
                     const image = await figma.createImageAsync(src);
                     node = figma.createRectangle();
                     node.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FILL" }];
+                    // Same round-trip preservation for raster — the node's
+                    // imageHash alone is not a URL, so without storing the
+                    // original src the LLM only sees a meaningless hash on
+                    // subsequent edits.
+                    node.setPluginData("imgSrc", src);
                 }
 
                 const parent = resolveParent(op.frameId);

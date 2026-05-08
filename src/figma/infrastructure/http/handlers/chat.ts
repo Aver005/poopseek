@@ -271,17 +271,35 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         // plugin's orphan cleanup doesn't wipe sibling roots
                         // that belong to OTHER designs created with `create`
                         // earlier in the session.
-                        const keepNames = session.buffer.roots()
+                        const allRoots = session.buffer.roots();
+                        const keepNames = allRoots
                             .map((r) => String(r.props.name ?? r.id))
                             .filter(Boolean);
 
-                        for (const frameName of keepNames)
+                        // Only touch roots that were actually edited. Untouched
+                        // roots (typically marked `old` in the diff) would
+                        // otherwise be wiped + re-created from the buffer JSX —
+                        // and that round-trip silently strips SVG icon content
+                        // because the snapshot serializer can't preserve vector
+                        // children produced by figma.createNodeFromSvg. Result
+                        // before this guard: editing screen B re-rendered
+                        // screen A and made its icons disappear.
+                        const dirtyMap = session.buffer.getDirtyLevel1Map();
+                        const dirtyRoots = allRoots.filter((r) => dirtyMap.has(r.id));
+
+                        for (const root of dirtyRoots)
                         {
-                            opsToDispatch.push({ type: "clear_frame_children", frameName, keepNames });
+                            const frameName = String(root.props.name ?? root.id);
+                            if (frameName)
+                                opsToDispatch.push({ type: "clear_frame_children", frameName, keepNames });
                         }
 
-                        if (bufferJsx)
-                            opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(bufferJsx))));
+                        for (const root of dirtyRoots)
+                        {
+                            const subtreeJsx = session.buffer.subtreeToJsx(root.id);
+                            if (subtreeJsx)
+                                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
+                        }
 
                         if (opsToDispatch.length > 0)
                         {
