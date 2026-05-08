@@ -2,29 +2,57 @@ import type { VariableColorValue } from "./design-tokens";
 
 // ─── Token model ────────────────────────────────────────────────
 //
-// Three token kinds. Each gets a figma variable in the active theme
-// collection. Colors → COLOR variables; spacing/radius → FLOAT variables.
-// Keys are short (sm/md/lg/primary/...) and used directly in JSX:
-//   fill="primary"  gap="md"  radius="lg"
+// Four token kinds + a separate registry of named component bundles.
 //
-// Resolution is bare-name → token lookup. Raw hex (`#hex`) and raw
-// numbers (`{n}`) skip the registry — they are one-off literals.
+//   color      → hex      → COLOR figma variable      → fill="primary"
+//   spacing    → number   → FLOAT figma variable      → gap="md"
+//   radius     → number   → FLOAT figma variable      → radius="lg"
+//   typography → object   → applied at compile time   → variant="h1"
+//
+// Components are bundles of resolved props (e.g. button-primary maps to
+// fill / cornerRadius / padX / padY / fontSize…). Applied via `as=` at
+// compile time — no figma variable needed since they expand to existing
+// per-prop bindings.
 
-export type TokenKind = "color" | "spacing" | "radius";
+export type TokenKind = "color" | "spacing" | "radius" | "typography";
+
+export interface TypographyValue
+{
+    fontFamily?: string;
+    fontSize?: number;
+    fontWeight?: string;
+    lineHeight?: number | string;
+    letterSpacing?: number;
+}
 
 export interface ThemeToken
 {
     kind: TokenKind;
     key: string;
-    /** hex for color, number-as-string for spacing/radius (kept as string for serialization parity) */
-    value: string;
+    /** Color: hex. Spacing/radius: numeric string. Typography: TypographyValue. */
+    value: string | TypographyValue;
     description?: string;
+}
+
+export interface ComponentDefinition
+{
+    name: string;
+    /** Resolved prop bag — keys mirror DESIGN.md's component property
+     *  names (backgroundColor / textColor / typography / rounded / padding /
+     *  size / height / width). The compiler maps them onto JSX props at
+     *  expansion time. */
+    props: Record<string, string | number>;
 }
 
 export interface ThemeDefinition
 {
     name?: string;
     tokens: ThemeToken[];
+    components?: ComponentDefinition[];
+    /** Markdown body of the source DESIGN.md — injected verbatim into
+     *  builder/handyman prompts so the model sees rationale alongside
+     *  numbers. */
+    prose?: string;
 }
 
 // Op contract for the plugin. One op for all three kinds.
@@ -105,40 +133,64 @@ function normalizeKey(key: string): string
  *
  * Empty `theme.tokens` is a no-op (keeps current state intact).
  */
+function normalizeTokenValue(t: ThemeToken): string | TypographyValue
+{
+    if (t.kind === "color") return normalizeHex(t.value as string);
+    if (t.kind === "typography") return typeof t.value === "object" ? t.value : {};
+    return String(t.value).trim();
+}
+
 export function setActiveTheme(theme: ThemeDefinition): void
 {
-    if (theme.tokens.length === 0) return;
-
-    const isFallback = activeTheme.tokens === FALLBACK_TOKENS;
-
-    if (isFallback)
+    if (theme.tokens.length === 0 && (!theme.components || theme.components.length === 0))
     {
-        const seen = new Map<string, ThemeToken>();
-        for (const t of theme.tokens)
-        {
-            const key = normalizeKey(t.key);
-            const value = t.kind === "color" ? normalizeHex(t.value) : String(t.value).trim();
-            seen.set(`${t.kind}:${key}`, { kind: t.kind, key, value, description: t.description?.trim() });
-        }
-        activeTheme = { name: theme.name?.trim() || "custom", tokens: [...seen.values()] };
+        // Even empty token-set may carry prose updates.
+        if (theme.prose) activeTheme = { ...activeTheme, prose: theme.prose };
         return;
     }
 
-    // Merge — existing wins on collision.
+    const isFallback = activeTheme.tokens === FALLBACK_TOKENS;
+
     const merged = new Map<string, ThemeToken>();
-    for (const t of activeTheme.tokens)
-        merged.set(`${t.kind}:${normalizeKey(t.key)}`, t);
+    if (!isFallback)
+    {
+        for (const t of activeTheme.tokens)
+            merged.set(`${t.kind}:${normalizeKey(t.key)}`, t);
+    }
 
     for (const t of theme.tokens)
     {
         const key = normalizeKey(t.key);
         const lookupKey = `${t.kind}:${key}`;
-        if (merged.has(lookupKey)) continue;
-        const value = t.kind === "color" ? normalizeHex(t.value) : String(t.value).trim();
-        merged.set(lookupKey, { kind: t.kind, key, value, description: t.description?.trim() });
+        if (!isFallback && merged.has(lookupKey)) continue;
+        merged.set(lookupKey, {
+            kind: t.kind,
+            key,
+            value: normalizeTokenValue(t),
+            description: t.description?.trim(),
+        });
     }
 
-    activeTheme = { name: activeTheme.name, tokens: [...merged.values()] };
+    // Components: same first-wins merge behaviour.
+    const componentByName = new Map<string, ComponentDefinition>();
+    if (!isFallback)
+    {
+        for (const c of activeTheme.components ?? [])
+            componentByName.set(normalizeKey(c.name), c);
+    }
+    for (const c of theme.components ?? [])
+    {
+        const k = normalizeKey(c.name);
+        if (!isFallback && componentByName.has(k)) continue;
+        componentByName.set(k, { name: k, props: { ...c.props } });
+    }
+
+    activeTheme = {
+        name: isFallback ? (theme.name?.trim() || "custom") : activeTheme.name,
+        tokens: [...merged.values()],
+        components: [...componentByName.values()],
+        prose: theme.prose ?? activeTheme.prose,
+    };
 }
 
 export function getActiveTheme(): ThemeDefinition
@@ -160,7 +212,7 @@ export function resolveColorToken(key: string): VariableColorValue | undefined
     if (!token) return undefined;
     return {
         kind: "variable-color",
-        hex: normalizeHex(token.value),
+        hex: normalizeHex(token.value as string),
         variable: {
             collection: THEME_COLLECTION,
             mode: THEME_MODE,
@@ -181,6 +233,22 @@ export function resolveNumericToken(kind: "spacing" | "radius", key: string): { 
     return { value: n, variableName: variableNameFor(kind, k) };
 }
 
+/** Resolve a typography variant (e.g. "h1") to its prop bundle. */
+export function resolveTypographyToken(key: string): TypographyValue | undefined
+{
+    const k = normalizeKey(key);
+    const token = activeTheme.tokens.find(t => t.kind === "typography" && t.key === k);
+    if (!token) return undefined;
+    return typeof token.value === "object" ? token.value : undefined;
+}
+
+/** Resolve a component name (e.g. "button-primary") to its prop bundle. */
+export function resolveComponentToken(name: string): ComponentDefinition | undefined
+{
+    const k = normalizeKey(name);
+    return (activeTheme.components ?? []).find(c => c.name === k);
+}
+
 export function getThemeCollection(): { collection: string; mode: string }
 {
     return { collection: THEME_COLLECTION, mode: THEME_MODE };
@@ -192,18 +260,39 @@ export function describeActiveTokensForPrompt(): string
     const colors = activeTheme.tokens.filter(t => t.kind === "color");
     const spacing = activeTheme.tokens.filter(t => t.kind === "spacing");
     const radius = activeTheme.tokens.filter(t => t.kind === "radius");
+    const typography = activeTheme.tokens.filter(t => t.kind === "typography");
+    const components = activeTheme.components ?? [];
 
     const lines: string[] = [];
     if (colors.length > 0)
-        lines.push(`Colors: ${colors.map(t => `\`${t.key}\` (${normalizeHex(t.value)})`).join(", ")}`);
+        lines.push(`Colors: ${colors.map(t => `\`${t.key}\` (${normalizeHex(t.value as string)})`).join(", ")}`);
     if (spacing.length > 0)
         lines.push(`Spacing: ${spacing.map(t => `\`${t.key}\` (${t.value}px)`).join(", ")}`);
     if (radius.length > 0)
         lines.push(`Radius: ${radius.map(t => `\`${t.key}\` (${t.value}px)`).join(", ")}`);
+    if (typography.length > 0)
+        lines.push(`Typography variants: ${typography.map(t =>
+        {
+            const v = t.value as TypographyValue;
+            const bits: string[] = [];
+            if (v.fontSize !== undefined) bits.push(`${v.fontSize}px`);
+            if (v.fontWeight) bits.push(String(v.fontWeight));
+            return `\`${t.key}\`${bits.length ? ` (${bits.join("/")})` : ""}`;
+        }).join(", ")}`);
+    if (components.length > 0)
+        lines.push(`Components: ${components.map(c => `\`${c.name}\``).join(", ")}`);
     return lines.join("\n");
 }
 
-/** Op the plugin uses to ensure all theme variables exist. */
+/** Full DESIGN.md prose body for prompt injection. Empty string if none. */
+export function getActiveDesignDoc(): string
+{
+    return activeTheme.prose ?? "";
+}
+
+/** Op the plugin uses to ensure all theme variables exist.
+ *  Typography is compile-time-only (no figma variable yet), components
+ *  are bundle-expansion-only — both excluded from this op. */
 export function createEnsureTokenVariablesOp(): EnsureTokenVariablesOp
 {
     return {
@@ -211,13 +300,15 @@ export function createEnsureTokenVariablesOp(): EnsureTokenVariablesOp
         collection: THEME_COLLECTION,
         mode: THEME_MODE,
         themeName: activeTheme.name?.trim() || "custom",
-        tokens: activeTheme.tokens.map(t => ({
-            kind: t.kind,
-            key: t.key,
-            variableName: variableNameFor(t.kind, t.key),
-            value: t.kind === "color" ? normalizeHex(t.value) : String(t.value),
-            description: t.description,
-        })),
+        tokens: activeTheme.tokens
+            .filter(t => t.kind === "color" || t.kind === "spacing" || t.kind === "radius")
+            .map(t => ({
+                kind: t.kind,
+                key: t.key,
+                variableName: variableNameFor(t.kind, t.key),
+                value: t.kind === "color" ? normalizeHex(t.value as string) : String(t.value),
+                description: t.description,
+            })),
     };
 }
 
@@ -234,7 +325,7 @@ export function createEnsureThemeVariablesOp(): EnsureThemeVariablesOp
             .map(t => ({
                 token: t.key,
                 variableName: variableNameFor("color", t.key),
-                hex: normalizeHex(t.value),
+                hex: normalizeHex(t.value as string),
                 description: t.description,
             })),
     };

@@ -11,7 +11,7 @@ import { SubAgentRunner } from "@/agent/sub-agent";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
-import { setActiveTheme, describeActiveTokensForPrompt } from "@/figma/engine/theme/theme-state";
+import { setActiveTheme, describeActiveTokensForPrompt, getActiveDesignDoc } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 import { loadNodesIntoBuffer } from "@/figma/engine/handyman/handyman-tools";
 import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
@@ -156,19 +156,24 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                 if (intent === "create")
                 {
-                    const tokens = await runDesigner(subAgentRunner, enhanced, designerPrompt);
-                    session.varStore.setTokens(tokens);
+                    const designerOut = await runDesigner(subAgentRunner, enhanced, designerPrompt);
+                    session.varStore.setTokens(designerOut.tokens);
 
-                    const themeTokens = session.varStore.extractTokens();
-                    setActiveTheme({ tokens: themeTokens });
+                    setActiveTheme({
+                        name: designerOut.name,
+                        tokens: designerOut.themeTokens,
+                        components: designerOut.components,
+                        prose: designerOut.prose,
+                    });
 
-                    context.enhanceCache.set(body.message, { enhanced, tokens });
+                    context.enhanceCache.set(body.message, { enhanced, tokens: designerOut.tokens });
 
-                    send("tokens", { tokens, sessionId: session.id });
+                    send("tokens", { tokens: designerOut.tokens, sessionId: session.id });
+                    const tokens = designerOut.tokens; // keep below variable name stable
 
-                    const builderPromptWithTokens = builderPrompt.includes("{{TOKENS_TABLE}}")
-                        ? builderPrompt.replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)")
-                        : builderPrompt;
+                    const builderPromptWithTokens = builderPrompt
+                        .replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)")
+                        .replace("{{DESIGN_DOC}}", getActiveDesignDoc() || "(no DESIGN.md prose available)");
                     const result = await runBuilderOneShot(deps.getProvider, builderPromptWithTokens, enhanced, tokens);
 
                     if (!result.ok)
@@ -232,7 +237,8 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     const canonicalJsx = session.buffer.toJsx() || "(empty)";
                     const systemPrompt = handymanPromptContent
                         .replace("{{CURRENT_JSX}}", canonicalJsx)
-                        .replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)");
+                        .replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)")
+                        .replace("{{DESIGN_DOC}}", getActiveDesignDoc() || "(no DESIGN.md prose available)");
 
                     const snap = session.buffer.snapshot();
                     const handymanResult = await runHandymanEdit(
@@ -320,13 +326,17 @@ async function handleChatLegacy(
 
     if (intent === "create")
     {
-        const tokens = await runDesigner(subAgentRunner, enhanced, designerPrompt);
+        const designerOut = await runDesigner(subAgentRunner, enhanced, designerPrompt);
+        const tokens = designerOut.tokens;
 
         session.varStore.setTokens(tokens);
 
-        const themeTokens = session.varStore.extractThemeTokens();
-        if (themeTokens.length > 0)
-            setActiveTheme({ tokens: themeTokens });
+        setActiveTheme({
+            name: designerOut.name,
+            tokens: designerOut.themeTokens,
+            components: designerOut.components,
+            prose: designerOut.prose,
+        });
 
         context.enhanceCache.set(message, { enhanced, tokens });
 

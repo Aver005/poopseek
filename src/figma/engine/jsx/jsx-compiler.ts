@@ -1,8 +1,29 @@
-import { createEnsureColorVariablesOp } from "../theme/design-tokens";
 import { createEnsureTokenVariablesOp } from "../theme/theme-state";
-import { resolveColor, resolveNumber, colorFields, numberFields } from "./token-resolver";
+import {
+    resolveColor, resolveNumber, colorFields, numberFields,
+    resolveVariant, resolveAs, componentBundleToProps,
+} from "./token-resolver";
 import type { JsxNode, JsxPropValue } from "./jsx-parser";
 import type { FigmaOp } from "../../types";
+
+/**
+ * Apply `as="..."` component bundle onto node.props as defaults — so any
+ * prop the model wrote explicitly still wins. Mutates node.props in place.
+ * Called at the start of each compile* function.
+ */
+function applyComponentAs(node: JsxNode): void
+{
+    const asRef = node.props.as;
+    if (asRef === undefined) return;
+    const bundle = resolveAs(asRef);
+    if (!bundle) return;
+    const expanded = componentBundleToProps(bundle);
+    for (const [k, v] of Object.entries(expanded))
+    {
+        if (node.props[k] === undefined) node.props[k] = v as JsxPropValue;
+    }
+    delete node.props.as;
+}
 
 type SizeMode = number | "fill" | "hug";
 
@@ -200,6 +221,7 @@ function toFigmaAlign(val: string | undefined, allowBetween: boolean): string | 
 
 function compileFrame(node: JsxNode, state: State): void
 {
+    applyComponentAs(node);
     const p = node.props;
     const parent = top(state);
     const id = str(p.id) ?? uid(state, "frm");
@@ -308,6 +330,20 @@ function compileFrame(node: JsxNode, state: State): void
 
 function compileText(node: JsxNode, state: State): void
 {
+    applyComponentAs(node);
+
+    // Expand variant="h1" → fontSize/fontWeight/lineHeight/letterSpacing
+    // defaults. Explicit props on the node still win.
+    const variant = resolveVariant(node.props.variant);
+    if (variant)
+    {
+        if (variant.fontSize      !== undefined && node.props.fontSize      === undefined) node.props.fontSize      = variant.fontSize;
+        if (variant.fontWeight    !== undefined && node.props.fontWeight    === undefined) node.props.fontWeight    = variant.fontWeight;
+        if (variant.lineHeight    !== undefined && node.props.lineHeight    === undefined) node.props.lineHeight    = typeof variant.lineHeight === "number" ? variant.lineHeight : Number(variant.lineHeight);
+        if (variant.letterSpacing !== undefined && node.props.letterSpacing === undefined) node.props.letterSpacing = variant.letterSpacing;
+        delete node.props.variant;
+    }
+
     const p = node.props;
     const id = str(p.id) ?? uid(state, "txt");
     const parent = top(state);
@@ -369,6 +405,7 @@ function compileText(node: JsxNode, state: State): void
 
 function compileImage(node: JsxNode, state: State): void
 {
+    applyComponentAs(node);
     const p = node.props;
     const id = str(p.id) ?? uid(state, "img");
     const parent = top(state);
@@ -418,6 +455,7 @@ function compileImage(node: JsxNode, state: State): void
 
 function compileEllipse(node: JsxNode, state: State): void
 {
+    applyComponentAs(node);
     const p    = node.props;
     const id   = str(p.id) ?? uid(state, "ellipse");
     const size = num(p.size);
@@ -447,6 +485,7 @@ function compileEllipse(node: JsxNode, state: State): void
 
 function compileLine(node: JsxNode, state: State): void
 {
+    applyComponentAs(node);
     const p      = node.props;
     const parent = top(state);
     const id     = str(p.id) ?? uid(state, "line");
@@ -476,6 +515,7 @@ function compileLine(node: JsxNode, state: State): void
 
 function compileRect(node: JsxNode, state: State): void
 {
+    applyComponentAs(node);
     const p = node.props;
     const parent = top(state);
     const id = str(p.id) ?? uid(state, "rect");
@@ -545,7 +585,6 @@ export function compileJsx(nodes: JsxNode[], parentFrameId?: string): FigmaOp[]
     const state: State = {
         ops: [
             createEnsureTokenVariablesOp() as unknown as FigmaOp,
-            createEnsureColorVariablesOp() as unknown as FigmaOp,
         ],
         counter: 0,
         stack: parentFrameId

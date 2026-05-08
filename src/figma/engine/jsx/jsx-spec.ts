@@ -71,6 +71,7 @@ const FRAME_PROPS = new Set([
     "alignX", "alignY", "center",
     "wrap",
     "detach",
+    "as", "old",
 ]);
 
 const TEXT_PROPS = new Set([
@@ -82,6 +83,7 @@ const TEXT_PROPS = new Set([
     "italic", "underline", "strikethrough", "textDecoration",
     "content", "text",
     "opacity", "detach",
+    "variant", "as", "old",
 ]);
 
 const IMAGE_PROPS = new Set([
@@ -92,6 +94,7 @@ const IMAGE_PROPS = new Set([
     "radiusTL", "radiusTR", "radiusBL", "radiusBR",
     "stroke", "strokeWidth", "strokeWeight",
     "shadow", "dropShadow", "innerShadow", "opacity", "detach",
+    "as", "old",
 ]);
 
 const ELLIPSE_PROPS = new Set([
@@ -102,6 +105,7 @@ const ELLIPSE_PROPS = new Set([
     "shadow", "dropShadow", "innerShadow",
     "ignoreAutoLayout",
     "opacity", "detach",
+    "as", "old",
 ]);
 
 const LINE_PROPS = new Set([
@@ -112,6 +116,7 @@ const LINE_PROPS = new Set([
     "shadow", "dropShadow", "innerShadow",
     "ignoreAutoLayout",
     "color", "opacity", "detach",
+    "as", "old",
 ]);
 
 const RECT_PROPS = new Set([
@@ -121,6 +126,7 @@ const RECT_PROPS = new Set([
     "radiusTL", "radiusTR", "radiusBL", "radiusBR",
     "ignoreAutoLayout",
     "opacity", "detach",
+    "as", "old",
 ]);
 
 export const COMPONENT_SPECS: Record<string, ComponentSpec> = {

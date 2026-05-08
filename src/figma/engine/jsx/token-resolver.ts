@@ -3,7 +3,14 @@
 // fields to bind figma variables; raw values remain the visual fallback.
 
 import type { JsxPropValue } from "./jsx-parser";
-import { resolveColorToken, resolveNumericToken } from "../theme/theme-state";
+import {
+    resolveColorToken,
+    resolveNumericToken,
+    resolveTypographyToken,
+    resolveComponentToken,
+    type TypographyValue,
+    type ComponentDefinition,
+} from "../theme/theme-state";
 
 export interface ResolvedColor
 {
@@ -77,4 +84,54 @@ export function numberFields(name: string, r: ResolvedNumber | undefined): Recor
     if (!r) return {};
     if (r.variableName) return { [name]: r.value, [`${name}VariableName`]: r.variableName };
     return { [name]: r.value };
+}
+
+/**
+ * Resolve a `variant="h1"` typography reference to its prop bundle.
+ * Returns undefined for an unknown variant — caller may fall back to
+ * default text props or skip applying.
+ */
+export function resolveVariant(v: JsxPropValue | undefined): TypographyValue | undefined
+{
+    const s = asString(v);
+    if (!s) return undefined;
+    return resolveTypographyToken(s);
+}
+
+/**
+ * Resolve an `as="button-primary"` component reference to its prop bag.
+ * The compiler expands this onto the JSX node BEFORE other prop processing,
+ * so an explicit prop on the node always wins over a component default.
+ */
+export function resolveAs(v: JsxPropValue | undefined): ComponentDefinition | undefined
+{
+    const s = asString(v);
+    if (!s) return undefined;
+    return resolveComponentToken(s);
+}
+
+/**
+ * Map a component bundle's keys to JSX prop names recognized by our
+ * compiler. DESIGN.md spec: backgroundColor / textColor / typography /
+ * rounded / padding / size / height / width.
+ */
+export function componentBundleToProps(bundle: ComponentDefinition): Record<string, string | number>
+{
+    const out: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(bundle.props))
+    {
+        switch (k)
+        {
+            case "backgroundColor": out.fill = v; break;
+            case "textColor":       out.fill = v; break; // also used by Text — same key works for both
+            case "typography":      out.variant = v; break;
+            case "rounded":         out.radius = v; break;
+            case "padding":         out.padX = v; out.padY = v; break;
+            case "size":            out.width = v; out.height = v; break;
+            case "height":          out.height = v; break;
+            case "width":           out.width = v; break;
+            default:                out[k] = v;
+        }
+    }
+    return out;
 }
