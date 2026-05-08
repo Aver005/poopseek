@@ -229,6 +229,9 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                             session.dispatchOps(opsToDispatch);
                             send("ops", { ops: opsToDispatch, sessionId: session.id });
                         }
+
+                        if (bufferJsx)
+                            send("debug-jsx", { jsx: bufferJsx, sessionId: session.id });
                     }
 
                     send("done", { sessionId: session.id, text: handymanResult.assistantText });

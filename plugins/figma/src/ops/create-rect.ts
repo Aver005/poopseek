@@ -1,31 +1,55 @@
-﻿import type { OpHandler } from "./types";
+import type { OpHandler } from "./types";
 import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint, ensureCorrectParent } from "../helpers";
+import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
     type: "create_rect",
     async execute(op, _nodeMap): Promise<number> {
+        const opId = op.id ? String(op.id) : "(no-id)";
         let rect: RectangleNode | null = null;
+
         if (op.id) {
-            const existing = await figma.getNodeByIdAsync(nodeMap.get(String(op.id)) ?? "");
-            if (existing && existing.type === "RECTANGLE") rect = existing as RectangleNode;
+            const cached = nodeMap.get(opId);
+            if (cached) {
+                const existing = await figma.getNodeByIdAsync(cached);
+                if (existing && existing.type === "RECTANGLE")
+                {
+                    rect = existing as RectangleNode;
+                    dlog("create_rect", `"${opId}" → REUSE by id → ${describeNode(rect)}`);
+                    ensureCorrectParent(rect, op.frameId, "create_rect");
+                }
+                else
+                {
+                    dlog("create_rect", `"${opId}" → nodeMap had id="${cached}" but getNodeByIdAsync=${existing ? `type=${existing.type}` : "null"} (stale)`);
+                }
+            }
         }
         if (!rect) {
             const parent = resolveParent(op.frameId);
-            const searchName = String(op.name ?? op.id ?? "");
-            if ("children" in parent && searchName) {
-                const found = parent.children.find(
-                    n => n.name === searchName && n.type === "RECTANGLE",
-                ) as RectangleNode | undefined;
-                if (found) { rect = found; if (op.id) nodeMap.set(String(op.id), rect.id); }
+            if (!op.id) {
+                const searchName = String(op.name ?? "");
+                if ("children" in parent && searchName) {
+                    const found = parent.children.find(
+                        n => n.name === searchName && n.type === "RECTANGLE",
+                    ) as RectangleNode | undefined;
+                    if (found) {
+                        rect = found;
+                        dlog("create_rect", `(no-id) → REUSE by name "${searchName}" under ${describeNode(parent)} → ${describeNode(rect)}`);
+                    }
+                }
             }
             if (!rect) {
                 rect = figma.createRectangle();
                 parent.appendChild(rect);
-                if (op.id) nodeMap.set(String(op.id), rect.id);
+                if (op.id) nodeMap.set(opId, rect.id);
+                dlog("create_rect", `"${opId}" → NEW under ${describeNode(parent)} → ${describeNode(rect)}`);
+                if (parent.type === "PAGE")
+                    derr("create_rect", `⚠ "${opId}" attached to PAGE. frameId="${op.frameId}" did not resolve.`);
             }
         }
+
         rect.resize(Number(op.width ?? 100), Number(op.height ?? 100));
         if (op.fill !== undefined) {
             const paint = await solidPaint(op.fill as ColorInput);

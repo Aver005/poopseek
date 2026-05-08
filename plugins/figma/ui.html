@@ -245,6 +245,9 @@
                   parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: eData.ops } }, '*');
                 }
                 break;
+              case 'debug-jsx':
+                if (eData.jsx) addMsg(eData.jsx, 'debug');
+                break;
               case 'done':
                 anim.stop();
                 thinkEl.className = 'msg assistant';

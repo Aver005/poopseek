@@ -1,31 +1,55 @@
-﻿import type { OpHandler } from "./types";
+import type { OpHandler } from "./types";
 import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, solidPaint, applyLayoutSizing } from "../helpers";
+import { resolveParent, solidPaint, applyLayoutSizing, ensureCorrectParent } from "../helpers";
+import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
     type: "create_line",
     async execute(op, _nodeMap): Promise<number> {
+        const opId = op.id ? String(op.id) : "(no-id)";
         let line: LineNode | null = null;
+
         if (op.id) {
-            const existing = await figma.getNodeByIdAsync(nodeMap.get(String(op.id)) ?? "");
-            if (existing && existing.type === "LINE") line = existing as LineNode;
+            const cached = nodeMap.get(opId);
+            if (cached) {
+                const existing = await figma.getNodeByIdAsync(cached);
+                if (existing && existing.type === "LINE")
+                {
+                    line = existing as LineNode;
+                    dlog("create_line", `"${opId}" → REUSE by id → ${describeNode(line)}`);
+                    ensureCorrectParent(line, op.frameId, "create_line");
+                }
+                else
+                {
+                    dlog("create_line", `"${opId}" → nodeMap had id="${cached}" but getNodeByIdAsync=${existing ? `type=${existing.type}` : "null"} (stale)`);
+                }
+            }
         }
         if (!line) {
             const parent = resolveParent(op.frameId);
-            const searchName = String(op.name ?? op.id ?? "");
-            if ("children" in parent && searchName) {
-                const found = parent.children.find(
-                    n => n.name === searchName && n.type === "LINE",
-                ) as LineNode | undefined;
-                if (found) { line = found; if (op.id) nodeMap.set(String(op.id), line.id); }
+            if (!op.id) {
+                const searchName = String(op.name ?? "");
+                if ("children" in parent && searchName) {
+                    const found = parent.children.find(
+                        n => n.name === searchName && n.type === "LINE",
+                    ) as LineNode | undefined;
+                    if (found) {
+                        line = found;
+                        dlog("create_line", `(no-id) → REUSE by name "${searchName}" under ${describeNode(parent)} → ${describeNode(line)}`);
+                    }
+                }
             }
             if (!line) {
                 line = figma.createLine();
                 parent.appendChild(line);
-                if (op.id) nodeMap.set(String(op.id), line.id);
+                if (op.id) nodeMap.set(opId, line.id);
+                dlog("create_line", `"${opId}" → NEW under ${describeNode(parent)} → ${describeNode(line)}`);
+                if (parent.type === "PAGE")
+                    derr("create_line", `⚠ "${opId}" attached to PAGE. frameId="${op.frameId}" did not resolve.`);
             }
         }
+
         line.resize(Number(op.length ?? 100), 0);
         if (op.rotation !== undefined) line.rotation = Number(op.rotation);
         const linePaint = await solidPaint((op.color as ColorInput | undefined) ?? "#E5E5E5");

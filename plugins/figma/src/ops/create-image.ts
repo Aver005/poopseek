@@ -1,11 +1,13 @@
 import type { OpHandler } from "./types";
 import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint, ensureCorrectParent } from "../helpers";
+import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
     type: "create_image",
     async execute(op, _nodeMap): Promise<number> {
+        const opId = op.id ? String(op.id) : "(no-id)";
         const src = typeof op.src === "string" ? op.src.trim() : "";
         const w = Number(op.width ?? 160);
         const h = Number(op.height ?? 100);
@@ -28,7 +30,8 @@ export const handler: OpHandler = {
                     node.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: "FILL" }];
                 }
 
-                resolveParent(op.frameId).appendChild(node);
+                const parent = resolveParent(op.frameId);
+                parent.appendChild(node);
                 node.resize(w, h);
                 node.name = String(op.name ?? "Image");
                 if (op.cornerRadius !== undefined) node.cornerRadius = Number(op.cornerRadius);
@@ -36,24 +39,39 @@ export const handler: OpHandler = {
                 applyLayoutSizing(node, op);
                 if (op.x !== undefined) node.x = Number(op.x);
                 if (op.y !== undefined) node.y = Number(op.y);
-                if (op.id) nodeMap.set(String(op.id), node.id);
+                if (op.id) nodeMap.set(opId, node.id);
+                dlog("create_image", `"${opId}" → NEW (src) under ${describeNode(parent)} → ${describeNode(node)}`);
+                if (parent.type === "PAGE")
+                    derr("create_image", `⚠ "${opId}" attached to PAGE. frameId="${op.frameId}" did not resolve.`);
                 return 1;
             }
             catch (error)
             {
-                console.error(`createImageAsync failed for ${src}:`, error);
+                derr("create_image", `❌ src="${src}" failed: ${error instanceof Error ? error.message : String(error)} — falling back to placeholder rect`);
             }
         }
 
         let rect: RectangleNode | null = null;
         if (op.id) {
-            const existing = await figma.getNodeByIdAsync(nodeMap.get(String(op.id)) ?? "");
-            if (existing && existing.type === "RECTANGLE") rect = existing as RectangleNode;
+            const cached = nodeMap.get(opId);
+            if (cached) {
+                const existing = await figma.getNodeByIdAsync(cached);
+                if (existing && existing.type === "RECTANGLE")
+                {
+                    rect = existing as RectangleNode;
+                    dlog("create_image", `"${opId}" → REUSE placeholder by id → ${describeNode(rect)}`);
+                    ensureCorrectParent(rect, op.frameId, "create_image");
+                }
+            }
         }
         if (!rect) {
+            const parent = resolveParent(op.frameId);
             rect = figma.createRectangle();
-            resolveParent(op.frameId).appendChild(rect);
-            if (op.id) nodeMap.set(String(op.id), rect.id);
+            parent.appendChild(rect);
+            if (op.id) nodeMap.set(opId, rect.id);
+            dlog("create_image", `"${opId}" → NEW placeholder under ${describeNode(parent)} → ${describeNode(rect)}`);
+            if (parent.type === "PAGE")
+                derr("create_image", `⚠ "${opId}" placeholder attached to PAGE. frameId="${op.frameId}" did not resolve.`);
         }
         rect.resize(w, h);
         rect.name = String(op.name ?? "Image");

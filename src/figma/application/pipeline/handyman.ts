@@ -47,7 +47,9 @@ export async function runHandymanEdit(
     const raw = chunks.join("");
     const { removedKeys, diffJsx } = parseResponse(raw);
 
-    applyDiff(buffer, diffJsx, removedKeys);
+    const result = applyDiff(buffer, diffJsx, removedKeys);
+    if (result.error)
+        return { ok: false, error: result.error };
 
     return { ok: true, assistantText: raw };
 }

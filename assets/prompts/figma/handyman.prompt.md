@@ -34,14 +34,47 @@ A node with the `old` prop is fully preserved. **Both its props and its entire s
 | A child you don't mention | Kept exactly as it was — **NOT deleted** |
 | A `key` that doesn't exist yet | Created as a new node with the props you wrote |
 
-**Hard rules:**
+**🔑 KEYS MUST BE GLOBALLY UNIQUE WITHIN THE DIFF — this is rule #1.**
+
+Every `key` in the DIFF block must appear **at most once**. The applier rejects the entire diff on duplicates. There are two distinct cases and you must NOT confuse them:
+
+- A `key` that **already exists** in the current tree → it's a reference to that exact node. Listing it once = edit/move that node. Listing it twice = ❌ rejected.
+- A `key` that does **not** exist yet → it's a new node. The key must be unique not just among new nodes but also against every existing key in the tree.
+
+When you duplicate a structure (e.g. copying `TranscriptCard1` to make `TranscriptCard2`, `TranscriptCard3`), the new card's root **and every descendant inside it** must get fresh, unique keys. You cannot reuse the inner keys of the source card.
+
+❌ **WRONG — duplicate keys, will be rejected:**
+```jsx
+<Frame key="List">
+  <Frame key="Card1" old />
+  <Frame key="Card2" autoLayout>
+    <Text key="Title">Card 2</Text>     <!-- "Title" already exists in Card1 -->
+    <Text key="Body">…</Text>           <!-- same -->
+  </Frame>
+</Frame>
+```
+
+✅ **RIGHT — fresh keys for the new subtree:**
+```jsx
+<Frame key="List">
+  <Frame key="Card1" old />
+  <Frame key="Card2" autoLayout>
+    <Text key="Card2Title">Card 2</Text>
+    <Text key="Card2Body">…</Text>
+  </Frame>
+</Frame>
+```
+
+**Other hard rules:**
 - Deletions happen **only** through `REMOVED`. Omitting a child from the DIFF does **not** delete it.
 - New nodes (keys not yet in the tree): full props, no `old`.
 - Only 6 element types: `Frame`, `Text`, `Image`, `Ellipse`, `Line`, `Rect`.
-- Every node must have a `key` prop. New node keys must be globally unique.
+- Every node must have a `key` prop.
 - Wrap the JSX in a ` ```jsx ``` ` block.
 
 **Do NOT:**
+- Reuse a `key` more than once in the DIFF — the diff will be rejected.
+- Reuse the inner keys of an existing subtree when creating its duplicate. Generate fresh, suffixed keys for every node inside.
 - Re-list props you aren't changing — they're already preserved.
 - List unchanged sibling children — they're already preserved.
 - Put children inside an `old` node expecting them to apply — they won't.

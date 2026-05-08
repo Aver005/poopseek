@@ -1,5 +1,6 @@
 ﻿import type { FigmaOp, RGBA, ColorInput, VariableColorValue, EnsureColorVariablesOp, EnsureThemeVariablesOp, FigmaSnapshotNode, FigmaPluginSnapshot } from "./types";
 import { nodeMap, collectionCache, colorVariableCache } from "./cache";
+import { dlog, derr, describeNode } from "./debug";
 
 // ── ID mapping ─────────────────────────────────────────────────
 
@@ -397,21 +398,40 @@ export async function solidPaint(input: ColorInput): Promise<SolidPaint | null>
 
 export function resolveParent(frameId: unknown): FrameNode | PageNode
 {
-    if (typeof frameId === "string") {
-        const figmaId = nodeMap.get(frameId);
-        if (figmaId) {
-            const node = figma.getNodeById(figmaId);
-            if (node && node.type === "FRAME") return node as FrameNode;
-        }
-        // Fallback: search top-level page children by name (handles stale/empty nodeMap)
-        const byName = figma.currentPage.children.find(
-            n => n.name === frameId && n.type === "FRAME",
-        ) as FrameNode | undefined;
-        if (byName) {
-            nodeMap.set(frameId, byName.id);
-            return byName;
-        }
+    if (typeof frameId !== "string")
+    {
+        dlog("resolveParent", `frameId not a string (=${String(frameId)}), → currentPage`);
+        return figma.currentPage;
     }
+
+    const figmaId = nodeMap.get(frameId);
+    if (figmaId)
+    {
+        const node = figma.getNodeById(figmaId);
+        if (node && node.type === "FRAME")
+        {
+            dlog("resolveParent", `"${frameId}" → nodeMap hit → ${describeNode(node)}`);
+            return node as FrameNode;
+        }
+        dlog("resolveParent", `"${frameId}" → nodeMap had id="${figmaId}" but getNodeById=${node ? `type=${node.type}` : "null"} (stale)`);
+    }
+    else
+    {
+        dlog("resolveParent", `"${frameId}" → no nodeMap entry`);
+    }
+
+    // Fallback: search top-level page children by name (handles stale/empty nodeMap)
+    const byName = figma.currentPage.children.find(
+        n => n.name === frameId && n.type === "FRAME",
+    ) as FrameNode | undefined;
+    if (byName)
+    {
+        nodeMap.set(frameId, byName.id);
+        dlog("resolveParent", `"${frameId}" → page-child name match → ${describeNode(byName)}`);
+        return byName;
+    }
+
+    derr("resolveParent", `❌ "${frameId}" UNRESOLVED, falling back to currentPage. Children of new node will be parented to the page (NOT auto-layout) and layoutSizing ops will fail.`);
     return figma.currentPage;
 }
 
@@ -428,17 +448,82 @@ export function angleToGradientTransform(angleDeg: number): [[number, number, nu
 
 export function resolveNode(nodeId: unknown, map?: Map<string, string>): BaseNode | null
 {
-    if (typeof nodeId !== "string") return null;
+    if (typeof nodeId !== "string")
+    {
+        dlog("resolveNode", `nodeId not a string (=${String(nodeId)}), → null`);
+        return null;
+    }
     const effectiveMap = map ?? nodeMap;
     const figmaId = effectiveMap.get(nodeId);
-    return figmaId ? figma.getNodeById(figmaId) : null;
+    if (!figmaId)
+    {
+        dlog("resolveNode", `"${nodeId}" → no nodeMap entry, → null`);
+        return null;
+    }
+    const node = figma.getNodeById(figmaId);
+    if (!node)
+    {
+        dlog("resolveNode", `"${nodeId}" → nodeMap had id="${figmaId}" but getNodeById=null (stale)`);
+        return null;
+    }
+    return node;
+}
+
+// When a create_* handler reused a node by nodeMap id, that node's actual
+// figma parent may not match where this op wants it (e.g. orphan from a
+// prior batch on the page root). Re-parent if needed so the rest of the
+// op's setup (layout sizing, etc.) works against the right ancestor.
+export function ensureCorrectParent(node: SceneNode, frameId: unknown, tag: string): void
+{
+    const desired = resolveParent(frameId);
+    if (node.parent !== desired)
+    {
+        const oldParent = node.parent ? `${node.parent.type}#${node.parent.id}/"${(node.parent as BaseNode & { name?: string }).name ?? "?"}"` : "null";
+        const newParent = `${desired.type}#${desired.id}/"${(desired as BaseNode & { name?: string }).name ?? "?"}"`;
+        try
+        {
+            (desired as FrameNode | PageNode).appendChild(node);
+            derr(tag, `re-parented ${describeNode(node)} from ${oldParent} → ${newParent} (REUSE found node at wrong parent)`);
+        }
+        catch (err)
+        {
+            derr(tag, `❌ failed to re-parent ${describeNode(node)} (was at ${oldParent}, wanted ${newParent}): ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
 }
 
 export function applyLayoutSizing(node: SceneNode, op: FigmaOp): void
 {
-    if (op.fillParent && "layoutSizingHorizontal" in node)
+    let canFill = true;
+    if (op.fillParent || op.fillParentHeight)
+    {
+        const parent = "parent" in node ? (node as SceneNode & { parent: BaseNode | null }).parent : null;
+        const parentLM = parent && "layoutMode" in parent
+            ? (parent as BaseNode & { layoutMode: string }).layoutMode
+            : "n/a";
+        canFill = parentLM === "HORIZONTAL" || parentLM === "VERTICAL";
+
+        if (!canFill)
+        {
+            // Skip the FILL setting instead of throwing. Throwing on a single
+            // node cascades into Figma reporting the whole op as failed and
+            // the user sees a wall of failures. We log loudly and apply
+            // best-effort (default FIXED), so subsequent ops in the same
+            // subtree can still create their nodes.
+            derr("applyLayoutSizing",
+                `❌ skipping FILL on ${describeNode(node)} — parent ${describeNode(parent)} is NOT auto-layout (layoutMode=${parentLM}). Node will stay FIXED.`,
+                `op.fillParent=${op.fillParent ?? false} op.fillParentHeight=${op.fillParentHeight ?? false}`);
+        }
+        else
+        {
+            dlog("applyLayoutSizing",
+                `setting FILL on ${describeNode(node)} (parent layoutMode=${parentLM}) fillParent=${op.fillParent ?? false} fillParentHeight=${op.fillParentHeight ?? false}`);
+        }
+    }
+
+    if (canFill && op.fillParent && "layoutSizingHorizontal" in node)
         (node as SceneNode & { layoutSizingHorizontal: "FIXED" | "HUG" | "FILL" }).layoutSizingHorizontal = "FILL";
-    if (op.fillParentHeight && "layoutSizingVertical" in node)
+    if (canFill && op.fillParentHeight && "layoutSizingVertical" in node)
         (node as SceneNode & { layoutSizingVertical: "FIXED" | "HUG" | "FILL" }).layoutSizingVertical = "FILL";
     if (op.ignoreAutoLayout && "layoutPositioning" in node)
         (node as SceneNode & { layoutPositioning: "AUTO" | "ABSOLUTE" }).layoutPositioning = "ABSOLUTE";
