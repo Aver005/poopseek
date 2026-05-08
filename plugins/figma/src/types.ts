@@ -96,3 +96,17 @@ export interface EnsureTokenVariablesOp extends FigmaOp
         description?: string;
     }>;
 }
+
+export interface EnsureTextStylesOp extends FigmaOp
+{
+    type: "ensure_text_styles";
+    styles: Array<{
+        key: string;
+        name: string;
+        fontFamily?: string;
+        fontSize?: number;
+        fontWeight?: string;
+        lineHeight?: number;
+        letterSpacing?: number;
+    }>;
+}

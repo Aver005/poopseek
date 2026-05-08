@@ -71,6 +71,24 @@ export interface EnsureTokenVariablesOp
     }>;
 }
 
+// Op emitted alongside `ensure_token_variables` to create/update figma
+// TEXT styles for each typography token. Plugin then binds them onto
+// text nodes via `text.textStyleId`, so changing the style in Figma
+// propagates to every `<Text variant=…>` that referenced it.
+export interface EnsureTextStylesOp
+{
+    type: "ensure_text_styles";
+    styles: Array<{
+        key: string;          // "h1", "body", etc — matches the variant name
+        name: string;         // figma TextStyle name (we use the same key)
+        fontFamily?: string;
+        fontSize?: number;
+        fontWeight?: string;  // human keyword: "bold", "semibold", …
+        lineHeight?: number;  // px
+        letterSpacing?: number;
+    }>;
+}
+
 // Backwards-compat (kept for existing call sites — emits a colors-only op).
 export interface EnsureThemeVariablesOp
 {
@@ -310,6 +328,28 @@ export function createEnsureTokenVariablesOp(): EnsureTokenVariablesOp
                 description: t.description,
             })),
     };
+}
+
+/** Op the plugin uses to ensure all typography text-styles exist. */
+export function createEnsureTextStylesOp(): EnsureTextStylesOp
+{
+    const styles = activeTheme.tokens
+        .filter((t): t is ThemeToken & { kind: "typography" } => t.kind === "typography")
+        .map((t) =>
+        {
+            const v = (typeof t.value === "object" ? t.value : {}) as TypographyValue;
+            const lh = typeof v.lineHeight === "number" ? v.lineHeight : undefined;
+            return {
+                key: t.key,
+                name: t.key,
+                fontFamily: v.fontFamily,
+                fontSize: v.fontSize,
+                fontWeight: v.fontWeight,
+                lineHeight: lh,
+                letterSpacing: v.letterSpacing,
+            };
+        });
+    return { type: "ensure_text_styles", styles };
 }
 
 // Legacy shim — colors-only op. Kept so older op streams keep working.

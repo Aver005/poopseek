@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent, findTextStyleByName } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -77,6 +77,33 @@ export const handler: OpHandler = {
         if (op.width !== undefined) {
             text.textAutoResize = "HEIGHT";
             text.resize(Number(op.width), text.height || 24);
+        }
+
+        // Bind to a typography text-style if one was emitted by the compiler.
+        // This OVERWRITES the per-prop fontSize/fontWeight/lineHeight set
+        // above — we kept those as defense-in-depth in case the style
+        // hasn't materialized yet.
+        const textStyleName = typeof op.textStyleName === "string" ? op.textStyleName : undefined;
+        if (textStyleName)
+        {
+            const ts = await findTextStyleByName(textStyleName);
+            if (ts)
+            {
+                try
+                {
+                    if (ts.fontName.family !== "Inter" || ts.fontName.style !== style)
+                        await figma.loadFontAsync(ts.fontName);
+                    await text.setTextStyleIdAsync(ts.id);
+                }
+                catch (err)
+                {
+                    derr("create_text", `setTextStyleIdAsync("${textStyleName}") failed: ${err instanceof Error ? err.message : String(err)} — falling back to inline props`);
+                }
+            }
+            else
+            {
+                dlog("create_text", `textStyleName="${textStyleName}" not found — using inline font props`);
+            }
         }
         if (typeof op.color === "string") {
             const varName = typeof op.colorVariableName === "string" ? op.colorVariableName : undefined;

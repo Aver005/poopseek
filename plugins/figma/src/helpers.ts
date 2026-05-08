@@ -1,5 +1,5 @@
-﻿import type { FigmaOp, RGBA, ColorInput, VariableColorValue, EnsureColorVariablesOp, EnsureThemeVariablesOp, EnsureTokenVariablesOp, FigmaSnapshotNode, FigmaPluginSnapshot } from "./types";
-import { nodeMap, collectionCache, colorVariableCache, numberVariableCache, themeCollectionRef } from "./cache";
+﻿import type { FigmaOp, RGBA, ColorInput, VariableColorValue, EnsureColorVariablesOp, EnsureThemeVariablesOp, EnsureTokenVariablesOp, EnsureTextStylesOp, FigmaSnapshotNode, FigmaPluginSnapshot } from "./types";
+import { nodeMap, collectionCache, colorVariableCache, numberVariableCache, themeCollectionRef, textStyleCache } from "./cache";
 import { dlog, derr, describeNode } from "./debug";
 
 // ── ID mapping ─────────────────────────────────────────────────
@@ -136,11 +136,30 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
         const fillTok = getPrimaryColorTokenKey(tn.fills);
         if (fillTok) parts.push(`fill="${fillTok}"`);
         else { const fc = getPrimaryColor(tn.fills); if (fc) parts.push(`fill="${fc}"`); }
-        if (tn.fontSize !== figma.mixed) parts.push(`fontSize={${tn.fontSize as number}}`);
-        if (tn.fontName !== figma.mixed) {
-            const fw = fontWeightFromStyle((tn.fontName as FontName).style);
-            if (fw !== "regular") parts.push(`fontWeight="${fw}"`);
+
+        // If this text node has a typography style bound, emit `variant="…"`
+        // and skip raw fontSize/fontWeight (the style covers them).
+        let variantEmitted = false;
+        const styleId = (tn as TextNode & { textStyleId?: string | typeof figma.mixed }).textStyleId;
+        if (typeof styleId === "string" && styleId !== "")
+        {
+            const style = figma.getStyleById(styleId);
+            if (style && style.type === "TEXT" && style.name)
+            {
+                parts.push(`variant="${style.name}"`);
+                variantEmitted = true;
+            }
         }
+
+        if (!variantEmitted)
+        {
+            if (tn.fontSize !== figma.mixed) parts.push(`fontSize={${tn.fontSize as number}}`);
+            if (tn.fontName !== figma.mixed) {
+                const fw = fontWeightFromStyle((tn.fontName as FontName).style);
+                if (fw !== "regular") parts.push(`fontWeight="${fw}"`);
+            }
+        }
+
         const taMap: Record<string, string> = { CENTER: "center", RIGHT: "right" };
         const ta = taMap[tn.textAlignHorizontal];
         if (ta) parts.push(`alignX="${ta}"`);
@@ -446,6 +465,69 @@ export async function ensureThemeVariables(op: EnsureThemeVariablesOp): Promise<
         if (color) variable.setValueForMode(modeId, color);
         colorVariableCache.set(`${op.collection}::${token.variableName}`, variable);
     }
+}
+
+// ─── Typography text-styles ────────────────────────────────────
+
+const FONT_WEIGHT_MAP: Record<string, string> = {
+    bold: "Bold", semibold: "Semi Bold", "semi bold": "Semi Bold", "semi-bold": "Semi Bold",
+    medium: "Medium", regular: "Regular", normal: "Regular", light: "Light",
+    "700": "Bold", "600": "Semi Bold", "500": "Medium", "400": "Regular", "300": "Light",
+};
+
+function normalizeFontStyle(weight: string | undefined): string
+{
+    if (!weight) return "Regular";
+    return FONT_WEIGHT_MAP[String(weight).toLowerCase().trim()] ?? "Regular";
+}
+
+/**
+ * Create or update a figma TextStyle for each typography token. The plugin
+ * caches the resulting TextStyle keyed by the token name; create_text
+ * consumes that cache to bind nodes via `text.textStyleId`.
+ */
+export async function ensureTextStyles(op: EnsureTextStylesOp): Promise<void>
+{
+    const localStyles = await figma.getLocalTextStylesAsync();
+    const byName = new Map<string, TextStyle>(localStyles.map((s) => [s.name, s] as const));
+
+    for (const s of op.styles)
+    {
+        const family = s.fontFamily ?? "Inter";
+        const style = normalizeFontStyle(s.fontWeight);
+        try { await figma.loadFontAsync({ family, style }); }
+        catch (err)
+        {
+            derr("ensure_text_styles", `loadFontAsync({${family}, ${style}}) failed for "${s.name}": ${err instanceof Error ? err.message : String(err)} — skipping`);
+            continue;
+        }
+
+        let ts = byName.get(s.name);
+        if (!ts)
+        {
+            ts = figma.createTextStyle();
+            ts.name = s.name;
+            byName.set(s.name, ts);
+        }
+        ts.fontName = { family, style };
+        if (s.fontSize !== undefined) ts.fontSize = s.fontSize;
+        if (s.lineHeight !== undefined) ts.lineHeight = { value: s.lineHeight, unit: "PIXELS" };
+        if (s.letterSpacing !== undefined) ts.letterSpacing = { value: s.letterSpacing, unit: "PIXELS" };
+        textStyleCache.set(s.name, ts);
+    }
+
+    dlog("ensure_text_styles", `synced ${op.styles.length} text styles: ${op.styles.map(s => s.name).join(", ")}`);
+}
+
+/** Look up a previously-ensured TextStyle by its name. */
+export async function findTextStyleByName(name: string): Promise<TextStyle | null>
+{
+    const cached = textStyleCache.get(name);
+    if (cached) return cached;
+    const styles = await figma.getLocalTextStylesAsync();
+    const found = styles.find((s) => s.name === name);
+    if (found) textStyleCache.set(name, found);
+    return found ?? null;
 }
 
 /**

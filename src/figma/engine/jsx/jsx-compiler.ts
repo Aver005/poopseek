@@ -1,4 +1,4 @@
-import { createEnsureTokenVariablesOp } from "../theme/theme-state";
+import { createEnsureTokenVariablesOp, createEnsureTextStylesOp } from "../theme/theme-state";
 import {
     resolveColor, resolveNumber, colorFields, numberFields,
     resolveVariant, resolveAs, componentBundleToProps,
@@ -334,6 +334,7 @@ function compileText(node: JsxNode, state: State): void
 
     // Expand variant="h1" → fontSize/fontWeight/lineHeight/letterSpacing
     // defaults. Explicit props on the node still win.
+    const variantName = str(node.props.variant);
     const variant = resolveVariant(node.props.variant);
     if (variant)
     {
@@ -347,6 +348,10 @@ function compileText(node: JsxNode, state: State): void
     const p = node.props;
     const id = str(p.id) ?? uid(state, "txt");
     const parent = top(state);
+    // Pass-through hint to the plugin: bind the matching text-style by name.
+    // Plugin uses it as primary signal; the expanded font props above are
+    // defense-in-depth if the style hasn't materialized yet.
+    const textStyleName = variant && variantName ? variantName : undefined;
 
     const parentIsAL = parent?.isAutoLayout ?? false;
     const widthSz  = resolveFill(resolveSize(p.width  ?? p.w), parentIsAL, parent?.width  ?? 0);
@@ -373,6 +378,7 @@ function compileText(node: JsxNode, state: State): void
         content,
         fontSize:   num(p.fontSize ?? p.size)          ?? 16,
         fontWeight: str(p.fontWeight ?? p.weight)      ?? "Regular",
+        ...(textStyleName ? { textStyleName } : {}),
         ...colorFields("color", colorRes),
         ...(width  !== undefined ? { width }  : {}),
         ...(height !== undefined ? { height } : {}),
@@ -585,6 +591,7 @@ export function compileJsx(nodes: JsxNode[], parentFrameId?: string): FigmaOp[]
     const state: State = {
         ops: [
             createEnsureTokenVariablesOp() as unknown as FigmaOp,
+            createEnsureTextStylesOp() as unknown as FigmaOp,
         ],
         counter: 0,
         stack: parentFrameId
