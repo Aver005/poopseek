@@ -1,6 +1,8 @@
 import type { OpHandler } from "./types";
-import { resolveNode } from "../helpers";
+import { resolveNode, bindNumberVariable } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
+
+function vstr(v: unknown): string | undefined { return typeof v === "string" ? v : undefined; }
 
 export const handler: OpHandler = {
     type: "set_auto_layout",
@@ -70,18 +72,38 @@ export const handler: OpHandler = {
         }
 
         if (op.gap !== undefined) frame.itemSpacing = Number(op.gap);
+        await bindNumberVariable(frame, "itemSpacing", vstr(op.gapVariableName), "set_auto_layout");
+
         if (op.paddingH !== undefined) {
             frame.paddingLeft = Number(op.paddingH);
             frame.paddingRight = Number(op.paddingH);
+            const v = vstr(op.paddingHVariableName);
+            await bindNumberVariable(frame, "paddingLeft",  v, "set_auto_layout");
+            await bindNumberVariable(frame, "paddingRight", v, "set_auto_layout");
         }
         if (op.paddingV !== undefined) {
             frame.paddingTop = Number(op.paddingV);
             frame.paddingBottom = Number(op.paddingV);
+            const v = vstr(op.paddingVVariableName);
+            await bindNumberVariable(frame, "paddingTop",    v, "set_auto_layout");
+            await bindNumberVariable(frame, "paddingBottom", v, "set_auto_layout");
         }
-        if (op.paddingLeft !== undefined) frame.paddingLeft = Number(op.paddingLeft);
-        if (op.paddingRight !== undefined) frame.paddingRight = Number(op.paddingRight);
-        if (op.paddingTop !== undefined) frame.paddingTop = Number(op.paddingTop);
-        if (op.paddingBottom !== undefined) frame.paddingBottom = Number(op.paddingBottom);
+        if (op.paddingLeft !== undefined) {
+            frame.paddingLeft = Number(op.paddingLeft);
+            await bindNumberVariable(frame, "paddingLeft", vstr(op.paddingLeftVariableName), "set_auto_layout");
+        }
+        if (op.paddingRight !== undefined) {
+            frame.paddingRight = Number(op.paddingRight);
+            await bindNumberVariable(frame, "paddingRight", vstr(op.paddingRightVariableName), "set_auto_layout");
+        }
+        if (op.paddingTop !== undefined) {
+            frame.paddingTop = Number(op.paddingTop);
+            await bindNumberVariable(frame, "paddingTop", vstr(op.paddingTopVariableName), "set_auto_layout");
+        }
+        if (op.paddingBottom !== undefined) {
+            frame.paddingBottom = Number(op.paddingBottom);
+            await bindNumberVariable(frame, "paddingBottom", vstr(op.paddingBottomVariableName), "set_auto_layout");
+        }
         if (op.align) frame.primaryAxisAlignItems = String(op.align) as "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
         if (op.counterAlign) frame.counterAxisAlignItems = String(op.counterAlign) as "MIN" | "MAX" | "CENTER" | "BASELINE";
         if (op.wrap !== undefined) frame.layoutWrap = op.wrap ? "WRAP" : "NO_WRAP";

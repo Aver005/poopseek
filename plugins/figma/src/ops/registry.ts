@@ -4,6 +4,7 @@ import { dlog, derr, describeOp, describeNode, setCurrentOpTag } from "../debug"
 
 import { handler as ensureColorVariables } from "./ensure-color-variables";
 import { handler as ensureThemeVariables } from "./ensure-theme-variables";
+import { handler as ensureTokenVariables } from "./ensure-token-variables";
 import { handler as createFrame } from "./create-frame";
 import { handler as createRect } from "./create-rect";
 import { handler as createEllipse } from "./create-ellipse";
@@ -33,6 +34,7 @@ import { handler as clearFrameChildren } from "./clear-frame-children";
 const handlers: OpHandler[] = [
     ensureColorVariables,
     ensureThemeVariables,
+    ensureTokenVariables,
     createFrame,
     createRect,
     createEllipse,

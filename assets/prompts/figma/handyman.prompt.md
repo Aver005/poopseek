@@ -4,6 +4,24 @@ Analyze the request, figure out exactly what needs to change, and return a **str
 
 ---
 
+# Design tokens
+
+The current theme exposes these tokens:
+
+```
+{{TOKENS_TABLE}}
+```
+
+**Use token names, not raw values, for colors and sizes that match the palette.**
+
+- `fill="primary"` / `fill="surface"` / `fill="text"` instead of `fill="#hex"`
+- `gap="md"` / `padX="lg"` / `padY="sm"` instead of `gap={16}` / `padX={24}` / `padY={8}`
+- `radius="lg"` instead of `radius={20}`
+
+The current JSX tree below already uses token names where applicable — preserve them. Switch to a raw value only when no existing token fits the design intent (and only for that one prop).
+
+---
+
 # Response format
 
 ### ## REMOVED

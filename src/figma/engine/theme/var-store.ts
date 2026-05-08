@@ -1,3 +1,5 @@
+import type { ThemeToken } from "./theme-state";
+
 export interface VarEntry
 {
     name: string;
@@ -38,25 +40,46 @@ export class VariableStore
     }
 
     /**
-     * Extract hex-color entries as theme tokens for the Figma compiler.
-     * Strips "color/" and "theme/" prefixes to get the token key.
+     * Group entries into typed theme tokens. Entries are dispatched into
+     * `color`/`spacing`/`radius` by their `<kind>/<key>` prefix.
+     *
+     * Designer outputs entries like `color/primary`, `spacing/md`, `radius/lg`.
+     * Anything that doesn't match a known kind prefix is dropped.
      */
-    extractThemeTokens(): Array<{ token: string; hex: string; description?: string }>
+    extractTokens(): ThemeToken[]
     {
-        const result: Array<{ token: string; hex: string; description?: string }> = [];
+        const out: ThemeToken[] = [];
         for (const entry of this.store.values())
         {
-            const val = String(entry.value);
-            if (!HEX_RE.test(val)) continue;
+            const slash = entry.name.indexOf("/");
+            if (slash <= 0) continue;
+            const prefix = entry.name.slice(0, slash);
+            const key = entry.name.slice(slash + 1);
+            if (!key) continue;
 
-            const n = entry.name;
-            const token = n.startsWith("color/") ? n.slice(6)
-                : n.startsWith("theme/") ? n.slice(6)
-                : n;
+            const value = String(entry.value);
 
-            result.push({ token, hex: val, description: entry.description });
+            if (prefix === "color")
+            {
+                if (!HEX_RE.test(value)) continue;
+                out.push({ kind: "color", key, value, description: entry.description });
+            }
+            else if (prefix === "spacing" || prefix === "radius")
+            {
+                const n = Number(value);
+                if (!Number.isFinite(n)) continue;
+                out.push({ kind: prefix, key, value: String(n), description: entry.description });
+            }
         }
-        return result;
+        return out;
+    }
+
+    /** @deprecated Use extractTokens(). Returns colors-only for backward compat. */
+    extractThemeTokens(): Array<{ token: string; hex: string; description?: string }>
+    {
+        return this.extractTokens()
+            .filter(t => t.kind === "color")
+            .map(t => ({ token: t.key, hex: t.value, description: t.description }));
     }
 
     clear(): void

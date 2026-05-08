@@ -1,18 +1,49 @@
 import type { VariableColorValue } from "./design-tokens";
 
-export interface ThemeTokenDefinition
+// ─── Token model ────────────────────────────────────────────────
+//
+// Three token kinds. Each gets a figma variable in the active theme
+// collection. Colors → COLOR variables; spacing/radius → FLOAT variables.
+// Keys are short (sm/md/lg/primary/...) and used directly in JSX:
+//   fill="primary"  gap="md"  radius="lg"
+//
+// Resolution is bare-name → token lookup. Raw hex (`#hex`) and raw
+// numbers (`{n}`) skip the registry — they are one-off literals.
+
+export type TokenKind = "color" | "spacing" | "radius";
+
+export interface ThemeToken
 {
-    token: string;
-    hex: string;
+    kind: TokenKind;
+    key: string;
+    /** hex for color, number-as-string for spacing/radius (kept as string for serialization parity) */
+    value: string;
     description?: string;
 }
 
 export interface ThemeDefinition
 {
     name?: string;
-    tokens: ThemeTokenDefinition[];
+    tokens: ThemeToken[];
 }
 
+// Op contract for the plugin. One op for all three kinds.
+export interface EnsureTokenVariablesOp
+{
+    type: "ensure_token_variables";
+    collection: string;
+    mode: string;
+    themeName: string;
+    tokens: Array<{
+        kind: TokenKind;
+        key: string;
+        variableName: string;
+        value: string; // hex or numeric string
+        description?: string;
+    }>;
+}
+
+// Backwards-compat (kept for existing call sites — emits a colors-only op).
 export interface EnsureThemeVariablesOp
 {
     type: "ensure_theme_variables";
@@ -30,31 +61,27 @@ export interface EnsureThemeVariablesOp
 const THEME_COLLECTION = "PoopSeek Theme";
 const THEME_MODE = "Base";
 
-const DEFAULT_THEME_TOKENS: ThemeTokenDefinition[] = [
-    { token: "canvas", hex: "#F8FAFC", description: "App background" },
-    { token: "surface", hex: "#FFFFFF", description: "Cards and sheets" },
-    { token: "surface-soft", hex: "#F1F5F9", description: "Muted surfaces" },
-    { token: "brand", hex: "#10B981", description: "Primary brand color" },
-    { token: "primary", hex: "#10B981", description: "Alias for brand" },
-    { token: "brand-soft", hex: "#ECFDF5", description: "Soft brand background" },
-    { token: "accent", hex: "#7E22CE", description: "Secondary accent color" },
-    { token: "accent-soft", hex: "#F3E8FF", description: "Soft accent background" },
-    { token: "text", hex: "#0F172A", description: "Primary text" },
-    { token: "text-secondary", hex: "#475569", description: "Secondary text (alias for text-muted)" },
-    { token: "text-muted", hex: "#475569", description: "Secondary text" },
-    { token: "text-subtle", hex: "#94A3B8", description: "Tertiary text" },
-    { token: "text-on-brand", hex: "#FFFFFF", description: "Text on brand fill" },
-    { token: "border", hex: "#E2E8F0", description: "Default border" },
-    { token: "border-strong", hex: "#CBD5E1", description: "Strong border" },
-    { token: "success", hex: "#16A34A", description: "Success state" },
-    { token: "warning", hex: "#D97706", description: "Warning state" },
-    { token: "danger", hex: "#DC2626", description: "Danger state" },
+// Minimal fallback ONLY if the designer returned nothing usable. This is
+// a safety net, not the default — `setActiveTheme` no longer merges these
+// in on top of LLM output.
+const FALLBACK_TOKENS: ThemeToken[] = [
+    { kind: "color",   key: "background",     value: "#F8FAFC", description: "Page background" },
+    { kind: "color",   key: "surface",        value: "#FFFFFF", description: "Cards / panels" },
+    { kind: "color",   key: "primary",        value: "#2563EB", description: "Primary brand / action" },
+    { kind: "color",   key: "text",           value: "#0F172A", description: "Primary text" },
+    { kind: "color",   key: "text-secondary", value: "#64748B", description: "Muted text" },
+    { kind: "color",   key: "border",         value: "#E2E8F0", description: "Border / divider" },
+    { kind: "spacing", key: "xs",             value: "4" },
+    { kind: "spacing", key: "sm",             value: "8" },
+    { kind: "spacing", key: "md",             value: "16" },
+    { kind: "spacing", key: "lg",             value: "24" },
+    { kind: "spacing", key: "xl",             value: "32" },
+    { kind: "radius",  key: "sm",             value: "4" },
+    { kind: "radius",  key: "md",             value: "8" },
+    { kind: "radius",  key: "lg",             value: "16" },
 ];
 
-let activeTheme: ThemeDefinition = {
-    name: "default",
-    tokens: DEFAULT_THEME_TOKENS,
-};
+let activeTheme: ThemeDefinition = { name: "fallback", tokens: FALLBACK_TOKENS };
 
 function normalizeHex(hex: string): string
 {
@@ -62,14 +89,28 @@ function normalizeHex(hex: string): string
     return trimmed.startsWith("#") ? trimmed.toUpperCase() : `#${trimmed.toUpperCase()}`;
 }
 
-function normalizeTokenName(token: string): string
+function normalizeKey(key: string): string
 {
-    return token.trim().toLowerCase();
+    return key.trim().toLowerCase();
 }
 
-export function getAllowedThemeColorKeys(): string[]
+export function setActiveTheme(theme: ThemeDefinition): void
 {
-    return activeTheme.tokens.map((token) => token.token);
+    if (theme.tokens.length === 0)
+    {
+        activeTheme = { name: "fallback", tokens: FALLBACK_TOKENS };
+        return;
+    }
+
+    const seen = new Map<string, ThemeToken>();
+    for (const t of theme.tokens)
+    {
+        const key = normalizeKey(t.key);
+        const value = t.kind === "color" ? normalizeHex(t.value) : String(t.value).trim();
+        seen.set(`${t.kind}:${key}`, { kind: t.kind, key, value, description: t.description?.trim() });
+    }
+
+    activeTheme = { name: theme.name?.trim() || "custom", tokens: [...seen.values()] };
 }
 
 export function getActiveTheme(): ThemeDefinition
@@ -77,26 +118,82 @@ export function getActiveTheme(): ThemeDefinition
     return activeTheme;
 }
 
-export function setActiveTheme(theme: ThemeDefinition): void
+export function variableNameFor(kind: TokenKind, key: string): string
 {
-    const normalizedEntries = theme.tokens.map((token) => ({
-        token: normalizeTokenName(token.token),
-        hex: normalizeHex(token.hex),
-        description: token.description?.trim(),
-    }));
+    if (kind === "color") return `theme/${key}`;
+    return `${kind}/${key}`;
+}
 
-    const merged = new Map(DEFAULT_THEME_TOKENS.map((token) => [token.token, { ...token }]));
-    for (const token of normalizedEntries)
-    {
-        merged.set(token.token, token);
-    }
-
-    activeTheme = {
-        name: theme.name?.trim() || "custom",
-        tokens: [...merged.values()],
+/** Resolve a bare color key (e.g. "primary") to a variable-color value. */
+export function resolveColorToken(key: string): VariableColorValue | undefined
+{
+    const k = normalizeKey(key);
+    const token = activeTheme.tokens.find(t => t.kind === "color" && t.key === k);
+    if (!token) return undefined;
+    return {
+        kind: "variable-color",
+        hex: normalizeHex(token.value),
+        variable: {
+            collection: THEME_COLLECTION,
+            mode: THEME_MODE,
+            name: variableNameFor("color", token.key),
+            resolvedType: "COLOR",
+        },
     };
 }
 
+/** Resolve a bare numeric key (e.g. "md" for spacing) to a number + variable name. */
+export function resolveNumericToken(kind: "spacing" | "radius", key: string): { value: number; variableName: string } | undefined
+{
+    const k = normalizeKey(key);
+    const token = activeTheme.tokens.find(t => t.kind === kind && t.key === k);
+    if (!token) return undefined;
+    const n = Number(token.value);
+    if (!Number.isFinite(n)) return undefined;
+    return { value: n, variableName: variableNameFor(kind, k) };
+}
+
+export function getThemeCollection(): { collection: string; mode: string }
+{
+    return { collection: THEME_COLLECTION, mode: THEME_MODE };
+}
+
+/** Tokens table for prompt injection. Compact human-readable rows by kind. */
+export function describeActiveTokensForPrompt(): string
+{
+    const colors = activeTheme.tokens.filter(t => t.kind === "color");
+    const spacing = activeTheme.tokens.filter(t => t.kind === "spacing");
+    const radius = activeTheme.tokens.filter(t => t.kind === "radius");
+
+    const lines: string[] = [];
+    if (colors.length > 0)
+        lines.push(`Colors: ${colors.map(t => `\`${t.key}\` (${normalizeHex(t.value)})`).join(", ")}`);
+    if (spacing.length > 0)
+        lines.push(`Spacing: ${spacing.map(t => `\`${t.key}\` (${t.value}px)`).join(", ")}`);
+    if (radius.length > 0)
+        lines.push(`Radius: ${radius.map(t => `\`${t.key}\` (${t.value}px)`).join(", ")}`);
+    return lines.join("\n");
+}
+
+/** Op the plugin uses to ensure all theme variables exist. */
+export function createEnsureTokenVariablesOp(): EnsureTokenVariablesOp
+{
+    return {
+        type: "ensure_token_variables",
+        collection: THEME_COLLECTION,
+        mode: THEME_MODE,
+        themeName: activeTheme.name?.trim() || "custom",
+        tokens: activeTheme.tokens.map(t => ({
+            kind: t.kind,
+            key: t.key,
+            variableName: variableNameFor(t.kind, t.key),
+            value: t.kind === "color" ? normalizeHex(t.value) : String(t.value),
+            description: t.description,
+        })),
+    };
+}
+
+// Legacy shim — colors-only op. Kept so older op streams keep working.
 export function createEnsureThemeVariablesOp(): EnsureThemeVariablesOp
 {
     return {
@@ -104,28 +201,25 @@ export function createEnsureThemeVariablesOp(): EnsureThemeVariablesOp
         collection: THEME_COLLECTION,
         mode: THEME_MODE,
         themeName: activeTheme.name?.trim() || "custom",
-        tokens: activeTheme.tokens.map((token) => ({
-            token: token.token,
-            variableName: `theme/${token.token}`,
-            hex: normalizeHex(token.hex),
-            description: token.description,
-        })),
+        tokens: activeTheme.tokens
+            .filter(t => t.kind === "color")
+            .map(t => ({
+                token: t.key,
+                variableName: variableNameFor("color", t.key),
+                hex: normalizeHex(t.value),
+                description: t.description,
+            })),
     };
 }
 
+// Legacy shim — used by existing code paths to expose color token keys.
+export function getAllowedThemeColorKeys(): string[]
+{
+    return activeTheme.tokens.filter(t => t.kind === "color").map(t => t.key);
+}
+
+// Legacy shim — same as resolveColorToken under old name.
 export function resolveThemeColorValue(key: string): VariableColorValue | undefined
 {
-    const token = activeTheme.tokens.find((item) => item.token === normalizeTokenName(key));
-    if (!token) return undefined;
-
-    return {
-        kind: "variable-color",
-        hex: normalizeHex(token.hex),
-        variable: {
-            collection: THEME_COLLECTION,
-            mode: THEME_MODE,
-            name: `theme/${token.token}`,
-            resolvedType: "COLOR",
-        },
-    };
+    return resolveColorToken(key);
 }

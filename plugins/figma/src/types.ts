@@ -81,3 +81,18 @@ export interface EnsureThemeVariablesOp extends FigmaOp
         description?: string;
     }>;
 }
+
+export interface EnsureTokenVariablesOp extends FigmaOp
+{
+    type: "ensure_token_variables";
+    collection: string;
+    mode: string;
+    themeName: string;
+    tokens: Array<{
+        kind: "color" | "spacing" | "radius";
+        key: string;
+        variableName: string;
+        value: string; // hex for color, numeric string for spacing/radius
+        description?: string;
+    }>;
+}

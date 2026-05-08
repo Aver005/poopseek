@@ -10,7 +10,7 @@ import { SubAgentRunner } from "@/agent/sub-agent";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
-import { setActiveTheme } from "@/figma/engine/theme/theme-state";
+import { setActiveTheme, describeActiveTokensForPrompt } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 import { loadNodesIntoBuffer } from "@/figma/engine/handyman/handyman-tools";
 import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
@@ -138,15 +138,17 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     const tokens = await runDesigner(subAgentRunner, enhanced, designerPrompt);
                     session.varStore.setTokens(tokens);
 
-                    const themeTokens = session.varStore.extractThemeTokens();
-                    if (themeTokens.length > 0)
-                        setActiveTheme({ tokens: themeTokens });
+                    const themeTokens = session.varStore.extractTokens();
+                    setActiveTheme({ tokens: themeTokens });
 
                     context.enhanceCache.set(body.message, { enhanced, tokens });
 
                     send("tokens", { tokens, sessionId: session.id });
 
-                    const result = await runBuilderOneShot(deps.getProvider, builderPrompt, enhanced, tokens);
+                    const builderPromptWithTokens = builderPrompt.includes("{{TOKENS_TABLE}}")
+                        ? builderPrompt.replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)")
+                        : builderPrompt;
+                    const result = await runBuilderOneShot(deps.getProvider, builderPromptWithTokens, enhanced, tokens);
 
                     if (!result.ok)
                     {
@@ -188,7 +190,9 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     session.buffer.markClean();
 
                     const canonicalJsx = session.buffer.toJsx() || "(empty)";
-                    const systemPrompt = handymanPromptContent.replace("{{CURRENT_JSX}}", canonicalJsx);
+                    const systemPrompt = handymanPromptContent
+                        .replace("{{CURRENT_JSX}}", canonicalJsx)
+                        .replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)");
 
                     const snap = session.buffer.snapshot();
                     const handymanResult = await runHandymanEdit(

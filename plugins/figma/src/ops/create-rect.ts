@@ -1,8 +1,9 @@
 import type { OpHandler } from "./types";
-import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, bindNumberVariable, ensureCorrectParent } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
+
+function vstr(v: unknown): string | undefined { return typeof v === "string" ? v : undefined; }
 
 export const handler: OpHandler = {
     type: "create_rect",
@@ -51,11 +52,15 @@ export const handler: OpHandler = {
         }
 
         rect.resize(Number(op.width ?? 100), Number(op.height ?? 100));
-        if (op.fill !== undefined) {
-            const paint = await solidPaint(op.fill as ColorInput);
+        if (typeof op.fill === "string") {
+            const paint = await solidPaintWithBinding(op.fill, vstr(op.fillVariableName));
             if (paint) rect.fills = [paint];
         }
         if (op.cornerRadius !== undefined) rect.cornerRadius = Number(op.cornerRadius);
+        await bindNumberVariable(rect, "topLeftRadius",     vstr(op.cornerRadiusVariableName), "create_rect");
+        await bindNumberVariable(rect, "topRightRadius",    vstr(op.cornerRadiusVariableName), "create_rect");
+        await bindNumberVariable(rect, "bottomLeftRadius",  vstr(op.cornerRadiusVariableName), "create_rect");
+        await bindNumberVariable(rect, "bottomRightRadius", vstr(op.cornerRadiusVariableName), "create_rect");
         applyCornerRadii(rect, op);
         if (op.name) rect.name = String(op.name);
         applyLayoutSizing(rect, op);

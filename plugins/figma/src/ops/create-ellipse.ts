@@ -1,7 +1,6 @@
 import type { OpHandler } from "./types";
-import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, solidPaint, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -51,8 +50,9 @@ export const handler: OpHandler = {
         }
 
         ellipse.resize(Number(op.width ?? 100), Number(op.height ?? 100));
-        if (op.fill !== undefined) {
-            const paint = await solidPaint(op.fill as ColorInput);
+        if (typeof op.fill === "string") {
+            const varName = typeof op.fillVariableName === "string" ? op.fillVariableName : undefined;
+            const paint = await solidPaintWithBinding(op.fill, varName);
             if (paint) ellipse.fills = [paint];
         }
         if (op.name) ellipse.name = String(op.name);

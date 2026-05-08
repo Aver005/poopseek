@@ -1,5 +1,5 @@
-﻿import type { FigmaOp, RGBA, ColorInput, VariableColorValue, EnsureColorVariablesOp, EnsureThemeVariablesOp, FigmaSnapshotNode, FigmaPluginSnapshot } from "./types";
-import { nodeMap, collectionCache, colorVariableCache } from "./cache";
+﻿import type { FigmaOp, RGBA, ColorInput, VariableColorValue, EnsureColorVariablesOp, EnsureThemeVariablesOp, EnsureTokenVariablesOp, FigmaSnapshotNode, FigmaPluginSnapshot } from "./types";
+import { nodeMap, collectionCache, colorVariableCache, numberVariableCache, themeCollectionRef } from "./cache";
 import { dlog, derr, describeNode } from "./debug";
 
 // ── ID mapping ─────────────────────────────────────────────────
@@ -27,6 +27,52 @@ export function getPrimaryColor(paints: ReadonlyArray<Paint> | typeof figma.mixe
     if (paints === figma.mixed || !Array.isArray(paints)) return undefined;
     const solid = (paints as Paint[]).find((p): p is SolidPaint => p.type === "SOLID" && p.visible !== false);
     return solid ? rgbaToHex(solid.color) : undefined;
+}
+
+/** Strip `theme/` from a color variable name to get the bare token key. */
+function colorVarKey(variableName: string): string
+{
+    return variableName.startsWith("theme/") ? variableName.slice(6) : variableName;
+}
+
+/** Strip `spacing/` or `radius/` from a number variable name. */
+function numberVarKey(variableName: string): string
+{
+    const slash = variableName.indexOf("/");
+    return slash >= 0 ? variableName.slice(slash + 1) : variableName;
+}
+
+/**
+ * If the first solid paint is bound to a COLOR variable, return its bare token
+ * key (e.g. "primary"). Otherwise undefined and caller falls back to hex.
+ */
+export function getPrimaryColorTokenKey(paints: ReadonlyArray<Paint> | typeof figma.mixed): string | undefined
+{
+    if (paints === figma.mixed || !Array.isArray(paints)) return undefined;
+    const solid = (paints as Paint[]).find((p): p is SolidPaint => p.type === "SOLID" && p.visible !== false);
+    if (!solid) return undefined;
+    const bound = (solid as SolidPaint & { boundVariables?: { color?: VariableAlias } }).boundVariables?.color;
+    if (!bound) return undefined;
+    const v = figma.variables.getVariableById(bound.id);
+    if (!v) return undefined;
+    return colorVarKey(v.name);
+}
+
+/**
+ * If a node's numeric field is bound to a FLOAT variable, return its bare key
+ * (e.g. "md"). Otherwise undefined.
+ */
+export function getNumberFieldTokenKey(
+    node: BaseNode,
+    field: string,
+): string | undefined
+{
+    const bv = (node as BaseNode & { boundVariables?: Record<string, VariableAlias | undefined> }).boundVariables;
+    const alias = bv?.[field];
+    if (!alias) return undefined;
+    const v = figma.variables.getVariableById(alias.id);
+    if (!v) return undefined;
+    return numberVarKey(v.name);
 }
 
 export function parseColor(c: string): RGBA | null
@@ -87,8 +133,9 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
             : "FIXED";
         if (lsh === "FILL") parts.push(`width="fill"`);
         else if (tn.width > 0) parts.push(`width={${Math.round(tn.width)}}`);
-        const fc = getPrimaryColor(tn.fills);
-        if (fc) parts.push(`fill="${fc}"`);
+        const fillTok = getPrimaryColorTokenKey(tn.fills);
+        if (fillTok) parts.push(`fill="${fillTok}"`);
+        else { const fc = getPrimaryColor(tn.fills); if (fc) parts.push(`fill="${fc}"`); }
         if (tn.fontSize !== figma.mixed) parts.push(`fontSize={${tn.fontSize as number}}`);
         if (tn.fontName !== figma.mixed) {
             const fw = fontWeightFromStyle((tn.fontName as FontName).style);
@@ -104,9 +151,11 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
     if (t === "ELLIPSE") {
         const el = node as EllipseNode;
         const parts = [`name="${el.name.replace(/"/g, "&quot;")}"`, `width={${Math.round(el.width)}}`, `height={${Math.round(el.height)}}`];
-        const fc = getPrimaryColor(el.fills);
-        if (fc) parts.push(`fill="${fc}"`);
-        const sc = getPrimaryColor(el.strokes);
+        const fillTok = getPrimaryColorTokenKey(el.fills);
+        if (fillTok) parts.push(`fill="${fillTok}"`);
+        else { const fc = getPrimaryColor(el.fills); if (fc) parts.push(`fill="${fc}"`); }
+        const strokeTok = getPrimaryColorTokenKey(el.strokes);
+        const sc = strokeTok ?? getPrimaryColor(el.strokes);
         if (sc) { parts.push(`stroke="${sc}"`); if (typeof el.strokeWeight === "number" && el.strokeWeight !== 1) parts.push(`strokeWidth={${el.strokeWeight}}`); }
         return `${indent}<Ellipse ${parts.join(" ")} />`;
     }
@@ -115,7 +164,8 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
         const ln = node as LineNode;
         const parts = [`name="${ln.name.replace(/"/g, "&quot;")}"`, `length={${Math.round(Math.max(ln.width, ln.height))}}`];
         if (ln.height > ln.width) parts.push("vertical");
-        const sc = getPrimaryColor(ln.strokes);
+        const strokeTok = getPrimaryColorTokenKey(ln.strokes);
+        const sc = strokeTok ?? getPrimaryColor(ln.strokes);
         if (sc) { parts.push(`stroke="${sc}"`); if (typeof ln.strokeWeight === "number" && ln.strokeWeight !== 1) parts.push(`strokeWidth={${ln.strokeWeight}}`); }
         return `${indent}<Line ${parts.join(" ")} />`;
     }
@@ -130,13 +180,18 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
             : "FIXED";
         parts.push(lsh === "FILL" ? `width="fill"` : `width={${Math.round(rect.width)}}`);
         parts.push(`height={${Math.round(rect.height)}}`);
-        if (typeof rect.cornerRadius === "number" && rect.cornerRadius > 0) parts.push(`radius={${rect.cornerRadius}}`);
+        if (typeof rect.cornerRadius === "number" && rect.cornerRadius > 0)
+        {
+            const radTok = getNumberFieldTokenKey(rect, "topLeftRadius");
+            parts.push(radTok ? `radius="${radTok}"` : `radius={${rect.cornerRadius}}`);
+        }
         if (imgFill) {
             parts.push(`src="${imgFill.imageHash ?? "image"}"`);
             return `${indent}<Image ${parts.join(" ")} />`;
         }
-        const fc = getPrimaryColor(fills);
-        if (fc) parts.push(`fill="${fc}"`);
+        const fillTok = getPrimaryColorTokenKey(fills);
+        if (fillTok) parts.push(`fill="${fillTok}"`);
+        else { const fc = getPrimaryColor(fills); if (fc) parts.push(`fill="${fc}"`); }
         return `${indent}<Rect ${parts.join(" ")} />`;
     }
 
@@ -153,9 +208,14 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
     const lsv = "layoutSizingVertical"   in f ? (f as FrameNode).layoutSizingVertical   : "FIXED";
     parts.push(lsh === "FILL" ? `width="fill"` : lsh === "HUG" ? `width="hug"` : `width={${Math.round(f.width)}}`);
     parts.push(lsv === "FILL" ? `height="fill"` : lsv === "HUG" ? `height="hug"` : `height={${Math.round(f.height)}}`);
-    if ("fills" in f) { const fc = getPrimaryColor((f as FrameNode).fills); if (fc) parts.push(`fill="${fc}"`); }
+    if ("fills" in f) {
+        const fillTok = getPrimaryColorTokenKey((f as FrameNode).fills);
+        if (fillTok) parts.push(`fill="${fillTok}"`);
+        else { const fc = getPrimaryColor((f as FrameNode).fills); if (fc) parts.push(`fill="${fc}"`); }
+    }
     if ("strokes" in f) {
-        const sc = getPrimaryColor((f as FrameNode).strokes);
+        const strokeTok = getPrimaryColorTokenKey((f as FrameNode).strokes);
+        const sc = strokeTok ?? getPrimaryColor((f as FrameNode).strokes);
         if (sc) {
             parts.push(`stroke="${sc}"`);
             const sw = (f as FrameNode).strokeWeight;
@@ -164,17 +224,31 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
     }
     if ("cornerRadius" in f) {
         const cr = (f as FrameNode).cornerRadius;
-        if (cr !== figma.mixed && typeof cr === "number" && cr > 0) parts.push(`radius={${cr}}`);
+        if (cr !== figma.mixed && typeof cr === "number" && cr > 0)
+        {
+            const radTok = getNumberFieldTokenKey(f, "topLeftRadius");
+            parts.push(radTok ? `radius="${radTok}"` : `radius={${cr}}`);
+        }
     }
     if (isAL) {
         const ff = f as FrameNode;
-        if (ff.itemSpacing > 0) parts.push(`gap={${ff.itemSpacing}}`);
+        if (ff.itemSpacing > 0)
+        {
+            const gapTok = getNumberFieldTokenKey(ff, "itemSpacing");
+            parts.push(gapTok ? `gap="${gapTok}"` : `gap={${ff.itemSpacing}}`);
+        }
         const pL = ff.paddingLeft ?? 0, pR = ff.paddingRight ?? 0;
         const pT = ff.paddingTop  ?? 0, pB = ff.paddingBottom ?? 0;
-        if (pL === pR && pL > 0) parts.push(`padX={${pL}}`);
-        else { if (pL > 0) parts.push(`padLeft={${pL}}`); if (pR > 0) parts.push(`padRight={${pR}}`); }
-        if (pT === pB && pT > 0) parts.push(`padY={${pT}}`);
-        else { if (pT > 0) parts.push(`padTop={${pT}}`); if (pB > 0) parts.push(`padBottom={${pB}}`); }
+        const pLTok = getNumberFieldTokenKey(ff, "paddingLeft");
+        const pRTok = getNumberFieldTokenKey(ff, "paddingRight");
+        const pTTok = getNumberFieldTokenKey(ff, "paddingTop");
+        const pBTok = getNumberFieldTokenKey(ff, "paddingBottom");
+        if (pL === pR && pLTok && pLTok === pRTok) parts.push(`padX="${pLTok}"`);
+        else if (pL === pR && pL > 0) parts.push(`padX={${pL}}`);
+        else { if (pL > 0) parts.push(pLTok ? `padLeft="${pLTok}"` : `padLeft={${pL}}`); if (pR > 0) parts.push(pRTok ? `padRight="${pRTok}"` : `padRight={${pR}}`); }
+        if (pT === pB && pTTok && pTTok === pBTok) parts.push(`padY="${pTTok}"`);
+        else if (pT === pB && pT > 0) parts.push(`padY={${pT}}`);
+        else { if (pT > 0) parts.push(pTTok ? `padTop="${pTTok}"` : `padTop={${pT}}`); if (pB > 0) parts.push(pBTok ? `padBottom="${pBTok}"` : `padBottom={${pB}}`); }
         const isH = ff.layoutMode === "HORIZONTAL";
         const ax = figmaAlignToJsx(isH ? ff.primaryAxisAlignItems : ff.counterAxisAlignItems);
         const ay = figmaAlignToJsx(isH ? ff.counterAxisAlignItems : ff.primaryAxisAlignItems);
@@ -372,6 +446,142 @@ export async function ensureThemeVariables(op: EnsureThemeVariablesOp): Promise<
         if (color) variable.setValueForMode(modeId, color);
         colorVariableCache.set(`${op.collection}::${token.variableName}`, variable);
     }
+}
+
+/**
+ * Unified token-variables ensure op. Creates/updates COLOR variables for
+ * `kind=color` tokens and FLOAT variables for `kind=spacing|radius`. Used
+ * once per batch (emitted as the first op by the server compiler).
+ */
+export async function ensureTokenVariables(op: EnsureTokenVariablesOp): Promise<void>
+{
+    themeCollectionRef.collection = op.collection;
+    themeCollectionRef.mode = op.mode;
+
+    const collection = await getOrCreateCollection(op.collection);
+    const modeId = collection.modes[0]?.modeId;
+    if (!modeId) return;
+
+    const colorVars = await figma.variables.getLocalVariablesAsync("COLOR");
+    const floatVars = await figma.variables.getLocalVariablesAsync("FLOAT");
+    const colorByName = new Map(colorVars
+        .filter((v) => v.variableCollectionId === collection.id)
+        .map((v) => [v.name, v] as const));
+    const floatByName = new Map(floatVars
+        .filter((v) => v.variableCollectionId === collection.id)
+        .map((v) => [v.name, v] as const));
+
+    for (const t of op.tokens)
+    {
+        if (t.kind === "color")
+        {
+            let variable = colorByName.get(t.variableName);
+            if (!variable)
+            {
+                variable = figma.variables.createVariable(t.variableName, collection, "COLOR");
+                colorByName.set(t.variableName, variable);
+            }
+            const c = parseColor(t.value);
+            if (c) variable.setValueForMode(modeId, c);
+            colorVariableCache.set(`${op.collection}::${t.variableName}`, variable);
+        }
+        else
+        {
+            let variable = floatByName.get(t.variableName);
+            if (!variable)
+            {
+                variable = figma.variables.createVariable(t.variableName, collection, "FLOAT");
+                floatByName.set(t.variableName, variable);
+            }
+            const n = Number(t.value);
+            if (Number.isFinite(n)) variable.setValueForMode(modeId, n);
+            numberVariableCache.set(`${op.collection}::${t.variableName}`, variable);
+        }
+    }
+
+    dlog("ensure_token_variables", `synced ${op.tokens.length} variables in "${op.collection}" (mode=${op.mode})`);
+}
+
+/** Look up a previously-ensured COLOR variable by its name (e.g. "theme/primary"). */
+export async function findColorVariableByName(variableName: string): Promise<Variable | null>
+{
+    const cacheKey = `${themeCollectionRef.collection}::${variableName}`;
+    const cached = colorVariableCache.get(cacheKey);
+    if (cached) return cached;
+
+    const collection = await getOrCreateCollection(themeCollectionRef.collection);
+    const variables = await figma.variables.getLocalVariablesAsync("COLOR");
+    const found = variables.find((v) =>
+        v.variableCollectionId === collection.id && v.name === variableName);
+    if (found) colorVariableCache.set(cacheKey, found);
+    return found ?? null;
+}
+
+/** Look up a previously-ensured FLOAT variable by its name (e.g. "spacing/md"). */
+export async function findNumberVariableByName(variableName: string): Promise<Variable | null>
+{
+    const cacheKey = `${themeCollectionRef.collection}::${variableName}`;
+    const cached = numberVariableCache.get(cacheKey);
+    if (cached) return cached;
+
+    const collection = await getOrCreateCollection(themeCollectionRef.collection);
+    const variables = await figma.variables.getLocalVariablesAsync("FLOAT");
+    const found = variables.find((v) =>
+        v.variableCollectionId === collection.id && v.name === variableName);
+    if (found) numberVariableCache.set(cacheKey, found);
+    return found ?? null;
+}
+
+/**
+ * Bind a FLOAT variable to a node's numeric property. Falls back to plain
+ * value-set if binding API isn't supported on this node type.
+ */
+export async function bindNumberVariable(
+    node: SceneNode,
+    field: string,
+    variableName: string | undefined,
+    tag: string,
+): Promise<void>
+{
+    if (!variableName) return;
+    const v = await findNumberVariableByName(variableName);
+    if (!v)
+    {
+        derr(tag, `bind ${field}: variable "${variableName}" not found in collection "${themeCollectionRef.collection}"`);
+        return;
+    }
+    try
+    {
+        const target = node as SceneNode & {
+            setBoundVariable?: (field: string, variable: Variable) => void;
+        };
+        target.setBoundVariable?.(field as never, v);
+    }
+    catch (err)
+    {
+        derr(tag, `bind ${field}=${variableName} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
+
+/**
+ * Build a SolidPaint with optional COLOR variable binding. Caller writes
+ * `node.fills = [paint]`.
+ */
+export async function solidPaintWithBinding(hex: string, variableName: string | undefined): Promise<SolidPaint | null>
+{
+    const p = parseColor(hex);
+    if (!p) return null;
+    const paint: SolidPaint = {
+        type: "SOLID",
+        color: { r: p.r, g: p.g, b: p.b },
+        visible: true,
+        blendMode: "NORMAL",
+        opacity: p.a,
+    };
+    if (!variableName) return paint;
+    const variable = await findColorVariableByName(variableName);
+    if (!variable) return paint;
+    return figma.variables.setBoundVariableForPaint(paint, "color", variable);
 }
 
 // ── Paint & layout helpers ─────────────────────────────────────

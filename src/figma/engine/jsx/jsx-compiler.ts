@@ -1,5 +1,6 @@
 import { createEnsureColorVariablesOp } from "../theme/design-tokens";
-import { createEnsureThemeVariablesOp } from "../theme/theme-state";
+import { createEnsureTokenVariablesOp } from "../theme/theme-state";
+import { resolveColor, resolveNumber, colorFields, numberFields } from "./token-resolver";
 import type { JsxNode, JsxPropValue } from "./jsx-parser";
 import type { FigmaOp } from "../../types";
 
@@ -101,8 +102,16 @@ function applyShadow(state: State, nodeId: string, value: JsxPropValue | undefin
 
 function applyStroke(state: State, nodeId: string, color: JsxPropValue | undefined, weight: JsxPropValue | undefined): void
 {
-    if (color === undefined || color === false || color === "none") return;
-    push(state, { type: "set_stroke", nodeId, color, weight: num(weight) ?? 1, align: "INSIDE" });
+    const resolved = resolveColor(color);
+    if (!resolved) return;
+    push(state, {
+        type: "set_stroke",
+        nodeId,
+        color: resolved.hex,
+        ...(resolved.variableName ? { colorVariableName: resolved.variableName } : {}),
+        weight: num(weight) ?? 1,
+        align: "INSIDE",
+    });
 }
 
 function applyGradient(state: State, nodeId: string, value: JsxPropValue | undefined): void
@@ -212,6 +221,13 @@ function compileFrame(node: JsxNode, state: State): void
     const width  = typeof widthSz  === "number" ? widthSz  : undefined;
     const height = typeof heightSz === "number" ? heightSz : undefined;
 
+    const fillRes   = !p.gradient ? resolveColor(p.fill) : undefined;
+    const radiusRes = resolveNumber(p.radius, "radius");
+    const rTLRes    = resolveNumber(p.radiusTL, "radius");
+    const rTRRes    = resolveNumber(p.radiusTR, "radius");
+    const rBLRes    = resolveNumber(p.radiusBL, "radius");
+    const rBRRes    = resolveNumber(p.radiusBR, "radius");
+
     push(state, {
         type: "create_frame",
         id,
@@ -221,12 +237,12 @@ function compileFrame(node: JsxNode, state: State): void
         ...(height !== undefined ? { height } : {}),
         ...(fillParent       ? { fillParent: true }       : {}),
         ...(fillParentHeight ? { fillParentHeight: true } : {}),
-        ...(!p.gradient && p.fill !== undefined ? { fill: p.fill } : {}),
-        ...(num(p.radius) !== undefined ? { cornerRadius: num(p.radius) } : {}),
-        ...(p.radiusTL !== undefined ? { cornerRadiusTopLeft:     num(p.radiusTL) } : {}),
-        ...(p.radiusTR !== undefined ? { cornerRadiusTopRight:    num(p.radiusTR) } : {}),
-        ...(p.radiusBL !== undefined ? { cornerRadiusBottomLeft:  num(p.radiusBL) } : {}),
-        ...(p.radiusBR !== undefined ? { cornerRadiusBottomRight: num(p.radiusBR) } : {}),
+        ...colorFields("fill", fillRes),
+        ...numberFields("cornerRadius", radiusRes),
+        ...numberFields("cornerRadiusTopLeft",     rTLRes),
+        ...numberFields("cornerRadiusTopRight",    rTRRes),
+        ...numberFields("cornerRadiusBottomLeft",  rBLRes),
+        ...numberFields("cornerRadiusBottomRight", rBRRes),
         ...(p.clip ? { clipContent: true } : {}),
         ...(p.ignoreAutoLayout ? { ignoreAutoLayout: true } : {}),
         ...(p.x !== undefined ? { x: num(p.x) } : {}),
@@ -243,6 +259,14 @@ function compileFrame(node: JsxNode, state: State): void
         const primaryRaw = p.center ? "center" : (isVertical ? str(p.alignY) : str(p.alignX));
         const crossRaw   = p.center ? "center" : (isVertical ? str(p.alignX) : str(p.alignY));
 
+        const gapRes  = resolveNumber(p.gap,  "spacing");
+        const pXRes   = resolveNumber(p.padX, "spacing");
+        const pYRes   = resolveNumber(p.padY, "spacing");
+        const pTRes   = resolveNumber(p.padTop,    "spacing");
+        const pRRes   = resolveNumber(p.padRight,  "spacing");
+        const pBRes   = resolveNumber(p.padBottom, "spacing");
+        const pLRes   = resolveNumber(p.padLeft,   "spacing");
+
         push(state, {
             type: "set_auto_layout",
             nodeId: id,
@@ -251,13 +275,13 @@ function compileFrame(node: JsxNode, state: State): void
             hugCross: hugCross ?? false,
             ...(fillParent       ? { fillParent: true }       : {}),
             ...(fillParentHeight ? { fillParentHeight: true } : {}),
-            ...(p.gap    !== undefined ? { gap:      num(p.gap)    } : {}),
-            ...(p.padX   !== undefined ? { paddingH: num(p.padX)   } : {}),
-            ...(p.padY   !== undefined ? { paddingV: num(p.padY)   } : {}),
-            ...(p.padTop    !== undefined ? { paddingTop:    num(p.padTop)    } : {}),
-            ...(p.padRight  !== undefined ? { paddingRight:  num(p.padRight)  } : {}),
-            ...(p.padBottom !== undefined ? { paddingBottom: num(p.padBottom) } : {}),
-            ...(p.padLeft   !== undefined ? { paddingLeft:   num(p.padLeft)   } : {}),
+            ...numberFields("gap",      gapRes),
+            ...numberFields("paddingH", pXRes),
+            ...numberFields("paddingV", pYRes),
+            ...numberFields("paddingTop",    pTRes),
+            ...numberFields("paddingRight",  pRRes),
+            ...numberFields("paddingBottom", pBRes),
+            ...numberFields("paddingLeft",   pLRes),
             ...(toFigmaAlign(primaryRaw, true)  ? { align:        toFigmaAlign(primaryRaw, true)  } : {}),
             ...(toFigmaAlign(crossRaw,   false) ? { counterAlign: toFigmaAlign(crossRaw,   false) } : {}),
             ...(p.wrap !== undefined ? { wrap: !!p.wrap } : {}),
@@ -303,6 +327,8 @@ function compileText(node: JsxNode, state: State): void
         axX === "right"  || axX === "end"           ? "RIGHT"  :
         axX === "left"   || axX === "start"         ? "LEFT"   : undefined;
 
+    const colorRes = resolveColor(p.fill) ?? { hex: "#0F172A" };
+
     push(state, {
         type: "create_text",
         id,
@@ -311,7 +337,7 @@ function compileText(node: JsxNode, state: State): void
         content,
         fontSize:   num(p.fontSize ?? p.size)          ?? 16,
         fontWeight: str(p.fontWeight ?? p.weight)      ?? "Regular",
-        color: p.fill ?? "#0F172A",
+        ...colorFields("color", colorRes),
         ...(width  !== undefined ? { width }  : {}),
         ...(height !== undefined ? { height } : {}),
         ...(fillParent       ? { fillParent: true }       : {}),
@@ -355,6 +381,13 @@ function compileImage(node: JsxNode, state: State): void
     const width  = typeof widthSz  === "number" ? widthSz  : undefined;
     const height = typeof heightSz === "number" ? heightSz : 160;
 
+    const imgFillRes = resolveColor(p.fill) ?? { hex: "#E2E8F0" };
+    const imgRRes    = resolveNumber(p.radius,   "radius");
+    const imgTL      = resolveNumber(p.radiusTL, "radius");
+    const imgTR      = resolveNumber(p.radiusTR, "radius");
+    const imgBL      = resolveNumber(p.radiusBL, "radius");
+    const imgBR      = resolveNumber(p.radiusBR, "radius");
+
     push(state, {
         type: "create_image",
         id,
@@ -364,15 +397,16 @@ function compileImage(node: JsxNode, state: State): void
         height,
         src: str(p.src) ?? "",
         alt: str(p.alt) ?? "",
-        fill: p.fill ?? "#E2E8F0",
-        cornerRadius: num(p.radius) ?? 0,
+        ...colorFields("fill", imgFillRes),
+        cornerRadius: imgRRes?.value ?? 0,
+        ...(imgRRes?.variableName ? { cornerRadiusVariableName: imgRRes.variableName } : {}),
         ...(fillParent       ? { fillParent: true }       : {}),
         ...(fillParentHeight ? { fillParentHeight: true } : {}),
         clipContent: true,
-        ...(p.radiusTL !== undefined ? { cornerRadiusTopLeft:     num(p.radiusTL) } : {}),
-        ...(p.radiusTR !== undefined ? { cornerRadiusTopRight:    num(p.radiusTR) } : {}),
-        ...(p.radiusBL !== undefined ? { cornerRadiusBottomLeft:  num(p.radiusBL) } : {}),
-        ...(p.radiusBR !== undefined ? { cornerRadiusBottomRight: num(p.radiusBR) } : {}),
+        ...numberFields("cornerRadiusTopLeft",     imgTL),
+        ...numberFields("cornerRadiusTopRight",    imgTR),
+        ...numberFields("cornerRadiusBottomLeft",  imgBL),
+        ...numberFields("cornerRadiusBottomRight", imgBR),
     });
 
     applyStroke(state, id, p.stroke, p.strokeWidth ?? p.strokeWeight);
@@ -388,6 +422,8 @@ function compileEllipse(node: JsxNode, state: State): void
     const id   = str(p.id) ?? uid(state, "ellipse");
     const size = num(p.size);
 
+    const fillRes = !p.gradient ? resolveColor(p.fill) : undefined;
+
     push(state, {
         type: "create_ellipse",
         id,
@@ -395,7 +431,7 @@ function compileEllipse(node: JsxNode, state: State): void
         ...parentRef(state, p),
         width:  size ?? num(p.width  ?? p.w) ?? 100,
         height: size ?? num(p.height ?? p.h) ?? 100,
-        ...(p.fill !== undefined && !p.gradient ? { fill: p.fill } : {}),
+        ...colorFields("fill", fillRes),
         ...(p.x !== undefined ? { x: num(p.x) } : {}),
         ...(p.y !== undefined ? { y: num(p.y) } : {}),
         ...(p.ignoreAutoLayout ? { ignoreAutoLayout: true } : {}),
@@ -415,6 +451,8 @@ function compileLine(node: JsxNode, state: State): void
     const parent = top(state);
     const id     = str(p.id) ?? uid(state, "line");
 
+    const strokeRes = resolveColor(p.stroke) ?? { hex: "#E2E8F0" };
+
     push(state, {
         type: "create_line",
         id,
@@ -423,7 +461,8 @@ function compileLine(node: JsxNode, state: State): void
         x: num(p.x) ?? 0,
         y: num(p.y) ?? 0,
         length: num(p.length ?? p.width ?? p.w) ?? parent?.width ?? 100,
-        color:  str(p.stroke) ?? "#E2E8F0",
+        color:  strokeRes.hex,
+        ...(strokeRes.variableName ? { colorVariableName: strokeRes.variableName } : {}),
         weight: num(p.strokeWidth ?? p.strokeWeight ?? p.weight) ?? 1,
         ...(p.vertical ? { rotation: 90 } : {}),
         ...(p.ignoreAutoLayout ? { ignoreAutoLayout: true } : {}),
@@ -449,6 +488,13 @@ function compileRect(node: JsxNode, state: State): void
     const width  = typeof widthSz  === "number" ? widthSz  : undefined;
     const height = typeof heightSz === "number" ? heightSz : undefined;
 
+    const fillRes = resolveColor(p.fill);
+    const rRes    = resolveNumber(p.radius,   "radius");
+    const rTL     = resolveNumber(p.radiusTL, "radius");
+    const rTR     = resolveNumber(p.radiusTR, "radius");
+    const rBL     = resolveNumber(p.radiusBL, "radius");
+    const rBR     = resolveNumber(p.radiusBR, "radius");
+
     push(state, {
         type: "create_rect",
         id,
@@ -458,12 +504,12 @@ function compileRect(node: JsxNode, state: State): void
         ...(height !== undefined ? { height } : {}),
         ...(fillParent       ? { fillParent: true }       : {}),
         ...(fillParentHeight ? { fillParentHeight: true } : {}),
-        ...(p.fill !== undefined ? { fill: p.fill } : {}),
-        ...(num(p.radius) !== undefined ? { cornerRadius: num(p.radius) } : {}),
-        ...(p.radiusTL !== undefined ? { cornerRadiusTopLeft:     num(p.radiusTL) } : {}),
-        ...(p.radiusTR !== undefined ? { cornerRadiusTopRight:    num(p.radiusTR) } : {}),
-        ...(p.radiusBL !== undefined ? { cornerRadiusBottomLeft:  num(p.radiusBL) } : {}),
-        ...(p.radiusBR !== undefined ? { cornerRadiusBottomRight: num(p.radiusBR) } : {}),
+        ...colorFields("fill", fillRes),
+        ...numberFields("cornerRadius",            rRes),
+        ...numberFields("cornerRadiusTopLeft",     rTL),
+        ...numberFields("cornerRadiusTopRight",    rTR),
+        ...numberFields("cornerRadiusBottomLeft",  rBL),
+        ...numberFields("cornerRadiusBottomRight", rBR),
         ...(p.ignoreAutoLayout ? { ignoreAutoLayout: true } : {}),
         ...(p.x !== undefined ? { x: num(p.x) } : {}),
         ...(p.y !== undefined ? { y: num(p.y) } : {}),
@@ -498,7 +544,7 @@ export function compileJsx(nodes: JsxNode[], parentFrameId?: string): FigmaOp[]
 {
     const state: State = {
         ops: [
-            createEnsureThemeVariablesOp() as unknown as FigmaOp,
+            createEnsureTokenVariablesOp() as unknown as FigmaOp,
             createEnsureColorVariablesOp() as unknown as FigmaOp,
         ],
         counter: 0,

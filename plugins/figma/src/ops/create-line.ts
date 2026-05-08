@@ -1,7 +1,6 @@
 import type { OpHandler } from "./types";
-import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, solidPaint, applyLayoutSizing, ensureCorrectParent } from "../helpers";
+import { resolveParent, solidPaintWithBinding, applyLayoutSizing, ensureCorrectParent } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -52,7 +51,9 @@ export const handler: OpHandler = {
 
         line.resize(Number(op.length ?? 100), 0);
         if (op.rotation !== undefined) line.rotation = Number(op.rotation);
-        const linePaint = await solidPaint((op.color as ColorInput | undefined) ?? "#E5E5E5");
+        const colorHex = typeof op.color === "string" ? op.color : "#E5E5E5";
+        const colorVar = typeof op.colorVariableName === "string" ? op.colorVariableName : undefined;
+        const linePaint = await solidPaintWithBinding(colorHex, colorVar);
         if (linePaint) line.strokes = [linePaint];
         line.strokeWeight = op.weight !== undefined ? Number(op.weight) : 1;
         if (op.name) line.name = String(op.name);

@@ -1,8 +1,9 @@
 import type { OpHandler } from "./types";
-import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, bindNumberVariable, ensureCorrectParent } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
+
+function vstr(v: unknown): string | undefined { return typeof v === "string" ? v : undefined; }
 
 export const handler: OpHandler = {
     type: "create_frame",
@@ -59,13 +60,17 @@ export const handler: OpHandler = {
 
         frame.name = String(op.name ?? "Frame");
         frame.resize(Number(op.width ?? 100), Number(op.height ?? 100));
-        if (op.fill !== undefined) {
-            const paint = await solidPaint(op.fill as ColorInput);
+        if (typeof op.fill === "string") {
+            const paint = await solidPaintWithBinding(op.fill, vstr(op.fillVariableName));
             frame.fills = paint ? [paint] : [];
         } else if (isNewFrame) {
             frame.fills = [];
         }
         if (op.cornerRadius !== undefined) frame.cornerRadius = Number(op.cornerRadius);
+        await bindNumberVariable(frame, "topLeftRadius",     vstr(op.cornerRadiusVariableName ?? op.cornerRadiusTopLeftVariableName), "create_frame");
+        await bindNumberVariable(frame, "topRightRadius",    vstr(op.cornerRadiusVariableName ?? op.cornerRadiusTopRightVariableName), "create_frame");
+        await bindNumberVariable(frame, "bottomLeftRadius",  vstr(op.cornerRadiusVariableName ?? op.cornerRadiusBottomLeftVariableName), "create_frame");
+        await bindNumberVariable(frame, "bottomRightRadius", vstr(op.cornerRadiusVariableName ?? op.cornerRadiusBottomRightVariableName), "create_frame");
         applyCornerRadii(frame, op);
         if (op.clipContent !== undefined) frame.clipsContent = Boolean(op.clipContent);
         applyLayoutSizing(frame, op);

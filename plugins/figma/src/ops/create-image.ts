@@ -1,7 +1,6 @@
 import type { OpHandler } from "./types";
-import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaint, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, ensureCorrectParent } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -80,8 +79,9 @@ export const handler: OpHandler = {
         applyLayoutSizing(rect, op);
         if (op.x !== undefined) rect.x = Number(op.x);
         if (op.y !== undefined) rect.y = Number(op.y);
-        if (op.fill !== undefined) {
-            const paint = await solidPaint(op.fill as ColorInput);
+        if (typeof op.fill === "string") {
+            const varName = typeof op.fillVariableName === "string" ? op.fillVariableName : undefined;
+            const paint = await solidPaintWithBinding(op.fill, varName);
             if (paint) rect.fills = [paint];
         }
         return 1;

@@ -1,7 +1,6 @@
 import type { OpHandler } from "./types";
-import type { ColorInput } from "../types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, solidPaint, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -79,8 +78,9 @@ export const handler: OpHandler = {
             text.textAutoResize = "HEIGHT";
             text.resize(Number(op.width), text.height || 24);
         }
-        if (op.color !== undefined) {
-            const paint = await solidPaint(op.color as ColorInput);
+        if (typeof op.color === "string") {
+            const varName = typeof op.colorVariableName === "string" ? op.colorVariableName : undefined;
+            const paint = await solidPaintWithBinding(op.color, varName);
             if (paint) text.fills = [paint];
         }
         if (op.name) text.name = String(op.name);
