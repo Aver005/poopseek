@@ -332,6 +332,16 @@ function compileText(node: JsxNode, state: State): void
 {
     applyComponentAs(node);
 
+    // Snapshot what the user wrote BEFORE variant expansion. We need to know
+    // which props are user-explicit vs inherited from the variant — if the
+    // variant fills lineHeight/letterSpacing and we then emit them in
+    // set_text_style, the plugin's `text.lineHeight = …` UNBINDS those
+    // props from the bound TextStyle (figma-side: any direct write detaches
+    // the style). The user perceives this as "typography ignored" because
+    // editing the style in the panel no longer propagates to the node.
+    const userLineHeight    = node.props.lineHeight;
+    const userLetterSpacing = node.props.letterSpacing;
+
     // Expand variant="h1" → fontSize/fontWeight/lineHeight/letterSpacing
     // defaults. Explicit props on the node still win.
     const variantName = str(node.props.variant);
@@ -370,10 +380,14 @@ function compileText(node: JsxNode, state: State): void
 
     const colorRes = resolveColor(p.fill) ?? { hex: "#0F172A" };
 
+    // Default name = first 32 chars of content. So a `<Text variant="label">Submit</Text>`
+    // becomes name="Submit" in the layer panel instead of the useless "Text".
+    const defaultTextName = content.slice(0, 32).trim() || "Text";
+
     push(state, {
         type: "create_text",
         id,
-        name: str(p.name) ?? "Text",
+        name: str(p.name) ?? defaultTextName,
         ...parentRef(state, p),
         content,
         fontSize:   num(p.fontSize ?? p.size)          ?? 16,
@@ -387,8 +401,13 @@ function compileText(node: JsxNode, state: State): void
         ...(textAlign ? { textAlign } : {}),
     });
 
-    const lineHeight    = num(p.lineHeight);
-    const letterSpacing = num(p.letterSpacing);
+    // When a TextStyle is bound, lineHeight/letterSpacing already come from
+    // the style — re-emitting them here would call `text.lineHeight = …`
+    // server-side, which figma treats as a manual override and DETACHES the
+    // style for that property. Only emit if the user explicitly wrote them
+    // (= they really want to override the style for this one node).
+    const lineHeight    = textStyleName ? num(userLineHeight)    : num(p.lineHeight);
+    const letterSpacing = textStyleName ? num(userLetterSpacing) : num(p.letterSpacing);
     const axY           = str(p.alignY);
     const verticalAlign =
         axY === "center" || axY === "middle" ? "CENTER" :
@@ -407,6 +426,19 @@ function compileText(node: JsxNode, state: State): void
     }
 
     applyOpacity(state, id, p.opacity);
+}
+
+// Pull the filename from a URL: ".../lucide/star-half.svg?color=#FFC107" → "star-half".
+// Falls back to "Image" if no recognizable path segment.
+function imageNameFromSrc(src: string | undefined): string
+{
+    if (!src) return "Image";
+    const path = src.split('?')[0]!.split('#')[0]!;
+    const lastSeg = path.replace(/\/$/, "").split('/').pop() ?? "";
+    const stem = lastSeg.replace(/\.[a-z0-9]+$/i, "").trim();
+    if (!stem) return "Image";
+    if (/^https?$/i.test(stem)) return "Image";
+    return stem;
 }
 
 function compileImage(node: JsxNode, state: State): void
@@ -434,7 +466,7 @@ function compileImage(node: JsxNode, state: State): void
     push(state, {
         type: "create_image",
         id,
-        name: str(p.name) ?? "Image",
+        name: str(p.name) ?? imageNameFromSrc(str(p.src)),
         ...parentRef(state, p),
         ...(width  !== undefined ? { width }  : {}),
         height,

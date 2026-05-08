@@ -83,10 +83,12 @@ You **must** emit:
 **Colors** (5–8): semantic, not literal. Examples of good keys:
 `background` `surface` `surface-soft` `primary` `text` `text-secondary` `border` `accent` `success` `warning` `danger`
 
-**Typography** (5–7 variants forming a clear hierarchy):
-`hero` (40+px) · `h1` (28–32px bold) · `h2` (22–24px semibold) · `h3` (18–20px semibold) · `body` (15–16px regular) · `body-sm` (13–14px regular) · `caption` (11–12px regular) · `label` (12–13px medium)
+**Typography** — emit **at least 7 variants** (8 preferred) forming a clear hierarchy. Pick from:
+`display` (44+px bold) · `h1` (28–34px bold) · `h2` (22–26px semibold) · `h3` (18–20px semibold) · `body-lg` (17–18px regular) · `body` (15–16px regular) · `body-sm` (13–14px regular) · `label` (12–13px medium, all-caps optional) · `button` (14–15px semibold) · `caption` (11–12px regular) · `mono` (13px regular, only if the design has code/numbers)
 
-Pick the variants the design actually needs. **Each variant must include at least `fontSize` and `fontWeight`. Add `lineHeight` for any block-text variant.**
+A real design system distinguishes button text from body text from labels — emitting just 5 variants (h2/body/body-sm/label/caption) leaves the builder forced to use `body` for buttons, which kills visual hierarchy. **Always include a dedicated `button` variant (semibold) and at least one display-level heading.**
+
+**Each variant must include `fontSize`, `fontWeight`, AND `lineHeight`.** `lineHeight` is what makes text feel intentional vs cramped — the builder cannot infer it.
 
 **Spacing scale** (4–6 entries, geometric):
 `xs` (4) · `sm` (8) · `md` (16) · `lg` (24) · `xl` (32) · `2xl` (48). Stay on 4/8 grid. Don't invent `mid` between `sm` and `md`.
@@ -147,7 +149,7 @@ Radius semantics:
 ## Quality bar — self-check before output
 
 1. Every color has a clear semantic role explained in prose. Not just the value.
-2. Typography forms a real hierarchy: at least 3 distinct variants with visibly different sizes.
+2. Typography has **at least 7 variants** (8 preferred). A dedicated `button` variant exists. Every variant has `fontSize` + `fontWeight` + `lineHeight`.
 3. There's one — and only one — primary action color. The Do's and Don'ts says so.
 4. At least 3 component bundles. Each component composes existing tokens (uses `{...}` references), doesn't invent new colors inline.
 5. Spacing scale is geometric (4/8 grid). No `gap-of-7px` invented from nowhere.
@@ -194,9 +196,20 @@ typography:
     fontSize: 13px
     fontWeight: regular
     lineHeight: 20px
-  caption:
+  button:
+    fontSize: 14px
+    fontWeight: semibold
+    lineHeight: 20px
+    letterSpacing: 0.2
+  label:
     fontSize: 12px
     fontWeight: medium
+    lineHeight: 16px
+    letterSpacing: 0.5
+  caption:
+    fontSize: 11px
+    fontWeight: regular
+    lineHeight: 14px
 spacing:
   xs: 4
   sm: 8

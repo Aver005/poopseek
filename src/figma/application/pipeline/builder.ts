@@ -19,10 +19,13 @@ export type BuilderResult = BuilderSuccess | BuilderFailure;
 
 type Message = { role: "user" | "assistant"; content: string };
 
+// Take the LAST fenced jsx block — when the model retries after a
+// validation error it sometimes echoes the broken attempt above the
+// corrected one. The corrected version is always the last block.
 function extractJsx(text: string): string
 {
-    const fenced = text.match(/```(?:jsx|tsx)?\s*([\s\S]*?)```/);
-    if (fenced) return fenced[1]!.trim();
+    const fences = [...text.matchAll(/```(?:jsx|tsx)?\s*([\s\S]*?)```/g)];
+    if (fences.length > 0) return fences[fences.length - 1]![1]!.trim();
     return text.trim();
 }
 
@@ -86,7 +89,13 @@ export async function runBuilderOneShot(
                 messages.push({ role: "assistant", content: raw });
                 messages.push({
                     role: "user",
-                    content: `JSX validation failed. Fix ALL listed issues and resubmit:\n\n${lastError}`,
+                    content:
+                        `JSX validation failed. Fix ALL listed issues and resubmit.\n\n` +
+                        `🚨 RULES FOR YOUR RESPONSE:\n` +
+                        `- Output ONE single \`\`\`jsx block containing ONLY the corrected JSX.\n` +
+                        `- Do NOT include the previous (broken) version. Replace it entirely.\n` +
+                        `- Do NOT add a second root frame "Fixed" or similar — keep exactly ONE root.\n\n` +
+                        `Errors to fix:\n${lastError}`,
                 });
             }
         }

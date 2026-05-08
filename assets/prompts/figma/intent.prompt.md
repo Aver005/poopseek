@@ -13,6 +13,8 @@ Signal words: create, design, build, new, fresh, from scratch, make me a [comple
 **Default rule**: if an existing design is present and the user's intent is ambiguous → choose **"edit"**.
 If the current design is `none` → always return **"create"**.
 
+**Strong edit bias** when a design exists: if the user describes "the same kind of thing again" (e.g. asks for a similar screen, mentions the existing design type but with tweaks, asks to "make it premium / dark / mobile" of what's already there), this is **edit**, not create. Only choose `create` when the user uses an unambiguous reset signal: "from scratch", "start over", "completely new", "another design alongside", "second variant".
+
 ## Output format
 
 Return ONLY a JSON object in a ```json block:

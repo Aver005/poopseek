@@ -219,8 +219,11 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         }
                     }
 
-                    session.dispatchOps(ops);
-
+                    // SSE-only path: do NOT push to pendingOps. The plugin
+                    // resumes polling /poll-ops as soon as the SSE stream
+                    // closes (`usingSse = false`), so anything left there
+                    // re-runs as a second EXECUTE_OPS batch and we get TWO
+                    // duplicate roots on the canvas.
                     send("ops", { ops, sessionId: session.id });
                     send("done", { sessionId: session.id, text: result.jsx });
                 }
@@ -282,7 +285,8 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                         if (opsToDispatch.length > 0)
                         {
-                            session.dispatchOps(opsToDispatch);
+                            // Same anti-double-dispatch reasoning as the
+                            // create branch: SSE delivery only.
                             send("ops", { ops: opsToDispatch, sessionId: session.id });
                         }
 

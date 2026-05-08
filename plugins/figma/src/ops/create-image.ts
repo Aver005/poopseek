@@ -17,7 +17,15 @@ export const handler: OpHandler = {
             {
                 let node;
 
-                if (src.endsWith('.svg'))
+                // Strip query/hash before extension check — Iconify URLs look
+                // like ".../star.svg?color=%23FFC107", which doesn't end in
+                // ".svg" but IS svg. Without this, every Iconify icon falls
+                // through to createImageAsync and Figma rejects the SVG bytes
+                // with "Image type is unsupported".
+                const pathOnly = src.split('?')[0]!.split('#')[0]!.toLowerCase();
+                const isSvg = pathOnly.endsWith('.svg');
+
+                if (isSvg)
                 {
                     const srcCode = await (await fetch(src)).text();
                     node = figma.createNodeFromSvg(srcCode);
