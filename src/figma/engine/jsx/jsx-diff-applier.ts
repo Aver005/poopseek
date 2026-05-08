@@ -37,7 +37,7 @@ export function applyDiff(
         return { changes };
     }
 
-    changes += applyNodes(buffer, nodes, undefined, false);
+    changes += applyNodes(buffer, nodes, undefined);
     return { changes };
 }
 
@@ -45,88 +45,57 @@ function applyNodes(
     buffer: JsxBuffer,
     nodes: JsxNode[],
     parentId: string | undefined,
-    reconcile: boolean,
 ): number
 {
     let changes = 0;
-    const orderedIds: string[] = [];
 
     for (const node of nodes)
     {
+        // `old` = node and entire subtree are preserved as-is.
+        // No prop merge, no descent into children. The node is purely a
+        // structural reference; any nested JSX inside is ignored.
+        if (node.props.old === true) continue;
+
         const nodeId = String(node.props.id ?? "");
-        const isOld = node.props.old === true;
         const subChildren = node.children.filter((c): c is JsxNode => typeof c === "object");
 
-        if (isOld)
-        {
-            if (!nodeId) continue;
-            const existing = buffer.get(nodeId);
-            if (!existing) continue;
-            orderedIds.push(existing.id);
+        const textContent = node.children
+            .filter((c): c is string => typeof c === "string")
+            .map(s => s.trim())
+            .filter(Boolean)
+            .join(" ");
 
-            if (subChildren.length > 0)
-                changes += applyNodes(buffer, subChildren, existing.id, true);
-            // old + no children = skip entire subtree
+        const props: Record<string, unknown> = { ...node.props };
+        delete props.old;
+        if (textContent && !props.text && !props.content)
+            props.text = textContent;
+
+        const existing = nodeId ? buffer.get(nodeId) : undefined;
+        let targetId: string;
+
+        if (existing)
+        {
+            // Partial prop merge: only listed props are written. Omitted props
+            // stay untouched — buffer.edit ignores keys not present in `updates`.
+            const { id: _, ...updates } = props;
+            if (parentId !== undefined && existing.parentId !== parentId)
+                updates.parentId = parentId;
+            buffer.edit(existing.id, updates);
+            targetId = existing.id;
         }
         else
         {
-            const textContent = node.children
-                .filter((c): c is string => typeof c === "string")
-                .map(s => s.trim())
-                .filter(Boolean)
-                .join(" ");
-
-            const props: Record<string, unknown> = { ...node.props };
-            delete props.old;
-            if (textContent && !props.text && !props.content)
-                props.text = textContent;
-
-            const existing = nodeId ? buffer.get(nodeId) : undefined;
-
-            if (existing)
-            {
-                const { id: _, ...updates } = props;
-                // Auto-move: if the node appears under a different parent in the diff,
-                // move it rather than leaving it in the old parent (which would cause
-                // deletion when the old parent is reconciled).
-                if (parentId !== undefined && existing.parentId !== parentId)
-                    updates.parentId = parentId;
-                buffer.edit(existing.id, updates);
-                orderedIds.push(existing.id);
-                changes++;
-            }
-            else
-            {
-                const newNode = buffer.create(node.type, props, parentId);
-                orderedIds.push(newNode.id);
-                changes++;
-            }
-
-            if (subChildren.length > 0)
-            {
-                const targetId = existing ? existing.id : orderedIds[orderedIds.length - 1]!;
-                // changed container: reconcile children
-                changes += applyNodes(buffer, subChildren, targetId, true);
-            }
+            const newNode = buffer.create(node.type, props, parentId);
+            targetId = newNode.id;
         }
-    }
 
-    // Reconcile only when inside a changed (no-old) container.
-    // Deletes buffer children that weren't listed in the diff, then reorders.
-    if (reconcile && parentId)
-    {
-        const parent = buffer.get(parentId);
-        if (parent)
-        {
-            const listed = new Set(orderedIds);
-            for (const childId of [...parent.children])
-            {
-                if (!listed.has(childId) && buffer.get(childId))
-                    buffer.delete(childId);
-            }
-        }
-        if (orderedIds.length > 0)
-            buffer.reorder(parentId, orderedIds);
+        changes++;
+
+        // Listed children are processed recursively under the same rules.
+        // Children NOT listed here are kept in place — deletions only happen
+        // through the REMOVED list.
+        if (subChildren.length > 0)
+            changes += applyNodes(buffer, subChildren, targetId);
     }
 
     return changes;
