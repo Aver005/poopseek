@@ -1,4 +1,5 @@
 import type { SubAgentRunner } from "@/agent/sub-agent";
+import type { ChatImage } from "@/providers/types";
 import type { VarEntry } from "@/figma/engine/theme/var-store";
 import type { ThemeToken, ComponentDefinition } from "@/figma/engine/theme/theme-state";
 import { parseDesignMd, type ParsedDesignMd } from "@/figma/engine/theme/design-md-parser";
@@ -45,12 +46,14 @@ export async function runDesigner(
     enhanced: string,
     promptContent: string,
     maxRetries = 3,
+    images?: ChatImage[],
 ): Promise<DesignerOutput>
 {
     for (let attempt = 1; attempt <= maxRetries; attempt++)
     {
         const result = await runner.run({
             instruction: promptContent + "\n\nDesign description:\n" + enhanced,
+            images,
         });
 
         if (!result.ok) continue;

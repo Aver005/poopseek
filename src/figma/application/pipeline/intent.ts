@@ -1,4 +1,5 @@
 import type { SubAgentRunner } from "@/agent/sub-agent";
+import type { ChatImage } from "@/providers/types";
 
 export interface IntentResult
 {
@@ -12,6 +13,7 @@ export async function runIntentClassifier(
     currentJsx: string,
     promptContent: string,
     maxRetries = 3,
+    images?: ChatImage[],
 ): Promise<IntentResult>
 {
     const hasDesign = currentJsx !== "(empty)" && currentJsx.trim().length > 0;
@@ -25,7 +27,7 @@ export async function runIntentClassifier(
 
     for (let attempt = 1; attempt <= maxRetries; attempt++)
     {
-        const result = await runner.run({ instruction });
+        const result = await runner.run({ instruction, images });
 
         if (result.ok && result.data)
         {

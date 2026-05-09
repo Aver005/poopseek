@@ -462,10 +462,10 @@
 
             switch (eName) {
               case 'vision':
-                if (eData.ok && eData.haveContext) {
-                  addMsg('🖼️ Картинка проанализирована — детали учтены в дизайне', 'system');
+                if (eData.ok) {
+                  addMsg('🖼️ Картинка прикреплена ко всем агентам (' + eData.count + ')', 'system');
                 } else if (eData.error) {
-                  addMsg('⚠️ Анализ картинки не удался: ' + eData.error, 'error');
+                  addMsg('⚠️ Картинка не прикреплена: ' + eData.error, 'error');
                 }
                 break;
               case 'intent':

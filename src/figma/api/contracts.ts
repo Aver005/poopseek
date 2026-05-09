@@ -1,5 +1,5 @@
 import type { FigmaPluginSnapshot } from "@/figma/domain/plugin/snapshot-types";
-import type { ChatImage } from "@/figma/domain/image-analysis";
+import type { ChatImage } from "@/providers/types";
 
 export type { ChatImage };
 

@@ -1,4 +1,5 @@
 import type { ILLMProvider, ProviderCallOptions } from "@/providers";
+import type { ChatImage } from "@/providers/types";
 import type { JsxBuffer } from "@/figma/engine/jsx/jsx-buffer";
 import { applyDiff } from "@/figma/engine/jsx/jsx-diff-applier";
 
@@ -36,9 +37,13 @@ export async function runHandymanEdit(
     userMessage: string,
     buffer: JsxBuffer,
     callOptions?: ProviderCallOptions,
+    images?: ChatImage[],
 ): Promise<HandymanResult>
 {
-    const provider = await getProvider().clone();
+    const root = getProvider();
+    const provider = images?.length && root.withImages
+        ? await root.withImages(images)
+        : await root.clone();
 
     const chunks: string[] = [];
     for await (const chunk of provider.complete([{ role: "user", content: userMessage }], systemPrompt, callOptions))

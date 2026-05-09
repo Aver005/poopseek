@@ -7,7 +7,6 @@ import { runIntentClassifier } from "@/figma/application/pipeline/intent";
 import { runDesigner } from "@/figma/application/pipeline/designer";
 import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
 import { runHandymanEdit } from "@/figma/application/pipeline/handyman";
-import { analyzeImages, formatAnalysisForPrompt } from "@/figma/application/pipeline/image-analyst";
 import { SubAgentRunner } from "@/agent/sub-agent";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
@@ -107,41 +106,28 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     const currentJsx = session.lastSnapshot?.jsx || session.lastJsx || "(empty)";
     const hasDesign = currentJsx !== "(empty)" && currentJsx.trim().length > 0;
 
-    // Vision analysis — runs before intent classification so the analysis
-    // can inform both intent and the downstream designer/handyman prompts.
-    let visionContext = "";
+    // Image attachments flow directly to every sub-agent (intent → designer
+    // → builder/handyman) via provider.withImages(). Each agent sees the
+    // original picture rather than a paraphrased description, so no agent
+    // hallucinates details that downstream stages then amplify.
+    const images = body.images?.length ? body.images : undefined;
+    let visionAttached = false;
     let visionError: string | null = null;
-    if (body.images?.length)
+    if (images)
     {
-        const totalBytes = body.images.reduce((s, i) => s + i.data.length, 0);
-        console.log(`[vision] received ${body.images.length} image(s), ~${Math.round(totalBytes * 0.75 / 1024)} KB total`);
+        const totalBytes = images.reduce((s, i) => s + i.data.length, 0);
         const provider = deps.getProvider();
+        console.log(`[vision] received ${images.length} image(s), ~${Math.round(totalBytes * 0.75 / 1024)} KB, provider=${provider.info.id}`);
         if (!provider.withImages)
         {
-            visionError = `Активный провайдер "${provider.info.id}" не поддерживает анализ изображений`;
+            visionError = `Активный провайдер "${provider.info.id}" не поддерживает изображения`;
             console.warn(`[vision] ${visionError}`);
         }
         else
         {
-            const t0 = Date.now();
-            try
-            {
-                console.log(`[vision] starting analysis via ${provider.info.id}…`);
-                const analysis = await analyzeImages(body.images, body.message, provider);
-                visionContext = formatAnalysisForPrompt(analysis);
-                console.log(`[vision] analysis ok in ${Date.now() - t0}ms — style="${analysis.designStyle}", components=${analysis.components.length}, intent=${analysis.referenceIntent}`);
-            }
-            catch (err)
-            {
-                visionError = err instanceof Error ? err.message : String(err);
-                console.error(`[vision] analysis failed in ${Date.now() - t0}ms:`, visionError);
-            }
+            visionAttached = true;
         }
     }
-
-    const messageWithVision = visionContext
-        ? `${body.message}\n\n${visionContext}`
-        : body.message;
 
     let intent: "create" | "edit";
     let enhanced: string;
@@ -149,11 +135,13 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     if (hasDesign && looksLikeEdit(body.message))
     {
         intent = "edit";
-        enhanced = messageWithVision;
+        enhanced = body.message;
     }
     else
     {
-        const cached = !visionContext ? context.enhanceCache.get(body.message) : null;
+        // Skip enhance-cache when images are present — same text + different
+        // image must produce a fresh enhanced prompt.
+        const cached = !images ? context.enhanceCache.get(body.message) : null;
         if (cached)
         {
             intent = "create";
@@ -162,7 +150,8 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         else
         {
             const result = await runIntentClassifier(
-                subAgentRunner, messageWithVision, currentJsx, intentPrompt,
+                subAgentRunner, body.message, currentJsx, intentPrompt, undefined,
+                visionAttached ? images : undefined,
             );
             intent = result.intent;
             enhanced = result.enhanced;
@@ -174,6 +163,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         return handleChatLegacy(
             intent, enhanced, body.message, session, context, deps, subAgentRunner,
             designerPrompt, builderPrompt, handymanPromptContent, currentJsx,
+            visionAttached ? images : undefined,
         );
     }
 
@@ -189,12 +179,12 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
             try
             {
-                if (body.images?.length)
+                if (images)
                 {
                     send("vision", {
-                        ok: visionError === null,
+                        ok: visionAttached,
                         error: visionError,
-                        haveContext: visionContext.length > 0,
+                        count: images.length,
                         sessionId: session.id,
                     });
                 }
@@ -202,7 +192,10 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                 if (intent === "create")
                 {
-                    const designerOut = await runDesigner(subAgentRunner, enhanced, designerPrompt);
+                    const designerOut = await runDesigner(
+                        subAgentRunner, enhanced, designerPrompt, undefined,
+                        visionAttached ? images : undefined,
+                    );
                     session.varStore.setTokens(designerOut.tokens);
 
                     setActiveTheme({
@@ -220,7 +213,10 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     const builderPromptWithTokens = builderPrompt
                         .replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)")
                         .replace("{{DESIGN_DOC}}", getActiveDesignDoc() || "(no DESIGN.md prose available)");
-                    const result = await runBuilderOneShot(deps.getProvider, builderPromptWithTokens, enhanced, tokens);
+                    const result = await runBuilderOneShot(
+                        deps.getProvider, builderPromptWithTokens, enhanced, tokens, undefined,
+                        visionAttached ? images : undefined,
+                    );
 
                     if (!result.ok)
                     {
@@ -296,6 +292,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         enhanced,
                         session.buffer,
                         deps.getCallOptions?.(),
+                        visionAttached ? images : undefined,
                     );
 
                     if (!handymanResult.ok)
@@ -388,13 +385,14 @@ async function handleChatLegacy(
     builderPrompt: string,
     handymanPromptContent: string,
     currentJsx: string,
+    images?: import("@/providers/types").ChatImage[],
 ): Promise<Response>
 {
     let assistantText = "";
 
     if (intent === "create")
     {
-        const designerOut = await runDesigner(subAgentRunner, enhanced, designerPrompt);
+        const designerOut = await runDesigner(subAgentRunner, enhanced, designerPrompt, undefined, images);
         const tokens = designerOut.tokens;
 
         session.varStore.setTokens(tokens);
@@ -408,7 +406,7 @@ async function handleChatLegacy(
 
         context.enhanceCache.set(message, { enhanced, tokens });
 
-        const result = await runBuilderOneShot(deps.getProvider, builderPrompt, enhanced, tokens);
+        const result = await runBuilderOneShot(deps.getProvider, builderPrompt, enhanced, tokens, undefined, images);
 
         if (!result.ok)
         {
@@ -460,6 +458,7 @@ async function handleChatLegacy(
             enhanced,
             session.buffer,
             deps.getCallOptions?.(),
+            images,
         );
 
         if (!handymanResult.ok)

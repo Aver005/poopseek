@@ -1,4 +1,5 @@
 import type { ILLMProvider } from "@/providers";
+import type { ChatImage } from "@/providers/types";
 import type { VarEntry } from "@/figma/engine/theme/var-store";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
@@ -46,10 +47,14 @@ export async function runBuilderOneShot(
     enhanced: string,
     tokens: VarEntry[],
     maxRetries = 3,
+    images?: ChatImage[],
 ): Promise<BuilderResult>
 {
     const basePrompt = buildPrompt(promptContent, enhanced, tokens);
-    const provider   = await getProvider().clone();
+    const root = getProvider();
+    const provider = images?.length && root.withImages
+        ? await root.withImages(images)
+        : await root.clone();
 
     const messages: Message[] = [{ role: "user", content: basePrompt }];
     let lastError = "";

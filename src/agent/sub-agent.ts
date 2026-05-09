@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ILLMProvider } from "@/providers";
+import type { ChatImage, ILLMProvider } from "@/providers/types";
 
 export interface SubAgentTask
 {
@@ -8,6 +8,7 @@ export interface SubAgentTask
     files?: string[];
     context?: Record<string, string>;
     schema?: string;
+    images?: ChatImage[];
 }
 
 export interface SubAgentResult
@@ -91,7 +92,11 @@ export class SubAgentRunner
             const fileContents = task.files?.length ? await this.readFiles(task.files) : {};
             const prompt = buildPrompt(task, fileContents);
 
-            const subProvider = await this.getProvider().clone();
+            const root = this.getProvider();
+            const subProvider = task.images?.length && root.withImages
+                ? await root.withImages(task.images)
+                : await root.clone();
+
             const chunks: string[] = [];
             for await (const chunk of subProvider.complete([{ role: "user", content: prompt }], ""))
             {
