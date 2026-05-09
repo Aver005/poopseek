@@ -1,4 +1,4 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
+import type { ChatImage, ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 
 export class AnthropicProvider implements ILLMProvider
 {
@@ -8,6 +8,7 @@ export class AnthropicProvider implements ILLMProvider
     constructor(
         private readonly apiKey: string,
         private readonly model: string,
+        private pendingImages: ChatImage[] = [],
     )
     {
         this.info = { id: "claude", label: "Claude (Anthropic)", model };
@@ -25,6 +26,11 @@ export class AnthropicProvider implements ILLMProvider
         return new AnthropicProvider(this.apiKey, this.model);
     }
 
+    async withImages(images: ChatImage[]): Promise<ILLMProvider>
+    {
+        return new AnthropicProvider(this.apiKey, this.model, [...images]);
+    }
+
     async listModels(): Promise<string[]>
     {
         return [
@@ -39,7 +45,9 @@ export class AnthropicProvider implements ILLMProvider
 
     async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
-        const anthropicMessages = messages.map((msg) =>
+        const imgs = this.pendingImages.splice(0);
+
+        const anthropicMessages = messages.map((msg, idx) =>
         {
             if (msg.role === "tool")
             {
@@ -48,6 +56,17 @@ export class AnthropicProvider implements ILLMProvider
                     content: `[TOOL RESULT: ${msg.name ?? "unknown"}]\n${msg.content}`,
                 };
             }
+
+            if (idx === messages.length - 1 && msg.role === "user" && imgs.length > 0)
+            {
+                const content: unknown[] = imgs.map((img) => ({
+                    type: "image",
+                    source: { type: "base64", media_type: img.mimeType, data: img.data },
+                }));
+                content.push({ type: "text", text: msg.content });
+                return { role: "user" as const, content };
+            }
+
             return { role: msg.role as "user" | "assistant", content: msg.content };
         });
 

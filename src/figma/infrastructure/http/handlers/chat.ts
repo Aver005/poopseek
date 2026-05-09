@@ -112,12 +112,12 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     let visionContext = "";
     if (body.images?.length)
     {
-        const visionConfig = deps.getVisionConfig?.();
-        if (visionConfig)
+        const provider = deps.getProvider();
+        if (provider.withImages)
         {
             try
             {
-                const analysis = await analyzeImages(body.images, body.message, visionConfig);
+                const analysis = await analyzeImages(body.images, body.message, provider);
                 visionContext = formatAnalysisForPrompt(analysis);
             }
             catch (err)

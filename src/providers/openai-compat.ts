@@ -1,4 +1,4 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
+import type { ChatImage, ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 import OpenAI from "openai";
 
 type OpenAICompatId = "openai" | "openrouter" | "hugging-face" | "ollama" | "lm-studio";
@@ -31,6 +31,7 @@ export class OpenAICompatProvider implements ILLMProvider
 {
     private readonly client: OpenAI;
     readonly capabilities: ProviderCapabilities;
+    private pendingImages: ChatImage[] = [];
 
     constructor(
         readonly info: ProviderInfo,
@@ -38,12 +39,14 @@ export class OpenAICompatProvider implements ILLMProvider
         private readonly apiKey: string,
         private readonly model: string,
         capabilities: ProviderCapabilities,
+        pendingImages: ChatImage[] = [],
     ) {
         this.client = new OpenAI({
             baseURL: this.baseUrl,
             apiKey: this.apiKey || "local",
         });
         this.capabilities = capabilities;
+        this.pendingImages = pendingImages;
     }
 
     static fromConfig(config: OpenAICompatConfig): OpenAICompatProvider
@@ -67,6 +70,11 @@ export class OpenAICompatProvider implements ILLMProvider
         return new OpenAICompatProvider(this.info, this.baseUrl, this.apiKey, this.model, this.capabilities);
     }
 
+    async withImages(images: ChatImage[]): Promise<ILLMProvider>
+    {
+        return new OpenAICompatProvider(this.info, this.baseUrl, this.apiKey, this.model, this.capabilities, [...images]);
+    }
+
     async listModels(): Promise<string[]>
     {
         try
@@ -82,6 +90,7 @@ export class OpenAICompatProvider implements ILLMProvider
 
     async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
+        const imgs = this.pendingImages.splice(0);
         const openAIMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
         if (system.trim().length > 0)
@@ -89,14 +98,24 @@ export class OpenAICompatProvider implements ILLMProvider
             openAIMessages.push({ role: "system", content: system });
         }
 
-        for (const msg of messages)
+        for (let i = 0; i < messages.length; i++)
         {
+            const msg = messages[i]!;
             if (msg.role === "tool")
             {
                 openAIMessages.push({
                     role: "user",
                     content: `[TOOL RESULT: ${msg.name ?? "unknown"}]\n${msg.content}`,
                 });
+            }
+            else if (i === messages.length - 1 && msg.role === "user" && imgs.length > 0)
+            {
+                const content: OpenAI.Chat.ChatCompletionContentPart[] = imgs.map((img) => ({
+                    type: "image_url" as const,
+                    image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+                }));
+                content.push({ type: "text", text: msg.content });
+                openAIMessages.push({ role: "user", content });
             }
             else
             {

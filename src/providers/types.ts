@@ -26,6 +26,12 @@ export interface ProviderMessage
     name?: string;
 }
 
+export interface ChatImage
+{
+    data: string;
+    mimeType: "image/png" | "image/jpeg" | "image/webp";
+}
+
 export interface ILLMProvider
 {
     readonly info: ProviderInfo;
@@ -34,6 +40,7 @@ export interface ILLMProvider
     reset(): Promise<void>;
     clone(): Promise<ILLMProvider>;
     listModels(): Promise<string[]>;
+    withImages?(images: ChatImage[]): Promise<ILLMProvider>;
 }
 
 export type ProviderConfig =

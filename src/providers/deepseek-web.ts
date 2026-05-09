@@ -1,8 +1,11 @@
+import os from "node:os";
+import path from "node:path";
+import fs from "node:fs";
 import { streamDeepseekOutput } from "@/bridge/deepseek-stream";
 import DeepseekClient from "@/deepseek-client/client/DeepseekClient";
 import type ChatSession from "@/deepseek-client/client/ChatSession";
 import type { ModelType } from "@/deepseek-client/types";
-import type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderInfo, ProviderMessage } from "./types";
+import type { ChatImage, ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderInfo, ProviderMessage } from "./types";
 
 export class DeepseekWebProvider implements ILLMProvider
 {
@@ -35,6 +38,29 @@ export class DeepseekWebProvider implements ILLMProvider
         const fresh = new DeepseekWebProvider(this.client);
         await fresh.reset();
         return fresh;
+    }
+
+    async withImages(images: ChatImage[]): Promise<ILLMProvider>
+    {
+        const clone = await this.clone() as DeepseekWebProvider;
+        for (const img of images)
+        {
+            const ext = img.mimeType.split("/")[1] ?? "png";
+            const tmpPath = path.join(
+                os.tmpdir(),
+                `ps-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`,
+            );
+            await Bun.write(tmpPath, Buffer.from(img.data, "base64"));
+            try
+            {
+                await clone.uploadFile(tmpPath);
+            }
+            finally
+            {
+                await fs.promises.unlink(tmpPath).catch(() => {});
+            }
+        }
+        return clone;
     }
 
     async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>

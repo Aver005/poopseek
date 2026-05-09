@@ -1,16 +1,19 @@
-import type { ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
+import type { ChatImage, ILLMProvider, ProviderCallOptions, ProviderCapabilities, ProviderConfig, ProviderInfo, ProviderMessage } from "./types";
 
 export class GeminiProvider implements ILLMProvider
 {
     readonly info: ProviderInfo;
     readonly capabilities: ProviderCapabilities = { webSearch: false, thinking: true };
+    private pendingImages: ChatImage[] = [];
 
     constructor(
         private readonly apiKey: string,
         private readonly model: string,
+        pendingImages: ChatImage[] = [],
     )
     {
         this.info = { id: "gemini", label: "Gemini (Google)", model };
+        this.pendingImages = pendingImages;
     }
 
     static fromConfig(config: Extract<ProviderConfig, { id: "gemini" }>): GeminiProvider
@@ -23,6 +26,11 @@ export class GeminiProvider implements ILLMProvider
     async clone(): Promise<ILLMProvider>
     {
         return new GeminiProvider(this.apiKey, this.model);
+    }
+
+    async withImages(images: ChatImage[]): Promise<ILLMProvider>
+    {
+        return new GeminiProvider(this.apiKey, this.model, [...images]);
     }
 
     async listModels(): Promise<string[]>
@@ -38,6 +46,7 @@ export class GeminiProvider implements ILLMProvider
 
     async *complete(messages: ProviderMessage[], system: string, options?: ProviderCallOptions): AsyncIterable<string>
     {
+        const imgs = this.pendingImages.splice(0);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
 
         const generationConfig: Record<string, unknown> = {
@@ -50,18 +59,29 @@ export class GeminiProvider implements ILLMProvider
             generationConfig.thinkingConfig = { thinkingBudget: 8192 };
         }
 
-        // Map to Gemini roles; tool results become user turns
-        const rawContents = messages.map((msg) =>
+        type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+        const rawContents = messages.map((msg, idx) =>
         {
             const text = msg.role === "tool"
                 ? `[TOOL RESULT: ${msg.name ?? "unknown"}]\n${msg.content}`
                 : msg.content;
             const role = msg.role === "assistant" ? "model" : "user";
+
+            if (idx === messages.length - 1 && role === "user" && imgs.length > 0)
+            {
+                const parts: GeminiPart[] = imgs.map((img) => ({
+                    inlineData: { mimeType: img.mimeType, data: img.data },
+                }));
+                parts.push({ text });
+                return { role, parts };
+            }
+
             return { role, parts: [{ text }] };
         });
 
         // Gemini rejects consecutive same-role entries — merge them
-        const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+        const contents: Array<{ role: string; parts: GeminiPart[] }> = [];
         for (const entry of rawContents)
         {
             const last = contents[contents.length - 1];

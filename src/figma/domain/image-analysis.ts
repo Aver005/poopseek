@@ -1,8 +1,4 @@
-export interface ChatImage
-{
-    data: string;
-    mimeType: "image/png" | "image/jpeg" | "image/webp";
-}
+export type { ChatImage } from "@/providers/types";
 
 export interface ImageAnalysis
 {
