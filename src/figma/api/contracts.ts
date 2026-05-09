@@ -1,4 +1,7 @@
 import type { FigmaPluginSnapshot } from "@/figma/domain/plugin/snapshot-types";
+import type { ChatImage } from "@/figma/domain/image-analysis";
+
+export type { ChatImage };
 
 export interface FigmaOp
 {
@@ -10,6 +13,7 @@ export interface FigmaChatRequest
 {
     sessionId?: string;
     message: string;
+    images?: ChatImage[];
 }
 
 export interface FigmaChatResponse

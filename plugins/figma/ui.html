@@ -4,7 +4,61 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PoopSeek</title>
-<style>/* CSS_INLINE */</style>
+<style>/* CSS_INLINE */
+/* Screenshot preview strip */
+.screenshot-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px 0;
+}
+.screenshot-thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.screenshot-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.15);
+  display: block;
+}
+.screenshot-thumb-rm {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(30,30,40,.9);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #aaa;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.screenshot-thumb-rm:hover { color: #fff; }
+/* input-actions row */
+.input-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+.btn-screenshot {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  opacity: .7;
+}
+.btn-screenshot:hover:not(:disabled) { opacity: 1; }
+.btn-screenshot:disabled { opacity: .25; cursor: not-allowed; }
+</style>
 </head>
 <body>
 <canvas id="particles"></canvas>
@@ -30,11 +84,18 @@
   <div class="msg system">Опишите что нужно создать в Figma</div>
 </div>
 
+<div id="screenshotPreview" class="screenshot-preview" style="display:none"></div>
+
 <div class="input-area">
   <textarea id="input" placeholder="Нарисуй онбординг для iOS-приложения…" rows="3"></textarea>
-  <button class="send-btn" id="sendBtn" disabled>
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-right-icon lucide-chevrons-right"><path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>
-  </button>
+  <div class="input-actions">
+    <button class="btn-icon btn-screenshot" id="screenshotBtn" title="Прикрепить снимок экрана" disabled>
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+    </button>
+    <button class="send-btn" id="sendBtn" disabled>
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-right-icon lucide-chevrons-right"><path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>
+    </button>
+  </div>
 </div>
 
 <script>
@@ -45,12 +106,17 @@
   let usingSse = false;
   let pendingSnapshotResolve = null;
   let pendingSnapshotReject = null;
+  let pendingScreenshotResolve = null;
+  let pendingScreenshotReject = null;
+  let attachedImages = []; // { data: string (base64), mimeType: string }[]
 
   const dot = document.getElementById('dot');
   const statusLabel = document.getElementById('statusLabel');
   const messagesEl = document.getElementById('messages');
   const inputEl = document.getElementById('input');
   const sendBtn = document.getElementById('sendBtn');
+  const screenshotBtn = document.getElementById('screenshotBtn');
+  const screenshotPreview = document.getElementById('screenshotPreview');
   const settingsPanel = document.getElementById('settings');
   const serverInput = document.getElementById('serverInput');
   const clearBtn = document.getElementById('clearBtn');
@@ -63,7 +129,77 @@
     dot.className = 'dot ' + (ok ? 'ok' : 'err');
     statusLabel.textContent = label;
     sendBtn.disabled = !ok || busy;
+    screenshotBtn.disabled = !ok || busy;
   }
+
+  // ── Screenshot ────────────────────────────────────────
+  function requestScreenshot() {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingScreenshotResolve = null;
+        pendingScreenshotReject = null;
+        reject(new Error('Screenshot timeout'));
+      }, 8000);
+
+      pendingScreenshotResolve = (images) => {
+        clearTimeout(timeout);
+        pendingScreenshotResolve = null;
+        pendingScreenshotReject = null;
+        resolve(images);
+      };
+      pendingScreenshotReject = (error) => {
+        clearTimeout(timeout);
+        pendingScreenshotResolve = null;
+        pendingScreenshotReject = null;
+        reject(error);
+      };
+
+      parent.postMessage({ pluginMessage: { type: 'REQUEST_SCREENSHOT' } }, '*');
+    });
+  }
+
+  function renderScreenshotPreview() {
+    if (attachedImages.length === 0) {
+      screenshotPreview.style.display = 'none';
+      screenshotPreview.innerHTML = '';
+      return;
+    }
+    screenshotPreview.style.display = 'flex';
+    screenshotPreview.innerHTML = '';
+    attachedImages.forEach((img, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'screenshot-thumb-wrap';
+      const thumb = document.createElement('img');
+      thumb.src = 'data:' + img.mimeType + ';base64,' + img.data;
+      thumb.className = 'screenshot-thumb';
+      const rm = document.createElement('button');
+      rm.className = 'screenshot-thumb-rm';
+      rm.textContent = '×';
+      rm.onclick = () => {
+        attachedImages.splice(idx, 1);
+        renderScreenshotPreview();
+      };
+      wrap.appendChild(thumb);
+      wrap.appendChild(rm);
+      screenshotPreview.appendChild(wrap);
+    });
+  }
+
+  screenshotBtn.addEventListener('click', async () => {
+    if (busy) return;
+    screenshotBtn.disabled = true;
+    try {
+      const images = await requestScreenshot();
+      for (const b64 of images) {
+        attachedImages.push({ data: b64, mimeType: 'image/png' });
+      }
+      renderScreenshotPreview();
+    } catch (err) {
+      addMsg('Не удалось сделать снимок: ' + err.message, 'error');
+    } finally {
+      screenshotBtn.disabled = !connected || busy;
+    }
+  });
 
   async function checkStatus() {
     try {
@@ -176,8 +312,13 @@
     busy = true;
     usingSse = false;
     sendBtn.disabled = true;
+    screenshotBtn.disabled = true;
     inputEl.value = '';
     autoResize();
+
+    const imagesToSend = attachedImages.slice();
+    attachedImages = [];
+    renderScreenshotPreview();
 
     resetTurnOps();
     addMsg(text, 'user');
@@ -192,7 +333,7 @@
       const resp = await fetch(serverUrl + '/v1/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-        body: JSON.stringify({ sessionId, message: text }),
+        body: JSON.stringify({ sessionId, message: text, images: imagesToSend.length > 0 ? imagesToSend : undefined }),
         signal: AbortSignal.timeout(600_000),
       });
 
@@ -286,6 +427,7 @@
       usingSse = false;
       busy = false;
       sendBtn.disabled = !connected;
+      screenshotBtn.disabled = !connected;
     }
   }
 
@@ -299,6 +441,8 @@
     }
     if (msg.type === 'OPS_ERROR') addMsg('Ошибка холста: ' + msg.error, 'error');
     if (msg.type === 'SNAPSHOT' && pendingSnapshotResolve) pendingSnapshotResolve(msg.snapshot);
+    if (msg.type === 'SCREENSHOT_READY' && pendingScreenshotResolve) pendingScreenshotResolve(msg.images);
+    if (msg.type === 'SCREENSHOT_ERROR' && pendingScreenshotReject) pendingScreenshotReject(new Error(msg.error));
     if (msg.type === 'DEBUG_LOG' && Array.isArray(msg.lines)) renderDebugLogCard(msg.lines);
   };
 

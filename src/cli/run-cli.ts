@@ -311,6 +311,14 @@ export async function runCli(): Promise<void>
             const skill = skillManager.getSkills().find((s) => s.name === skillName);
             return skill ? skill.body : null;
         },
+        getVisionConfig: () =>
+        {
+            const claudeConfig = configStore.getConfiguredProviders().find(
+                (p) => p.id === "claude",
+            ) as { id: "claude"; apiKey: string; model: string } | undefined;
+            if (!claudeConfig) return null;
+            return { apiKey: claudeConfig.apiKey, model: "claude-haiku-4-5-20251001" };
+        },
     });
 
     const agentLoop = new StreamingAgentLoop(() => providerStore.getProvider(), contextManager, toolExecutor, {

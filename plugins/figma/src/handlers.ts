@@ -82,5 +82,40 @@ figma.ui.onmessage = (msg: { type: string; ops?: FigmaOp[] }) =>
             type: "SNAPSHOT",
             snapshot: snap,
         });
+        return;
+    }
+
+    if (msg.type === "REQUEST_SCREENSHOT")
+    {
+        const selected = figma.currentPage.selection;
+        const targets: SceneNode[] = selected.length > 0
+            ? [...selected]
+            : [...figma.currentPage.children];
+
+        if (targets.length === 0)
+        {
+            figma.ui.postMessage({ type: "SCREENSHOT_ERROR", error: "Нет нод для снимка" });
+            return;
+        }
+
+        Promise.all(
+            targets.slice(0, 4).map((node) =>
+                node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } })
+                    .then((bytes) =>
+                    {
+                        const b64 = btoa(String.fromCharCode(...bytes));
+                        return b64;
+                    }),
+            ),
+        ).then((images) =>
+        {
+            dlog("REQUEST_SCREENSHOT", `exported ${images.length} image(s)`);
+            figma.ui.postMessage({ type: "SCREENSHOT_READY", images });
+        }).catch((err) =>
+        {
+            derr("REQUEST_SCREENSHOT", `export failed: ${String(err)}`);
+            figma.ui.postMessage({ type: "SCREENSHOT_ERROR", error: String(err) });
+        });
+        return;
     }
 };

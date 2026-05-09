@@ -7,6 +7,7 @@ import { runIntentClassifier } from "@/figma/application/pipeline/intent";
 import { runDesigner } from "@/figma/application/pipeline/designer";
 import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
 import { runHandymanEdit } from "@/figma/application/pipeline/handyman";
+import { analyzeImages, formatAnalysisForPrompt } from "@/figma/application/pipeline/image-analyst";
 import { SubAgentRunner } from "@/agent/sub-agent";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
@@ -106,17 +107,41 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     const currentJsx = session.lastSnapshot?.jsx || session.lastJsx || "(empty)";
     const hasDesign = currentJsx !== "(empty)" && currentJsx.trim().length > 0;
 
+    // Vision analysis — runs before intent classification so the analysis
+    // can inform both intent and the downstream designer/handyman prompts.
+    let visionContext = "";
+    if (body.images?.length)
+    {
+        const visionConfig = deps.getVisionConfig?.();
+        if (visionConfig)
+        {
+            try
+            {
+                const analysis = await analyzeImages(body.images, body.message, visionConfig);
+                visionContext = formatAnalysisForPrompt(analysis);
+            }
+            catch (err)
+            {
+                console.error("[vision] analysis failed:", err instanceof Error ? err.message : String(err));
+            }
+        }
+    }
+
+    const messageWithVision = visionContext
+        ? `${body.message}\n\n${visionContext}`
+        : body.message;
+
     let intent: "create" | "edit";
     let enhanced: string;
 
     if (hasDesign && looksLikeEdit(body.message))
     {
         intent = "edit";
-        enhanced = body.message;
+        enhanced = messageWithVision;
     }
     else
     {
-        const cached = context.enhanceCache.get(body.message);
+        const cached = !visionContext ? context.enhanceCache.get(body.message) : null;
         if (cached)
         {
             intent = "create";
@@ -125,7 +150,7 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
         else
         {
             const result = await runIntentClassifier(
-                subAgentRunner, body.message, currentJsx, intentPrompt,
+                subAgentRunner, messageWithVision, currentJsx, intentPrompt,
             );
             intent = result.intent;
             enhanced = result.enhanced;
