@@ -23,7 +23,17 @@ function parseAnalysis(raw: string): ImageAnalysis
     const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     const json = fenceMatch ? fenceMatch[1]!.trim() : text;
 
-    const parsed = JSON.parse(json) as Partial<ImageAnalysis>;
+    let parsed: Partial<ImageAnalysis>;
+    try
+    {
+        parsed = JSON.parse(json) as Partial<ImageAnalysis>;
+    }
+    catch (err)
+    {
+        console.error("[image-analyst] JSON parse failed. Raw response:\n", raw.slice(0, 800));
+        throw new Error(`Vision response is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     return {
         semanticDescription: parsed.semanticDescription ?? "",
         designStyle: parsed.designStyle ?? "",
@@ -75,8 +85,10 @@ export async function analyzeImages(
         ? `The user's request: "${userHint}"\n\nAnalyze the image(s) in relation to this request.`
         : "Analyze the image(s).";
 
+    const t0 = Date.now();
     const raw = await collectStream(
         visionProvider.complete([{ role: "user", content: userText }], systemPrompt),
     );
+    console.log(`[image-analyst] response received in ${Date.now() - t0}ms (${raw.length} chars)`);
     return parseAnalysis(raw);
 }

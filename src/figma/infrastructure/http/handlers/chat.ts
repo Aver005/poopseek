@@ -110,19 +110,31 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     // Vision analysis — runs before intent classification so the analysis
     // can inform both intent and the downstream designer/handyman prompts.
     let visionContext = "";
+    let visionError: string | null = null;
     if (body.images?.length)
     {
+        const totalBytes = body.images.reduce((s, i) => s + i.data.length, 0);
+        console.log(`[vision] received ${body.images.length} image(s), ~${Math.round(totalBytes * 0.75 / 1024)} KB total`);
         const provider = deps.getProvider();
-        if (provider.withImages)
+        if (!provider.withImages)
         {
+            visionError = `Активный провайдер "${provider.info.id}" не поддерживает анализ изображений`;
+            console.warn(`[vision] ${visionError}`);
+        }
+        else
+        {
+            const t0 = Date.now();
             try
             {
+                console.log(`[vision] starting analysis via ${provider.info.id}…`);
                 const analysis = await analyzeImages(body.images, body.message, provider);
                 visionContext = formatAnalysisForPrompt(analysis);
+                console.log(`[vision] analysis ok in ${Date.now() - t0}ms — style="${analysis.designStyle}", components=${analysis.components.length}, intent=${analysis.referenceIntent}`);
             }
             catch (err)
             {
-                console.error("[vision] analysis failed:", err instanceof Error ? err.message : String(err));
+                visionError = err instanceof Error ? err.message : String(err);
+                console.error(`[vision] analysis failed in ${Date.now() - t0}ms:`, visionError);
             }
         }
     }
@@ -177,6 +189,15 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
             try
             {
+                if (body.images?.length)
+                {
+                    send("vision", {
+                        ok: visionError === null,
+                        error: visionError,
+                        haveContext: visionContext.length > 0,
+                        sessionId: session.id,
+                    });
+                }
                 send("intent", { intent, enhanced, sessionId: session.id });
 
                 if (intent === "create")

@@ -103,8 +103,12 @@ The plugin executes `FigmaOp[]` from the server. Several non-obvious patterns ex
 - `ops/clear-frame-children.ts` does two-pass orphan cleanup: top-level non-target FRAMES, then `currentPage.findAll` for any of the 5 primitives outside the target subtree.
 - Debug logging via `plugins/figma/src/debug.ts`: `dlog`/`derr` auto-prefixed with `[ops/N/M]` via `setCurrentOpTag`. Toggle with `DEBUG = true|false`. When debugging, ask user for trace around the first `❌` — root cause is almost always one `[resolveParent] ❌` or stale REUSE-by-id.
 
+### Figma plugin assets (`plugins/figma/ui.html`, `ui.css`)
+The plugin's UI is a single-file iframe. Build inlines `ui.css` into the `<style>/* CSS_INLINE */</style>` placeholder in `ui.html`. **Never write styles directly inside that `<style>` tag — edit `ui.css` instead.** Same convention for any other `/* X_INLINE */` markers you encounter: grep for the marker before editing nearby — they're build-time placeholders, not real content.
+
 ## Code conventions
 - No comments unless WHY is non-obvious
 - No error handling for impossible cases
 - Prefer editing existing files over creating new ones
 - Bun APIs over Node.js equivalents where possible
+- Before editing near unfamiliar markers (`/* X_INLINE */`, `// AUTO-GENERATED`, etc.), grep for the marker to learn what populates it.

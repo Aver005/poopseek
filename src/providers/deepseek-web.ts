@@ -43,17 +43,27 @@ export class DeepseekWebProvider implements ILLMProvider
     async withImages(images: ChatImage[]): Promise<ILLMProvider>
     {
         const clone = await this.clone() as DeepseekWebProvider;
-        for (const img of images)
+        console.log(`[deepseek-web/withImages] cloned session, uploading ${images.length} image(s)…`);
+        for (let i = 0; i < images.length; i++)
         {
+            const img = images[i]!;
             const ext = img.mimeType.split("/")[1] ?? "png";
             const tmpPath = path.join(
                 os.tmpdir(),
                 `ps-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`,
             );
-            await Bun.write(tmpPath, Buffer.from(img.data, "base64"));
+            const buf = Buffer.from(img.data, "base64");
+            await Bun.write(tmpPath, buf);
+            const t0 = Date.now();
             try
             {
-                await clone.uploadFile(tmpPath);
+                const entry = await clone.uploadFile(tmpPath);
+                console.log(`[deepseek-web/withImages]   #${i + 1}/${images.length} uploaded id=${entry.id} (${buf.length} bytes, ${Date.now() - t0}ms)`);
+            }
+            catch (err)
+            {
+                console.error(`[deepseek-web/withImages]   #${i + 1}/${images.length} upload failed:`, err instanceof Error ? err.message : String(err));
+                throw err;
             }
             finally
             {

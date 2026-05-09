@@ -100,20 +100,17 @@ figma.ui.onmessage = (msg: { type: string; ops?: FigmaOp[] }) =>
 
         Promise.all(
             targets.slice(0, 4).map((node) =>
-                node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } })
-                    .then((bytes) =>
-                    {
-                        const b64 = btoa(String.fromCharCode(...bytes));
-                        return b64;
-                    }),
+                node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 0.5 } })
+                    .then((bytes) => figma.base64Encode(bytes)),
             ),
         ).then((images) =>
         {
-            dlog("REQUEST_SCREENSHOT", `exported ${images.length} image(s)`);
+            const totalBytes = images.reduce((s, i) => s + i.length, 0);
+            dlog("REQUEST_SCREENSHOT", `exported ${images.length} image(s), ~${Math.round(totalBytes * 0.75 / 1024)} KB`);
             figma.ui.postMessage({ type: "SCREENSHOT_READY", images });
         }).catch((err) =>
         {
-            derr("REQUEST_SCREENSHOT", `export failed: ${String(err)}`);
+            derr("REQUEST_SCREENSHOT", `export failed: ${err instanceof Error ? `${err.message}\n${err.stack}` : String(err)}`);
             figma.ui.postMessage({ type: "SCREENSHOT_ERROR", error: String(err) });
         });
         return;
