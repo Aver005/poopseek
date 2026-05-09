@@ -147,7 +147,7 @@ export async function runCli(): Promise<void>
     const sessionStore = createSessionStore({
         session: { id: createStoredSessionId(), createdAt: new Date().toISOString() },
         sessionsDir,
-        modelVariant: "default",
+        modelVariant: runtimeConfig.modelVariant ?? "default",
     });
 
     const saveCurrentLocalSession = async (): Promise<void> =>
@@ -651,6 +651,21 @@ export async function runCli(): Promise<void>
         colorMode,
         terminalCapabilities
     );
+
+    // --figma flag — auto-start the Figma server on boot.
+    if (process.argv.slice(2).some((arg) => arg === "--figma" || arg === "-f"))
+    {
+        try
+        {
+            await figmaServerManager.start();
+            output.write(`\nFigma-сервер запущен — http://localhost:${figmaServerManager.port}\n`);
+            output.write("Откройте Figma Desktop → Plugins → PoopSeek\n\n");
+        }
+        catch (err)
+        {
+            output.write(`\nНе удалось запустить Figma-сервер: ${err instanceof Error ? err.message : String(err)}\n\n`);
+        }
+    }
 
     terminalInput.start(commands);
 

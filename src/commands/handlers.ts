@@ -208,7 +208,15 @@ export function buildCommandHandlers(
         setTheme: (theme) => setTheme(theme),
 
         getModelType: () => sessionStore.getModelVariant() as "default" | "expert",
-        setModelType: (nextModelType) => sessionStore.setModelVariant(nextModelType),
+        setModelType: (nextModelType) =>
+        {
+            sessionStore.setModelVariant(nextModelType);
+            const runtimeConfig = configStore.getRuntimeConfig();
+            const updated = { ...runtimeConfig, modelVariant: nextModelType };
+            configStore.setRuntimeConfig(updated);
+            saveRuntimeConfig(configStore.getRuntimeConfigPath(), updated)
+                .catch((err) => console.error("[runtime-config] save failed:", err));
+        },
 
         getModel: () =>
         {
@@ -225,6 +233,10 @@ export function buildCommandHandlers(
             if (provider.info.id === "deepseek-web")
             {
                 sessionStore.setModelVariant(model);
+                const runtimeConfig = configStore.getRuntimeConfig();
+                const updated = { ...runtimeConfig, modelVariant: model };
+                configStore.setRuntimeConfig(updated);
+                await saveRuntimeConfig(configStore.getRuntimeConfigPath(), updated);
                 return;
             }
             const runtimeConfig = configStore.getRuntimeConfig();

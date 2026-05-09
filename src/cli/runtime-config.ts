@@ -11,6 +11,7 @@ export type RuntimeConfig = {
     configuredProviders: ProviderConfig[];
     userName: string | null;
     onboardingDone: boolean;
+    modelVariant: string | null;
 };
 
 type RuntimeConfigLoadResult = {
@@ -95,7 +96,7 @@ function parseProviderList(raw: unknown): ProviderConfig[]
 function parseRuntimeConfig(raw: unknown): RuntimeConfig
 {
     if (typeof raw !== "object" || raw === null)
-        return { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false };
+        return { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false, modelVariant: null };
 
     const obj = raw as Record<string, unknown>;
     const token = typeof obj.token === "string" ? normalizeOptionalString(obj.token) : null;
@@ -103,8 +104,9 @@ function parseRuntimeConfig(raw: unknown): RuntimeConfig
     const configuredProviders = parseProviderList(obj.configuredProviders);
     const userName = typeof obj.userName === "string" ? normalizeOptionalString(obj.userName) : null;
     const onboardingDone = obj.onboardingDone === true;
+    const modelVariant = typeof obj.modelVariant === "string" ? normalizeOptionalString(obj.modelVariant) : null;
 
-    return { token, provider, configuredProviders, userName, onboardingDone };
+    return { token, provider, configuredProviders, userName, onboardingDone, modelVariant };
 }
 
 export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConfigLoadResult>
@@ -119,9 +121,9 @@ export async function loadRuntimeConfig(configPath: string): Promise<RuntimeConf
     {
         const nodeError = error as NodeJS.ErrnoException;
         if (nodeError.code === "ENOENT")
-            return { config: { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false }, exists: false };
+            return { config: { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false, modelVariant: null }, exists: false };
         if (error instanceof SyntaxError)
-            return { config: { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false }, exists: true };
+            return { config: { token: null, provider: null, configuredProviders: [], userName: null, onboardingDone: false, modelVariant: null }, exists: true };
         throw error;
     }
 }
@@ -138,6 +140,7 @@ export async function saveRuntimeConfig(configPath: string, config: RuntimeConfi
             configuredProviders: config.configuredProviders,
             userName: config.userName,
             onboardingDone: config.onboardingDone,
+            modelVariant: config.modelVariant,
         },
         null,
         4,
