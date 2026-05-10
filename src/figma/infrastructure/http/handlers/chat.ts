@@ -7,6 +7,8 @@ import { runIntentClassifier } from "@/figma/application/pipeline/intent";
 import { runDesigner } from "@/figma/application/pipeline/designer";
 import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
 import { runHandymanEdit } from "@/figma/application/pipeline/handyman";
+// componentize is parked — see chat handler below for rationale.
+// import { componentize } from "@/figma/application/pipeline/componentize";
 import { SubAgentRunner } from "@/agent/sub-agent";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
@@ -196,6 +198,8 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         subAgentRunner, enhanced, designerPrompt, undefined,
                         visionAttached ? images : undefined,
                     );
+                    console.log(`[designer] returned: tokens=${designerOut.tokens.length}, themeTokens=${designerOut.themeTokens.length}, components=${designerOut.components.length} [${designerOut.components.map((c) => c.name).join(", ")}]`);
+
                     session.varStore.setTokens(designerOut.tokens);
 
                     setActiveTheme({
@@ -210,12 +214,16 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                     send("tokens", { tokens: designerOut.tokens, sessionId: session.id });
                     const tokens = designerOut.tokens; // keep below variable name stable
 
+                    // Builder produces a flat inline-frame screen — no Instance
+                    // expectations. Reusable patterns are extracted AFTER, by
+                    // the deterministic componentizer below.
                     const builderPromptWithTokens = builderPrompt
                         .replace("{{TOKENS_TABLE}}", describeActiveTokensForPrompt() || "(no tokens defined)")
                         .replace("{{DESIGN_DOC}}", getActiveDesignDoc() || "(no DESIGN.md prose available)");
                     const result = await runBuilderOneShot(
                         deps.getProvider, builderPromptWithTokens, enhanced, tokens, undefined,
                         visionAttached ? images : undefined,
+                        [], // registeredComponents — none yet, builder writes inline
                     );
 
                     if (!result.ok)
@@ -238,10 +246,30 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         return;
                     }
 
+                    // ─── Componentize: PARKED for now ─────────────────────
+                    // The deterministic componentizer (see componentize.ts)
+                    // had several practical issues that degraded visual
+                    // quality vs. plain inline output:
+                    //   1. Text overrides only fill the FIRST text slot —
+                    //      multi-text components (Card with title+desc+price)
+                    //      get all text concatenated into the title.
+                    //   2. Instances render at master-fixed size; they don't
+                    //      inherit `width="fill"` from the screen parent, so
+                    //      grids of Instances collapse.
+                    //   3. Cascading extraction (ProductCard contains
+                    //      BuyButton, both detected) leaves orphaned refs
+                    //      and produces redundant masters.
+                    //   4. Two identical small frames (e.g. LogoIcon Rect)
+                    //      shouldn't always become a Component — too small
+                    //      to benefit.
+                    // Re-enabling requires per-slot text override, sizing
+                    // hints, parent-aware instance compilation, and quality
+                    // filters. Until then we ship the builder's inline JSX
+                    // verbatim — same architecture as before componentize.
+                    const ops = compileJsx(parsedNodes);
+
                     session.lastJsx = result.jsx;
                     session.mode = "edit";
-
-                    const ops = compileJsx(parsedNodes);
 
                     // If we already have a design on the canvas, place the
                     // new root next to it instead of on top. We mutate the
@@ -406,7 +434,7 @@ async function handleChatLegacy(
 
         context.enhanceCache.set(message, { enhanced, tokens });
 
-        const result = await runBuilderOneShot(deps.getProvider, builderPrompt, enhanced, tokens, undefined, images);
+        const result = await runBuilderOneShot(deps.getProvider, builderPrompt, enhanced, tokens, undefined, images, []);
 
         if (!result.ok)
         {

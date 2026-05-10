@@ -1,7 +1,7 @@
 import type { FigmaOp } from "./types";
 import { buildPluginSnapshot } from "./helpers";
 import { executeOps } from "./ops/index";
-import { nodeMap } from "./cache";
+import { nodeMap, componentRegistry } from "./cache";
 import { dlog, derr, drainLogBuffer } from "./debug";
 
 // figma.ui.onmessage is async and figma does NOT serialize re-entrant
@@ -23,6 +23,8 @@ async function runBatch(ops: FigmaOp[]): Promise<void>
     nodeMap.clear();
     dlog("EXECUTE_OPS", `received ${ops.length} ops, page="${figma.currentPage.name}" (children=${figma.currentPage.children.length}), nodeMap cleared (was ${beforeMapSize})`);
 
+    const registrySizeBefore = componentRegistry.size;
+
     try
     {
         const countBefore = figma.currentPage.children.length;
@@ -34,8 +36,18 @@ async function runBatch(ops: FigmaOp[]): Promise<void>
             figma.viewport.scrollAndZoomIntoView(toView);
         }
         const dt = Date.now() - t0;
-        dlog("EXECUTE_OPS", `done in ${dt}ms, ${count} ops produced output, page.children=${figma.currentPage.children.length}, nodeMap.size=${nodeMap.size}`);
+        dlog("EXECUTE_OPS", `done in ${dt}ms, ${count} ops produced output, page.children=${figma.currentPage.children.length}, nodeMap.size=${nodeMap.size}, components=${componentRegistry.size}`);
         figma.ui.postMessage({ type: "OPS_DONE", count });
+
+        // If new components landed in the registry this batch, ship the
+        // updated registry to the UI/server so the screen-builder can
+        // reference them by name when emitting <Instance> ops.
+        if (componentRegistry.size !== registrySizeBefore)
+        {
+            const components = [...componentRegistry.entries()].map(([key, id]) => ({ key, id }));
+            figma.ui.postMessage({ type: "COMPONENT_REGISTRY", components });
+            dlog("EXECUTE_OPS", `→ COMPONENT_REGISTRY shipped: ${components.length} entries`);
+        }
     }
     catch (err)
     {

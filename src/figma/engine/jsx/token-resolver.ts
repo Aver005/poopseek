@@ -114,16 +114,34 @@ export function resolveAs(v: JsxPropValue | undefined): ComponentDefinition | un
  * Map a component bundle's keys to JSX prop names recognized by our
  * compiler. DESIGN.md spec: backgroundColor / textColor / typography /
  * rounded / padding / size / height / width.
+ *
+ * IMPORTANT: backgroundColor and textColor BOTH map to `fill`, but they
+ * apply to DIFFERENT tags:
+ *   - On <Frame>/<Rect>/<Image>/etc. fill is the background → use `backgroundColor`
+ *   - On <Text> fill is the glyph color → use `textColor`
+ * Without tag-awareness, `textColor` (which iterates after `backgroundColor`
+ * in Object.entries) silently OVERWRITES the Frame's bg — buttons end up
+ * coloured by their textColor instead of their backgroundColor (e.g. white
+ * button on dark theme instead of orange). The `tagName` parameter routes
+ * each color key only where it belongs.
  */
-export function componentBundleToProps(bundle: ComponentDefinition): Record<string, string | number>
+export function componentBundleToProps(
+    bundle: ComponentDefinition,
+    tagName: string,
+): Record<string, string | number>
 {
+    const isText = tagName === "Text";
     const out: Record<string, string | number> = {};
     for (const [k, v] of Object.entries(bundle.props))
     {
         switch (k)
         {
-            case "backgroundColor": out.fill = v; break;
-            case "textColor":       out.fill = v; break; // also used by Text — same key works for both
+            case "backgroundColor":
+                if (!isText) out.fill = v;        // bg goes to Frames, not Text glyph
+                break;
+            case "textColor":
+                if (isText) out.fill = v;         // glyph color goes ONLY to Text
+                break;
             case "typography":      out.variant = v; break;
             case "rounded":         out.radius = v; break;
             case "padding":         out.padX = v; out.padY = v; break;

@@ -4,7 +4,17 @@ import {
     resolveVariant, resolveAs, componentBundleToProps,
 } from "./token-resolver";
 import type { JsxNode, JsxPropValue } from "./jsx-parser";
+import { COMPONENT_SPECS } from "./jsx-spec";
 import type { FigmaOp } from "../../types";
+
+// Build the union of all known frame-style props once. When collecting
+// variant axes off a `<Component>` we need to exclude these — otherwise
+// `fill="primary"` on a Component master ends up as a variant axis
+// "fill=primary" and the registry key becomes nonsense.
+const KNOWN_FRAME_AND_TEXT_PROPS = new Set<string>([
+    ...COMPONENT_SPECS.Frame!.allowedProps,
+    ...COMPONENT_SPECS.Text!.allowedProps,
+]);
 
 /**
  * Apply `as="..."` component bundle onto node.props as defaults — so any
@@ -17,7 +27,7 @@ function applyComponentAs(node: JsxNode): void
     if (asRef === undefined) return;
     const bundle = resolveAs(asRef);
     if (!bundle) return;
-    const expanded = componentBundleToProps(bundle);
+    const expanded = componentBundleToProps(bundle, node.type);
     for (const [k, v] of Object.entries(expanded))
     {
         if (node.props[k] === undefined) node.props[k] = v as JsxPropValue;
@@ -34,6 +44,12 @@ interface FrameContext
     height: number;
     isAutoLayout: boolean;
     flow: "HORIZONTAL" | "VERTICAL";
+    /** When this stack frame represents a `<ComponentSet name="X">`, child
+     *  `<Component>` nodes without their own `name=` inherit "X" from here.
+     *  Otherwise registry collisions: every `<Component state="default">`
+     *  inside any ComponentSet gets the SAME default name "Component" and
+     *  collides under "Component/state=default". */
+    componentSetName?: string;
 }
 
 interface State
@@ -119,6 +135,53 @@ function applyShadow(state: State, nodeId: string, value: JsxPropValue | undefin
     const preset = SHADOW_PRESETS[key];
     if (!preset) return;
     push(state, { type: "set_shadow", nodeId, ...preset });
+}
+
+// Parse the `border=` shortcut into stroke + width. Accepts:
+//   border={1}                   → { stroke: "border", width: 1 }
+//   border                       → { stroke: "border", width: 1 }   (boolean true)
+//   border="primary"             → { stroke: "primary", width: 1 }
+//   border="2"                   → { stroke: "border", width: 2 }
+//   border="1 primary"           → { stroke: "primary", width: 1 }
+//   border="1px solid primary"   → { stroke: "primary", width: 1 }   (CSS-like)
+function parseBorder(value: JsxPropValue | undefined): { stroke: string; width: number } | undefined
+{
+    if (value === undefined) return undefined;
+    if (value === true) return { stroke: "border", width: 1 };
+    if (value === false) return undefined;
+    if (typeof value === "number") return { stroke: "border", width: value };
+    if (typeof value !== "string") return undefined;
+
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    let width = 1;
+    let color: string | undefined;
+    for (const part of trimmed.split(/\s+/))
+    {
+        const numMatch = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(part);
+        if (numMatch) { width = Number(numMatch[1]); continue; }
+        if (part === "solid" || part === "dashed" || part === "dotted" || part === "none") continue;
+        if (!color) color = part;     // first non-numeric, non-style token wins
+    }
+    return { stroke: color ?? "border", width };
+}
+
+// Resolve effective stroke + weight by combining `border` shortcut and the
+// explicit `stroke=` / `strokeWidth=` props. Explicit props win over the
+// shortcut when both are present.
+function resolveBorderProps(
+    border: JsxPropValue | undefined,
+    stroke: JsxPropValue | undefined,
+    strokeWidth: JsxPropValue | undefined,
+): { color: JsxPropValue | undefined; weight: JsxPropValue | undefined }
+{
+    const parsed = parseBorder(border);
+    if (!parsed) return { color: stroke, weight: strokeWidth };
+    return {
+        color: stroke !== undefined ? stroke : parsed.stroke,
+        weight: strokeWidth !== undefined ? strokeWidth : parsed.width,
+    };
 }
 
 function applyStroke(state: State, nodeId: string, color: JsxPropValue | undefined, weight: JsxPropValue | undefined): void
@@ -219,12 +282,16 @@ function toFigmaAlign(val: string | undefined, allowBetween: boolean): string | 
     }
 }
 
-function compileFrame(node: JsxNode, state: State): void
+function compileFrame(node: JsxNode, state: State, opType: string = "create_frame"): void
 {
     applyComponentAs(node);
     const p = node.props;
     const parent = top(state);
-    const id = str(p.id) ?? uid(state, "frm");
+    const isComponent = opType === "create_component" || opType === "create_component_set";
+    const idPrefix = opType === "create_component" ? "cmp"
+        : opType === "create_component_set" ? "cset"
+        : "frm";
+    const id = str(p.id) ?? uid(state, idPrefix);
 
     const hasLayoutProps = p.padX !== undefined || p.padY !== undefined
         || p.padTop !== undefined || p.padRight !== undefined
@@ -250,11 +317,37 @@ function compileFrame(node: JsxNode, state: State): void
     const rBLRes    = resolveNumber(p.radiusBL, "radius");
     const rBRRes    = resolveNumber(p.radiusBR, "radius");
 
+    // For <Component>, collect variant axes (state, size, kind, …) — every
+    // bare attr that isn't a known Frame/Text prop. Standard frame-style
+    // props on a Component (fill, padX, radius, ...) configure the master,
+    // not its variant identity, so they MUST be excluded from variants.
+    const variantProps: Record<string, string> = {};
+    if (opType === "create_component")
+    {
+        for (const [k, v] of Object.entries(p))
+        {
+            if (KNOWN_FRAME_AND_TEXT_PROPS.has(k)) continue;
+            if (typeof v === "string") variantProps[k] = v;
+            else if (typeof v === "number") variantProps[k] = String(v);
+        }
+    }
+
+    // Resolve the emitted name. For <Component> without explicit `name=`,
+    // inherit the wrapping <ComponentSet>'s name so the registry key is
+    // unique per design (Button/state=default vs Card/kind=featured),
+    // not collision-prone "Component/state=default".
+    const explicitName = str(p.name);
+    const resolvedName = explicitName
+        ?? (opType === "create_component" ? parent?.componentSetName : undefined)
+        ?? (isComponent ? "Component" : "Frame");
+
     push(state, {
-        type: "create_frame",
+        type: opType,
         id,
-        name: str(p.name) ?? "Frame",
+        name: resolvedName,
         ...parentRef(state, p),
+        ...(opType === "create_component" && Object.keys(variantProps).length > 0
+            ? { variants: variantProps } : {}),
         ...(width  !== undefined ? { width }  : {}),
         ...(height !== undefined ? { height } : {}),
         ...(fillParent       ? { fillParent: true }       : {}),
@@ -311,7 +404,10 @@ function compileFrame(node: JsxNode, state: State): void
     }
 
     if (p.gradient) applyGradient(state, id, p.gradient);
-    applyStroke(state, id, p.stroke, p.strokeWidth ?? p.strokeWeight);
+    {
+        const eff = resolveBorderProps(p.border, p.stroke, p.strokeWidth ?? p.strokeWeight);
+        applyStroke(state, id, eff.color, eff.weight);
+    }
     applyShadow(state, id, p.shadow);
     applyDropShadow(state, id, p.dropShadow);
     applyInnerShadow(state, id, p.innerShadow);
@@ -323,6 +419,7 @@ function compileFrame(node: JsxNode, state: State): void
         height: height ?? parent?.height ?? 0,
         isAutoLayout: hasAutoLayout,
         flow,
+        componentSetName: opType === "create_component_set" ? resolvedName : undefined,
     });
     compileChildren(node, state);
     state.stack.pop();
@@ -484,7 +581,10 @@ function compileImage(node: JsxNode, state: State): void
         ...numberFields("cornerRadiusBottomRight", imgBR),
     });
 
-    applyStroke(state, id, p.stroke, p.strokeWidth ?? p.strokeWeight);
+    {
+        const eff = resolveBorderProps(p.border, p.stroke, p.strokeWidth ?? p.strokeWeight);
+        applyStroke(state, id, eff.color, eff.weight);
+    }
     applyShadow(state, id, p.shadow);
     applyDropShadow(state, id, p.dropShadow);
     applyInnerShadow(state, id, p.innerShadow);
@@ -514,7 +614,10 @@ function compileEllipse(node: JsxNode, state: State): void
     });
 
     if (p.gradient) applyGradient(state, id, p.gradient);
-    applyStroke(state, id, p.stroke, p.strokeWidth ?? p.strokeWeight);
+    {
+        const eff = resolveBorderProps(p.border, p.stroke, p.strokeWidth ?? p.strokeWeight);
+        applyStroke(state, id, eff.color, eff.weight);
+    }
     applyShadow(state, id, p.shadow);
     applyDropShadow(state, id, p.dropShadow);
     applyInnerShadow(state, id, p.innerShadow);
@@ -601,20 +704,81 @@ function compileChildren(node: JsxNode, state: State): void
             compile(child, state);
 }
 
+function extractTextChildren(node: JsxNode): string
+{
+    const parts: string[] = [];
+    for (const c of node.children)
+        if (typeof c === "string") parts.push(c);
+    return parts.join("").trim();
+}
+
+function compileInstance(node: JsxNode, state: State): void
+{
+    const p = node.props;
+    const id = str(p.id) ?? uid(state, "ins");
+    const componentName = str(p.of);
+    if (!componentName)
+    {
+        // Without `of` we can't resolve a master — skip.
+        return;
+    }
+
+    // Collect variant axes (everything that isn't a reserved Instance prop).
+    const reserved = new Set([
+        "id", "name", "of", "x", "y", "width", "height", "w", "h",
+        "opacity", "detach", "as", "old",
+    ]);
+    const variantProps: Record<string, string> = {};
+    for (const [k, v] of Object.entries(p))
+    {
+        if (reserved.has(k)) continue;
+        if (typeof v === "string") variantProps[k] = v;
+        else if (typeof v === "number") variantProps[k] = String(v);
+    }
+
+    // Default text-slot override: bare text children populate the first
+    // text slot of the component (resolved by name on the plugin side).
+    const textOverride = extractTextChildren(node);
+
+    const widthSz  = resolveSize(p.width  ?? p.w);
+    const heightSz = resolveSize(p.height ?? p.h);
+    const width  = typeof widthSz  === "number" ? widthSz  : undefined;
+    const height = typeof heightSz === "number" ? heightSz : undefined;
+
+    push(state, {
+        type: "create_instance",
+        id,
+        of: componentName,
+        ...(str(p.name) ? { name: str(p.name)! } : {}),
+        ...parentRef(state, p),
+        ...(Object.keys(variantProps).length > 0 ? { variants: variantProps } : {}),
+        ...(textOverride ? { textOverride } : {}),
+        ...(width  !== undefined ? { width }  : {}),
+        ...(height !== undefined ? { height } : {}),
+        ...(p.opacity !== undefined ? { opacity: num(p.opacity) } : {}),
+        ...(p.detach ? { detach: true } : {}),
+        ...(p.x !== undefined ? { x: num(p.x) } : {}),
+        ...(p.y !== undefined ? { y: num(p.y) } : {}),
+    });
+}
+
 function compile(node: JsxNode, state: State): void
 {
     switch (node.type)
     {
-        case "Frame":   return compileFrame(node, state);
-        case "Text":    return compileText(node, state);
-        case "Image":   return compileImage(node, state);
+        case "Frame":        return compileFrame(node, state);
+        case "Text":         return compileText(node, state);
+        case "Image":        return compileImage(node, state);
         case "Rect":
-        case "Rectangle": return compileRect(node, state);
+        case "Rectangle":    return compileRect(node, state);
         case "Ellipse":
-        case "Circle":  return compileEllipse(node, state);
+        case "Circle":       return compileEllipse(node, state);
         case "Line":
-        case "Divider": return compileLine(node, state);
-        default:        return compileFrame(node, state);
+        case "Divider":      return compileLine(node, state);
+        case "Component":    return compileFrame(node, state, "create_component");
+        case "ComponentSet": return compileFrame(node, state, "create_component_set");
+        case "Instance":     return compileInstance(node, state);
+        default:             return compileFrame(node, state);
     }
 }
 

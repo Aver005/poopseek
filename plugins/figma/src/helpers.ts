@@ -738,7 +738,18 @@ export async function solidPaint(input: ColorInput): Promise<SolidPaint | null>
     return figma.variables.setBoundVariableForPaint(paint, "color", variable);
 }
 
-export function resolveParent(frameId: unknown): FrameNode | PageNode
+// Any node type that can legitimately host children we create. FRAME and
+// COMPONENT both serve as auto-layout containers; COMPONENT_SET hosts
+// COMPONENT children. PAGE is the canvas-level fallback.
+type ParentLike = FrameNode | ComponentNode | ComponentSetNode | PageNode;
+
+function isParentLike(node: BaseNode | null): node is ParentLike
+{
+    if (!node) return false;
+    return node.type === "FRAME" || node.type === "COMPONENT" || node.type === "COMPONENT_SET" || node.type === "PAGE";
+}
+
+export function resolveParent(frameId: unknown): ParentLike
 {
     if (typeof frameId !== "string")
     {
@@ -750,10 +761,10 @@ export function resolveParent(frameId: unknown): FrameNode | PageNode
     if (figmaId)
     {
         const node = figma.getNodeById(figmaId);
-        if (node && node.type === "FRAME")
+        if (isParentLike(node))
         {
             dlog("resolveParent", `"${frameId}" → nodeMap hit → ${describeNode(node)}`);
-            return node as FrameNode;
+            return node;
         }
         dlog("resolveParent", `"${frameId}" → nodeMap had id="${figmaId}" but getNodeById=${node ? `type=${node.type}` : "null"} (stale)`);
     }
@@ -764,8 +775,8 @@ export function resolveParent(frameId: unknown): FrameNode | PageNode
 
     // Fallback: search top-level page children by name (handles stale/empty nodeMap)
     const byName = figma.currentPage.children.find(
-        n => n.name === frameId && n.type === "FRAME",
-    ) as FrameNode | undefined;
+        n => n.name === frameId && (n.type === "FRAME" || n.type === "COMPONENT" || n.type === "COMPONENT_SET"),
+    ) as FrameNode | ComponentNode | ComponentSetNode | undefined;
     if (byName)
     {
         nodeMap.set(frameId, byName.id);
@@ -775,6 +786,45 @@ export function resolveParent(frameId: unknown): FrameNode | PageNode
 
     derr("resolveParent", `❌ "${frameId}" UNRESOLVED, falling back to currentPage. Children of new node will be parented to the page (NOT auto-layout) and layoutSizing ops will fail.`);
     return figma.currentPage;
+}
+
+// UI Kit page management. Components live on a dedicated page so Figma's
+// Assets panel indexes them and they don't pollute the design canvas.
+const UI_KIT_PAGE_NAME = "🧩 UI Kit";
+
+export async function ensureUiKitPage(): Promise<PageNode>
+{
+    await figma.loadAllPagesAsync();
+    const existing = figma.root.children.find(
+        (p) => p.type === "PAGE" && p.name === UI_KIT_PAGE_NAME,
+    ) as PageNode | undefined;
+    if (existing) return existing;
+
+    const page = figma.createPage();
+    page.name = UI_KIT_PAGE_NAME;
+    return page;
+}
+
+// Composite key for variant lookup. Sorted alphabetically by axis name so
+// `{state:"hover",size:"md"}` and `{size:"md",state:"hover"}` produce the
+// same string. Format: "size=md,state=hover".
+export function variantKey(variants: Record<string, string> | undefined): string
+{
+    if (!variants) return "";
+    const entries = Object.entries(variants);
+    if (entries.length === 0) return "";
+    return entries
+        .map(([k, v]) => [k, v] as const)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([k, v]) => `${k}=${v}`)
+        .join(",");
+}
+
+// Composite registry key: "Button" or "Button/state=hover,size=md".
+export function componentRegistryKey(name: string, variants?: Record<string, string>): string
+{
+    const vk = variantKey(variants);
+    return vk ? `${name}/${vk}` : name;
 }
 
 export function angleToGradientTransform(angleDeg: number): [[number, number, number], [number, number, number]]

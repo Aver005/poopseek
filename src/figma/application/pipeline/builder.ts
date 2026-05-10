@@ -30,15 +30,33 @@ function extractJsx(text: string): string
     return text.trim();
 }
 
-function buildPrompt(promptContent: string, enhanced: string, tokens: VarEntry[]): string
+function buildPrompt(
+    promptContent: string,
+    enhanced: string,
+    tokens: VarEntry[],
+    registeredComponents: string[],
+): string
 {
     const tokenHint = tokens.length > 0
         ? "\n\nDesign tokens:\n" + tokens.map((t) => `- ${t.name}: ${t.value}`).join("\n")
         : "";
     const userPart = enhanced + tokenHint;
-    if (promptContent.includes("{{USER_INPUT}}"))
-        return promptContent.replace("{{USER_INPUT}}", userPart);
-    return promptContent + "\n\nUser request:\n" + userPart;
+
+    const componentsBlock = registeredComponents.length > 0
+        ? "Available Figma Components (use `<Instance of=\"Name\" .../>`):\n"
+            + registeredComponents.map((n) => `  - ${n}`).join("\n")
+            + "\n\n**Only emit `<Instance of=\"X\">` for X in this list.** For anything else, fall back to inline `<Frame>` (or `<Frame as=\"X\">` for legacy prop-bundle expansion). Do NOT invent component names."
+        : "**No Figma Components are registered for this design.** Do NOT use `<Instance of=\"...\">` at all — every UI element must be inline `<Frame>` / `<Text>` / `<Image>` / etc. (Optionally use `<Frame as=\"...\">` if a matching DESIGN.md component bundle exists.)";
+
+    let out = promptContent;
+    if (out.includes("{{REGISTERED_COMPONENTS}}"))
+        out = out.replace("{{REGISTERED_COMPONENTS}}", componentsBlock);
+    else
+        out = out + "\n\n---\n\n" + componentsBlock;
+
+    if (out.includes("{{USER_INPUT}}"))
+        return out.replace("{{USER_INPUT}}", userPart);
+    return out + "\n\nUser request:\n" + userPart;
 }
 
 export async function runBuilderOneShot(
@@ -48,9 +66,10 @@ export async function runBuilderOneShot(
     tokens: VarEntry[],
     maxRetries = 3,
     images?: ChatImage[],
+    registeredComponents: string[] = [],
 ): Promise<BuilderResult>
 {
-    const basePrompt = buildPrompt(promptContent, enhanced, tokens);
+    const basePrompt = buildPrompt(promptContent, enhanced, tokens, registeredComponents);
     const root = getProvider();
     const provider = images?.length && root.withImages
         ? await root.withImages(images)

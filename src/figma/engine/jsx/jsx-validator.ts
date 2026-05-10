@@ -49,10 +49,16 @@ function validateNode(node: JsxNode, path: string, errors: JsxValidationError[])
         return;
     }
 
-    for (const propName of Object.keys(node.props))
+    // Unknown props are NOT a hard validation error — they're logged as
+    // warnings and the compiler ignores them. Forcing the LLM to retry on
+    // every typo wastes time when the rest of the JSX is fine.
+    if (!spec.allowExtraProps)
     {
-        if (!spec.allowedProps.has(propName))
-            pushError(errors, node, path, `Unsupported prop "${propName}" on <${node.type}>`);
+        for (const propName of Object.keys(node.props))
+        {
+            if (!spec.allowedProps.has(propName))
+                console.warn(`[jsx-validator] WARN unsupported prop "${propName}" on <${node.type}> at ${path} @ ${node.loc.line}:${node.loc.column} — ignored by compiler`);
+        }
     }
 
     if (spec.noChildren && (node.children.length > 0))

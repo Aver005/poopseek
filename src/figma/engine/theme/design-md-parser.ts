@@ -4,12 +4,17 @@
 // rounded / spacing) plus components, and resolves `{path.to.token}`
 // references against the local document.
 
-import type { ThemeToken, TypographyValue } from "./theme-state";
+import type { ThemeToken, TypographyValue, ComponentSlot } from "./theme-state";
 
 export interface ComponentBundle
 {
     name: string;
     props: Record<string, string | number>;
+    semanticType?: string;
+    variants?: Record<string, string[]>;
+    overrides?: Record<string, Record<string, string | number>>;
+    slots?: ComponentSlot[];
+    layout?: Record<string, string | number>;
 }
 
 export interface ParsedDesignMd
@@ -195,10 +200,27 @@ export function parseDesignMd(input: string): ParsedDesignMd
         }
     }
 
-    // Components — bundle of properties keyed by name. After resolving
-    // `{...}` references, coerce numeric-looking strings to actual numbers
-    // so downstream `as=` expansion gets typed values consistent with what
-    // the model writes manually (gap={16}, radius={6}, padding={12}, etc.).
+    // Components. Extended schema (v2):
+    //   <name>:
+    //     type: button                        # semantic hint
+    //     layout: { ... }                     # master frame layout
+    //     variants:
+    //       state: "default,hover,disabled"   # comma-separated axis values
+    //       size: "sm,md,lg"
+    //     overrides:
+    //       state=hover: { backgroundColor: "{colors.primary-hover}" }
+    //     slots:
+    //       label: { type: text, default: "Button" }
+    //       icon:  { type: image, optional: true }
+    //     props: { ... }                      # legacy `as=` prop bag
+    //
+    // Backward compat: top-level scalar props (anything that's not one of
+    // the reserved keys above) is treated as a legacy prop entry, mirroring
+    // v1 schema. Numeric-looking strings are coerced to numbers.
+    const RESERVED = new Set(["type", "layout", "variants", "overrides", "slots", "props"]);
+    const coerce = (v: string | number): string | number =>
+        typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v;
+
     const components: ComponentBundle[] = [];
     const compMap = asMap(yaml.components);
     if (compMap)
@@ -207,16 +229,116 @@ export function parseDesignMd(input: string): ParsedDesignMd
         {
             const obj = asMap(raw);
             if (!obj) continue;
+
             const props: Record<string, string | number> = {};
+            const layout: Record<string, string | number> = {};
+            let semanticType: string | undefined;
+            let variants: Record<string, string[]> | undefined;
+            let overrides: Record<string, Record<string, string | number>> | undefined;
+            let slots: ComponentSlot[] | undefined;
+
             for (const [k, v] of Object.entries(obj))
             {
-                const resolved = typeof v === "string" ? resolveRefs(v, yaml) : v;
-                if (typeof resolved === "string" && /^-?\d+(\.\d+)?$/.test(resolved))
-                    props[k] = Number(resolved);
-                else
-                    props[k] = resolved as string | number;
+                if (k === "type" && typeof v === "string")
+                {
+                    semanticType = v.trim();
+                }
+                else if (k === "variants")
+                {
+                    const axesMap = asMap(v);
+                    if (axesMap)
+                    {
+                        variants = {};
+                        for (const [axis, axisVal] of Object.entries(axesMap))
+                        {
+                            if (typeof axisVal === "string")
+                            {
+                                variants[axis] = axisVal.split(",").map((s) => s.trim()).filter(Boolean);
+                            }
+                        }
+                    }
+                }
+                else if (k === "overrides")
+                {
+                    const ov = asMap(v);
+                    if (ov)
+                    {
+                        overrides = {};
+                        for (const [variantKey, propsObj] of Object.entries(ov))
+                        {
+                            const m = asMap(propsObj);
+                            if (!m) continue;
+                            const bag: Record<string, string | number> = {};
+                            for (const [pk, pv] of Object.entries(m))
+                            {
+                                const resolved = typeof pv === "string" ? resolveRefs(pv, yaml) : pv;
+                                if (typeof resolved !== "object") bag[pk] = coerce(resolved);
+                            }
+                            overrides[variantKey] = bag;
+                        }
+                    }
+                }
+                else if (k === "slots")
+                {
+                    const sm = asMap(v);
+                    if (sm)
+                    {
+                        slots = [];
+                        for (const [slotName, slotDef] of Object.entries(sm))
+                        {
+                            const m = asMap(slotDef);
+                            if (!m) continue;
+                            const slotType = typeof m.type === "string" ? m.type : "text";
+                            slots.push({
+                                name: slotName,
+                                type: (slotType === "image" || slotType === "frame") ? slotType : "text",
+                                default: typeof m.default === "string" ? m.default : undefined,
+                                optional: m.optional === "true" || (m.optional as unknown) === true,
+                            });
+                        }
+                    }
+                }
+                else if (k === "layout")
+                {
+                    const lm = asMap(v);
+                    if (lm)
+                    {
+                        for (const [lk, lv] of Object.entries(lm))
+                        {
+                            const resolved = typeof lv === "string" ? resolveRefs(lv, yaml) : lv;
+                            if (typeof resolved !== "object") layout[lk] = coerce(resolved);
+                        }
+                    }
+                }
+                else if (k === "props")
+                {
+                    const pm = asMap(v);
+                    if (pm)
+                    {
+                        for (const [pk, pv] of Object.entries(pm))
+                        {
+                            const resolved = typeof pv === "string" ? resolveRefs(pv, yaml) : pv;
+                            if (typeof resolved !== "object") props[pk] = coerce(resolved);
+                        }
+                    }
+                }
+                else if (!RESERVED.has(k))
+                {
+                    // Legacy: bare scalars at the top level become props.
+                    const resolved = typeof v === "string" ? resolveRefs(v, yaml) : v;
+                    if (typeof resolved !== "object") props[k] = coerce(resolved);
+                }
             }
-            components.push({ name, props });
+
+            components.push({
+                name,
+                props,
+                semanticType,
+                variants,
+                overrides,
+                slots,
+                layout: Object.keys(layout).length > 0 ? layout : undefined,
+            });
         }
     }
 

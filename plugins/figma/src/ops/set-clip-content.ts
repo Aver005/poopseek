@@ -6,7 +6,7 @@ export const handler: OpHandler = {
     type: "set_clip_content",
     async execute(op, nodeMap): Promise<number> {
         const node = resolveNode(op.nodeId, nodeMap);
-        if (node && node.type === "FRAME")
+        if (node && (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "COMPONENT_SET"))
             (node as FrameNode).clipsContent = Boolean(op.clipContent);
         return 1;
     },

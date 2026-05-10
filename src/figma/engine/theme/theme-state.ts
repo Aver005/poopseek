@@ -34,14 +34,41 @@ export interface ThemeToken
     description?: string;
 }
 
+export interface ComponentSlot
+{
+    name: string;
+    type: "text" | "image" | "frame";
+    default?: string;
+    optional?: boolean;
+}
+
 export interface ComponentDefinition
 {
     name: string;
     /** Resolved prop bag — keys mirror DESIGN.md's component property
      *  names (backgroundColor / textColor / typography / rounded / padding /
      *  size / height / width). The compiler maps them onto JSX props at
-     *  expansion time. */
+     *  expansion time via `as=` (legacy back-compat path). */
     props: Record<string, string | number>;
+    /** Semantic hint — button/card/input/badge/avatar/checkbox/etc.
+     *  Used by uikit-builder to choose a structural template. */
+    semanticType?: string;
+    /** Variant axes. Each key is an axis name; value is the list of
+     *  allowed values. Empty/missing → no Figma ComponentSet (single
+     *  master). Example: `{ state: ["default","hover"], size: ["sm","md"] }`. */
+    variants?: Record<string, string[]>;
+    /** Per-variant overrides. Key is "axis=value" OR comma-joined
+     *  "axis=value,axis=value". Value is a partial prop bag that wins
+     *  over `props`/`base` when that variant is rendered. */
+    overrides?: Record<string, Record<string, string | number>>;
+    /** Structured slots an instance can override (text content, image
+     *  swap, child frame). The default-slot rule: an `<Instance>` with
+     *  text children targets the FIRST slot of type "text". */
+    slots?: ComponentSlot[];
+    /** Master layout description (padding, gap, direction, etc.). Used
+     *  by uikit-builder when generating master JSX. Same vocabulary as
+     *  Frame props in jsx-spec.ts. */
+    layout?: Record<string, string | number>;
 }
 
 export interface ThemeDefinition
@@ -200,7 +227,15 @@ export function setActiveTheme(theme: ThemeDefinition): void
     {
         const k = normalizeKey(c.name);
         if (!isFallback && componentByName.has(k)) continue;
-        componentByName.set(k, { name: k, props: { ...c.props } });
+        componentByName.set(k, {
+            name: k,
+            props: { ...c.props },
+            semanticType: c.semanticType,
+            variants: c.variants ? { ...c.variants } : undefined,
+            overrides: c.overrides ? { ...c.overrides } : undefined,
+            slots: c.slots ? c.slots.map((s) => ({ ...s })) : undefined,
+            layout: c.layout ? { ...c.layout } : undefined,
+        });
     }
 
     activeTheme = {

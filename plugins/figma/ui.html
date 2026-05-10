@@ -468,6 +468,16 @@
                   addMsg('⚠️ Картинка не прикреплена: ' + eData.error, 'error');
                 }
                 break;
+              case 'uikit-start':
+                anim.setLabel('Собираю UI Kit (' + eData.count + ' компонент.)');
+                break;
+              case 'uikit-done':
+                addMsg('🧩 UI Kit готов: ' + (eData.components?.join(', ') || '(0)'), 'system');
+                anim.setLabel('Запрос улучшен');
+                break;
+              case 'uikit-error':
+                addMsg('⚠️ UI Kit не собран — экраны будут с инлайн-фреймами: ' + (eData.error || 'unknown'), 'error');
+                break;
               case 'intent':
                 currentIntent = eData.intent;
                 if (eData.intent === 'create') {

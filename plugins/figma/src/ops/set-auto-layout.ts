@@ -13,9 +13,15 @@ export const handler: OpHandler = {
             derr("set_auto_layout", `❌ nodeId="${op.nodeId}" did not resolve to any node — op skipped`);
             return 0;
         }
-        if (node.type !== "FRAME")
+        // FRAME / COMPONENT / COMPONENT_SET all extend DefaultFrameMixin
+        // and share the same auto-layout API (layoutMode, itemSpacing,
+        // padding*, primaryAxisAlignItems, etc.). Accept all three.
+        const supportsAutoLayout = node.type === "FRAME"
+            || node.type === "COMPONENT"
+            || node.type === "COMPONENT_SET";
+        if (!supportsAutoLayout)
         {
-            derr("set_auto_layout", `❌ nodeId="${op.nodeId}" resolved to type=${node.type}, not FRAME — op skipped`);
+            derr("set_auto_layout", `❌ nodeId="${op.nodeId}" resolved to type=${node.type} — op skipped (FRAME/COMPONENT/COMPONENT_SET only)`);
             return 0;
         }
 

@@ -56,6 +56,11 @@ export interface ComponentSpec
     noChildren?: boolean;
     textOnly?: boolean;
     allowedProps: Set<string>;
+    /** When true, validator does not reject props outside `allowedProps`.
+     *  Used by Component / Instance where variant axes (state, size, kind…)
+     *  are dynamic and depend on the design system, so they can't be
+     *  enumerated statically. */
+    allowExtraProps?: boolean;
 }
 
 const FRAME_PROPS = new Set([
@@ -63,7 +68,7 @@ const FRAME_PROPS = new Set([
     "autoLayout", "flow",
     "ignoreAutoLayout",
     "width", "height", "w", "h",
-    "fill", "stroke", "strokeWidth", "strokeWeight",
+    "fill", "stroke", "strokeWidth", "strokeWeight", "border",
     "gradient", "radius",
     "radiusTL", "radiusTR", "radiusBL", "radiusBR",
     "shadow", "dropShadow", "innerShadow", "opacity", "clip",
@@ -92,7 +97,7 @@ const IMAGE_PROPS = new Set([
     "width", "height", "w", "h",
     "fill", "radius",
     "radiusTL", "radiusTR", "radiusBL", "radiusBR",
-    "stroke", "strokeWidth", "strokeWeight",
+    "stroke", "strokeWidth", "strokeWeight", "border",
     "shadow", "dropShadow", "innerShadow", "opacity", "detach",
     "as", "old",
 ]);
@@ -100,7 +105,7 @@ const IMAGE_PROPS = new Set([
 const ELLIPSE_PROPS = new Set([
     "id", "name", "x", "y",
     "width", "height", "w", "h", "size",
-    "fill", "gradient", "stroke", "strokeWidth", "strokeWeight",
+    "fill", "gradient", "stroke", "strokeWidth", "strokeWeight", "border",
     "radius",
     "shadow", "dropShadow", "innerShadow",
     "ignoreAutoLayout",
@@ -124,21 +129,56 @@ const RECT_PROPS = new Set([
     "width", "height", "w", "h",
     "fill", "radius",
     "radiusTL", "radiusTR", "radiusBL", "radiusBR",
+    "stroke", "strokeWidth", "strokeWeight", "border",
     "ignoreAutoLayout",
     "opacity", "detach",
     "as", "old",
 ]);
 
+// Component / ComponentSet / Instance — UI-kit primitives.
+//
+// `<ComponentSet name="Button">…</ComponentSet>`
+//   wraps `<Component>` children, becomes a Figma ComponentSet.
+//
+// `<Component name="Button" state="default" size="md">…</Component>`
+//   becomes a Figma Component master. Variant axes (state=, size=, kind=…)
+//   are bare JSX attrs — declared dynamically per design system, so the
+//   validator allows any extra props.
+//
+// `<Instance of="Button" state="hover" size="md">label text</Instance>`
+//   becomes a Figma Instance. Plugin resolves `of=` against componentRegistry.
+//   Bare attrs like state/size/kind select the variant; text children
+//   populate the default text slot (first slot of type "text").
+const COMPONENT_PROPS = new Set([
+    "id", "name", "x", "y",
+    "as", "old",
+]);
+
+const COMPONENT_SET_PROPS = new Set([
+    "id", "name", "x", "y",
+    "as", "old",
+]);
+
+const INSTANCE_PROPS = new Set([
+    "id", "name", "of",
+    "x", "y", "width", "height", "w", "h",
+    "opacity", "detach",
+    "as", "old",
+]);
+
 export const COMPONENT_SPECS: Record<string, ComponentSpec> = {
-    Frame:     { allowedProps: FRAME_PROPS },
-    Text:      { allowedProps: TEXT_PROPS },
-    Image:     { noChildren: true, allowedProps: IMAGE_PROPS },
-    Rect:      { noChildren: true, allowedProps: RECT_PROPS },
-    Rectangle: { noChildren: true, allowedProps: RECT_PROPS },
-    Ellipse:   { noChildren: true, allowedProps: ELLIPSE_PROPS },
-    Circle:    { noChildren: true, allowedProps: ELLIPSE_PROPS },
-    Line:      { noChildren: true, allowedProps: LINE_PROPS },
-    Divider:   { noChildren: true, allowedProps: LINE_PROPS },
+    Frame:        { allowedProps: FRAME_PROPS },
+    Text:         { allowedProps: TEXT_PROPS },
+    Image:        { noChildren: true, allowedProps: IMAGE_PROPS },
+    Rect:         { noChildren: true, allowedProps: RECT_PROPS },
+    Rectangle:    { noChildren: true, allowedProps: RECT_PROPS },
+    Ellipse:      { noChildren: true, allowedProps: ELLIPSE_PROPS },
+    Circle:       { noChildren: true, allowedProps: ELLIPSE_PROPS },
+    Line:         { noChildren: true, allowedProps: LINE_PROPS },
+    Divider:      { noChildren: true, allowedProps: LINE_PROPS },
+    Component:    { allowedProps: COMPONENT_PROPS, allowExtraProps: true },
+    ComponentSet: { allowedProps: COMPONENT_SET_PROPS },
+    Instance:     { allowedProps: INSTANCE_PROPS, allowExtraProps: true },
 };
 
 export const ALLOWED_TAGS = Object.keys(COMPONENT_SPECS);

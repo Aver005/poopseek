@@ -63,16 +63,17 @@ rounded:
   <key>: <number>px
 spacing:
   <key>: <number>px
-components:               # optional, but VERY effective for visual consistency
-  <name>:
-    backgroundColor: "{colors.<key>}"
-    textColor: "{colors.<key>}"
-    typography: "{typography.<key>}"
-    rounded: "{rounded.<key>}"
-    padding: <number>px
+components:               # OPTIONAL — bundles of resolved props applied via `<Frame as="...">`
+  <name>:                 # kebab-case or camelCase: button-primary, card, chip
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.white}"
+    rounded: "{rounded.md}"
+    padding: 16
 ```
 
 Token references use `{path.to.token}` — they get resolved before tokens reach the builder.
+
+**Note on components**: This is a small convenience for the builder — it lets `<Frame as="button-primary">` expand to a known prop bundle. **Do NOT design a full UI kit here**. Reusable components are extracted automatically AFTER the screen is built (componentizer step), based on what the builder actually repeats. Just declare 1-3 simple bundles for the most obvious atoms (button, card) if it helps. If unsure — skip the `components:` section entirely.
 
 ---
 
@@ -96,8 +97,8 @@ A real design system distinguishes button text from body text from labels — em
 **Rounded scale** (3–4 entries):
 `sm` (4–6) · `md` (8–12) · `lg` (16–20) · `xl` (24–28). Pick the silhouette that matches the brand voice (sharper for editorial / corporate, rounder for friendly / consumer).
 
-**Components** (3–6 bundles — strongly recommended):
-At minimum define `button-primary`, `card`, `input`. Add `button-secondary`, `chip`, `nav-item` etc. when the design has them.
+**Components** (OPTIONAL — keep small, ≤3 bundles):
+A small set of legacy prop-bundles. The builder uses them via `<Frame as="button-primary">` to inline default props. Common picks: `button-primary`, `card`, `chip`. Don't try to enumerate a full design system here — that's the componentizer's job (it extracts reusable masters automatically from what the builder actually repeats in the screen).
 
 ---
 

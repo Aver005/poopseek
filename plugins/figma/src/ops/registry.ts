@@ -31,6 +31,9 @@ import { handler as groupNodes } from "./group-nodes";
 import { handler as clearCanvas } from "./clear-canvas";
 import { handler as deleteNodesByName } from "./delete-nodes-by-name";
 import { handler as clearFrameChildren } from "./clear-frame-children";
+import { handler as createComponent } from "./create-component";
+import { handler as createComponentSet } from "./create-component-set";
+import { handler as createInstance } from "./create-instance";
 
 const handlers: OpHandler[] = [
     ensureColorVariables,
@@ -62,6 +65,9 @@ const handlers: OpHandler[] = [
     clearCanvas,
     clearFrameChildren,
     deleteNodesByName,
+    createComponent,
+    createComponentSet,
+    createInstance,
 ];
 
 const handlerByType = new Map<string, OpHandler>();
