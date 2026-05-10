@@ -89,6 +89,7 @@ function deepShapeEqual(a: JsxNode, b: JsxNode): boolean
     {
         const ca = a.children[i];
         const cb = b.children[i];
+        if (ca === undefined || cb === undefined) return false;
         if (typeof ca === "string" || typeof cb === "string")
         {
             // Both must be string-or-text — this is fine, text content can differ.

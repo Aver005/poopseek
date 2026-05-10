@@ -234,13 +234,13 @@ function parseShadow(part: string): Record<string, unknown> | null
     if (segs.length === 5)
     {
         const [x, y, blur, color, opacity] = segs;
-        if (!isHexColor(color)) return null;
+        if (!color || !isHexColor(color)) return null;
         return { x: Number(x), y: Number(y), blur: Number(blur), spread: 0, color, opacity: Number(opacity) };
     }
     if (segs.length === 6)
     {
         const [x, y, blur, spread, color, opacity] = segs;
-        if (!isHexColor(color)) return null;
+        if (!color || !isHexColor(color)) return null;
         return { x: Number(x), y: Number(y), blur: Number(blur), spread: Number(spread), color, opacity: Number(opacity) };
     }
     return null;
@@ -297,13 +297,43 @@ function compileFrame(node: JsxNode, state: State, opType: string = "create_fram
         || p.padTop !== undefined || p.padRight !== undefined
         || p.padBottom !== undefined || p.padLeft !== undefined
         || p.gap !== undefined || p.alignX !== undefined || p.alignY !== undefined;
-    const hasAutoLayout = !!p.autoLayout || !!p.center || hasLayoutProps;
+
+    // Inference: a Frame with any child requesting `width/height="fill"`
+    // OR with 2+ element children physically NEEDS auto-layout — otherwise
+    // children pile up at (0,0) (Figma renders fixed positioning by default
+    // when layoutMode=NONE, and `width="fill"` becomes a no-op since there's
+    // no main axis to fill). LLMs frequently forget the explicit
+    // `autoLayout flow="vertical"` on the root, producing pages where every
+    // section overlaps. Detect and force auto-layout here.
+    const elementChildren = node.children.filter((c) => typeof c === "object") as JsxNode[];
+    const hasFillChildren = elementChildren.some((c) =>
+    {
+        const cp = c.props;
+        return cp.width === "fill" || cp.height === "fill" || cp.w === "fill" || cp.h === "fill";
+    });
+    const inferAutoLayout = hasFillChildren || elementChildren.length >= 2;
+    const hasAutoLayout = !!p.autoLayout || !!p.center || hasLayoutProps || inferAutoLayout;
+
+    // Flow direction: explicit `flow=` wins. Otherwise, default to vertical
+    // (the common case for top-level page containers). For inferred
+    // auto-layout, vertical is also the safer default — pages stack
+    // sections downward unless explicitly told otherwise.
     const isVertical = str(p.flow)?.toLowerCase() !== "horizontal";
     const flow: "HORIZONTAL" | "VERTICAL" = isVertical ? "VERTICAL" : "HORIZONTAL";
 
     const parentIsAL = parent?.isAutoLayout ?? false;
-    const widthSz  = resolveFill(resolveSize(p.width  ?? p.w), parentIsAL, parent?.width  ?? 0);
-    const heightSz = resolveFill(resolveSize(p.height ?? p.h), parentIsAL, parent?.height ?? 0);
+    const widthSzRaw  = resolveFill(resolveSize(p.width  ?? p.w), parentIsAL, parent?.width  ?? 0);
+    const heightSzRaw = resolveFill(resolveSize(p.height ?? p.h), parentIsAL, parent?.height ?? 0);
+
+    // When a frame is auto-layouted but no explicit width/height is given,
+    // default to HUG. Without this, Figma keeps the frame at its default
+    // 100×100 box and the content overflows visible bounds — every
+    // padX/padY-only button without `width=` ends up a 100×100 square
+    // with text spilling out (see screenshot bug "Shop blades →").
+    // HUG is the natural "wrap to content" semantic of an auto-layout
+    // container with no size declared.
+    const widthSz  = widthSzRaw  ?? (hasAutoLayout ? ("hug" as const) : undefined);
+    const heightSz = heightSzRaw ?? (hasAutoLayout ? ("hug" as const) : undefined);
 
     const fillParent       = widthSz  === "fill";
     const fillParentHeight = heightSz === "fill";

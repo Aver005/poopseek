@@ -1,162 +1,253 @@
-<Frame autoLayout flow="horizontal" width={1440} height={900} fill="#FFFFFF" name="SignUp_Desktop">
-  <Frame autoLayout flow="vertical" width="fill" height="fill" fill="#F9FAFB" alignX="center" alignY="center" gap={16} name="IllustrationSection">
-    <Frame autoLayout flow="vertical" width={480} height="hug" gap={32} alignX="center" name="HeroContent">
-      <Frame width={120} height={120} fill="url(#gradient)" radius={60} name="LogoCircle" gradient="#6C5CE7:#007AFF:135" />
-      <Text fill="#111827" fontSize={36} fontWeight="bold" alignX="center">Создайте аккаунт</Text>
-      <Text fill="#6B7280" fontSize={18} alignX="center">Присоединяйтесь к нашему сообществу</Text>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={16} alignX="center" name="SocialButtons">
-        <Frame autoLayout flow="horizontal" width={56} height={56} fill="#FFFFFF" radius={28} alignX="center" alignY="center" shadow="button" name="GoogleBtn">
-          <Image src="https://thesvg.org/icons/google/default.svg" width={24} height={24} />
-        </Frame>
-        <Frame autoLayout flow="horizontal" width={56} height={56} fill="#FFFFFF" radius={28} alignX="center" alignY="center" shadow="button" name="AppleBtn">
-          <Image src="https://thesvg.org/icons/apple/dark.svg" width={24} height={24} />
-        </Frame>
-        <Frame autoLayout flow="horizontal" width={56} height={56} fill="#FFFFFF" radius={28} alignX="center" alignY="center" shadow="button" name="GithubBtn">
-          <Image src="https://thesvg.org/icons/github/dark.svg" width={24} height={24} />
-        </Frame>
+<Frame name="SawSalesLanding" width={1440} height={1890} fill="background" autoLayout flow="vertical">
+  {/* Header */}
+  <Frame name="Header" width="fill" height="hug" padX="xl" padY="md" alignY="center" autoLayout flow="horizontal" gap="xl" border="1 surface-soft">
+    <Text name="Logo" variant="h2" fill="text" width="hug">SawSales</Text>
+    
+    <Frame name="NavLinks" autoLayout flow="horizontal" gap="lg" width="fill" alignY="center">
+      <Text name="NavSaws" variant="body" fill="text-secondary">Saws</Text>
+      <Text name="NavBlades" variant="body" fill="text-secondary">Blades</Text>
+      <Text name="NavAccessories" variant="body" fill="text-secondary">Accessories</Text>
+      <Text name="NavSupport" variant="body" fill="text-secondary">Support</Text>
+    </Frame>
+    
+    <Frame name="Actions" autoLayout flow="horizontal" gap="md" alignY="center">
+      <Frame name="SearchBar" autoLayout flow="horizontal" width={240} height={40} fill="surface" radius="md" border="border" padX="md" gap="sm" alignY="center">
+        <Image src="https://api.iconify.design/lucide/search.svg?color=%23B0B0B0" width={18} height={18} />
+        <Text name="SearchPlaceholder" variant="body-sm" fill="text-secondary" width="fill">Search 10,000+ saws...</Text>
       </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={16} alignX="center" name="Divider">
-        <Line length="fill" stroke="#E5E7EB" strokeWidth={1} />
-        <Text fill="#6B7280" fontSize={14}>или</Text>
-        <Line length="fill" stroke="#E5E7EB" strokeWidth={1} />
+      <Image src="https://api.iconify.design/lucide/shopping-cart.svg?color=%23FFFFFF" width={24} height={24} />
+    </Frame>
+  </Frame>
+
+  {/* Hero Section */}
+  <Frame name="Hero" width="fill" height={560} fill="surface" autoLayout flow="vertical" alignX="center" alignY="center" gap="lg">
+    <Frame name="HeroContent" autoLayout flow="vertical" alignX="center" gap="md" width="fill" padX="xl">
+      <Text name="HeroHeadline" variant="display" fill="text" alignX="center">Saws that cut straight.</Text>
+      <Text name="HeroHeadline2" variant="display" fill="text" alignX="center">Prices that cut deeper.</Text>
+      <Text name="HeroSubhead" variant="body-lg" fill="text-secondary" alignX="center">Free shipping over $199</Text>
+      <Frame name="HeroCTA" as="button-primary" autoLayout flow="horizontal" padX="xl" padY="md" fill="primary" radius="md" gap="sm" alignX="center" alignY="center">
+        <Text name="HeroButtonText" variant="button" fill="text">Shop bestsellers</Text>
       </Frame>
     </Frame>
   </Frame>
-  <Frame autoLayout flow="vertical" width={560} height="fill" fill="#FFFFFF" padX={48} padY={48} gap={32} name="FormSection">
-    <Text fill="#111827" fontSize={28} fontWeight="bold">Регистрация</Text>
-    <Frame autoLayout flow="vertical" width="fill" height="hug" gap={20} name="Form">
-      <Frame autoLayout flow="vertical" width="fill" height="hug" gap={8} name="NameField">
-        <Text fill="#111827" fontSize={14} fontWeight="medium">Имя</Text>
-        <Frame width="fill" height={56} fill="#F9FAFB" stroke="#E5E7EB" strokeWidth={1} radius={12} padX={16} alignY="center" name="NameInput">
-          <Text fill="#6B7280" fontSize={16}>Иван Иванов</Text>
+
+  {/* Catalog Grid */}
+  <Frame name="Catalog" autoLayout flow="vertical" width="fill" padX="xl" padY="xl" gap="lg">
+    <Frame name="SectionHeader" autoLayout flow="horizontal" width="fill" alignX="between" alignY="center">
+      <Text name="CatalogTitle" variant="h2" fill="text">Best selling saws</Text>
+      <Text name="ViewAll" variant="body" fill="primary">View all →</Text>
+    </Frame>
+    
+    <Frame name="ProductGrid" autoLayout flow="horizontal" width="fill" gap="lg" wrap>
+      {/* Product Card 1 */}
+      <Frame as="product-card" name="ProductCard" autoLayout flow="vertical" width="fill" height="hug" fill="surface" radius="lg" border="border" padX="md" padY="md" gap="md">
+        <Frame name="ImageContainer" width="fill" height={200} fill="surface-soft" radius="md" alignX="center" alignY="center">
+          <Rect name="ProductSilhouette" width={120} height={120} fill="accent-metallic" radius="md" />
+        </Frame>
+        <Text name="ProductTitle" variant="h3" fill="text">10-inch Table Saw</Text>
+        <Text name="ProductSpecs" variant="body-sm" fill="text-secondary">15-amp · 32" rip capacity · 3-1/8" depth</Text>
+        <Frame name="RatingRow" autoLayout flow="horizontal" gap="xs" alignY="center">
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star-half.svg?color=%23E85D04" width={16} height={16} />
+          <Text name="RatingCount" variant="caption" fill="text-secondary">(142)</Text>
+        </Frame>
+        <Frame name="PriceRow" autoLayout flow="horizontal" width="fill" alignX="between" alignY="center">
+          <Text name="Price" variant="h2" fill="primary">$299.99</Text>
+          <Frame as="button-primary" name="AddToCartBtn" autoLayout flow="horizontal" padX="md" padY="sm" fill="primary" radius="md" gap="sm" alignX="center" alignY="center">
+            <Image src="https://api.iconify.design/lucide/shopping-cart.svg?color=%23FFFFFF" width={16} height={16} />
+            <Text name="AddToCartText" variant="button" fill="text">Add to cart</Text>
+          </Frame>
         </Frame>
       </Frame>
-      <Frame autoLayout flow="vertical" width="fill" height="hug" gap={8} name="EmailField">
-        <Text fill="#111827" fontSize={14} fontWeight="medium">Email</Text>
-        <Frame width="fill" height={56} fill="#F9FAFB" stroke="#E5E7EB" strokeWidth={1} radius={12} padX={16} alignY="center" name="EmailInput">
-          <Text fill="#6B7280" fontSize={16}>ivan@example.com</Text>
+
+      {/* Product Card 2 */}
+      <Frame as="product-card" name="ProductCard" autoLayout flow="vertical" width="fill" height="hug" fill="surface" radius="lg" border="border" padX="md" padY="md" gap="md">
+        <Frame name="ImageContainer" width="fill" height={200} fill="surface-soft" radius="md" alignX="center" alignY="center">
+          <Rect name="ProductSilhouette" width={120} height={120} fill="accent-metallic" radius="md" />
+        </Frame>
+        <Text name="ProductTitle" variant="h3" fill="text">12-inch Miter Saw</Text>
+        <Text name="ProductSpecs" variant="body-sm" fill="text-secondary">15-amp · 12" blade · 45° bevel</Text>
+        <Frame name="RatingRow" autoLayout flow="horizontal" gap="xs" alignY="center">
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Text name="RatingCount" variant="caption" fill="text-secondary">(89)</Text>
+        </Frame>
+        <Frame name="PriceRow" autoLayout flow="horizontal" width="fill" alignX="between" alignY="center">
+          <Text name="Price" variant="h2" fill="primary">$399.99</Text>
+          <Frame as="button-primary" name="AddToCartBtn" autoLayout flow="horizontal" padX="md" padY="sm" fill="primary" radius="md" gap="sm" alignX="center" alignY="center">
+            <Image src="https://api.iconify.design/lucide/shopping-cart.svg?color=%23FFFFFF" width={16} height={16} />
+            <Text name="AddToCartText" variant="button" fill="text">Add to cart</Text>
+          </Frame>
         </Frame>
       </Frame>
-      <Frame autoLayout flow="vertical" width="fill" height="hug" gap={8} name="PasswordField">
-        <Text fill="#111827" fontSize={14} fontWeight="medium">Пароль</Text>
-        <Frame width="fill" height={56} fill="#F9FAFB" stroke="#E5E7EB" strokeWidth={1} radius={12} padX={16} alignY="center" name="PasswordInput">
-          <Text fill="#6B7280" fontSize={16}>••••••••</Text>
+
+      {/* Product Card 3 */}
+      <Frame as="product-card" name="ProductCard" autoLayout flow="vertical" width="fill" height="hug" fill="surface" radius="lg" border="border" padX="md" padY="md" gap="md">
+        <Frame name="ImageContainer" width="fill" height={200} fill="surface-soft" radius="md" alignX="center" alignY="center">
+          <Rect name="ProductSilhouette" width={120} height={120} fill="accent-metallic" radius="md" />
+        </Frame>
+        <Text name="ProductTitle" variant="h3" fill="text">7-1/4" Circular Saw</Text>
+        <Text name="ProductSpecs" variant="body-sm" fill="text-secondary">15-amp · 5,800 RPM · 2-1/2" depth</Text>
+        <Frame name="RatingRow" autoLayout flow="horizontal" gap="xs" alignY="center">
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Text name="RatingCount" variant="caption" fill="text-secondary">(234)</Text>
+        </Frame>
+        <Frame name="PriceRow" autoLayout flow="horizontal" width="fill" alignX="between" alignY="center">
+          <Text name="Price" variant="h2" fill="primary">$149.99</Text>
+          <Frame as="button-primary" name="AddToCartBtn" autoLayout flow="horizontal" padX="md" padY="sm" fill="primary" radius="md" gap="sm" alignX="center" alignY="center">
+            <Image src="https://api.iconify.design/lucide/shopping-cart.svg?color=%23FFFFFF" width={16} height={16} />
+            <Text name="AddToCartText" variant="button" fill="text">Add to cart</Text>
+          </Frame>
         </Frame>
       </Frame>
-      <Frame width="fill" height={56} fill="#6C5CE7" radius={12} alignX="center" alignY="center" shadow="button" name="SignupBtn">
-        <Text fill="#FFFFFF" fontSize={16} fontWeight="bold">Зарегистрироваться</Text>
+
+      {/* Product Card 4 */}
+      <Frame as="product-card" name="ProductCard" autoLayout flow="vertical" width="fill" height="hug" fill="surface" radius="lg" border="border" padX="md" padY="md" gap="md">
+        <Frame name="ImageContainer" width="fill" height={200} fill="surface-soft" radius="md" alignX="center" alignY="center">
+          <Rect name="ProductSilhouette" width={120} height={120} fill="accent-metallic" radius="md" />
+        </Frame>
+        <Text name="ProductTitle" variant="h3" fill="text">14-inch Band Saw</Text>
+        <Text name="ProductSpecs" variant="body-sm" fill="text-secondary">1 HP · 13-1/2" resaw · 82" blade</Text>
+        <Frame name="RatingRow" autoLayout flow="horizontal" gap="xs" alignY="center">
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star-half.svg?color=%23E85D04" width={16} height={16} />
+          <Text name="RatingCount" variant="caption" fill="text-secondary">(67)</Text>
+        </Frame>
+        <Frame name="PriceRow" autoLayout flow="horizontal" width="fill" alignX="between" alignY="center">
+          <Text name="Price" variant="h2" fill="primary">$499.99</Text>
+          <Frame as="button-primary" name="AddToCartBtn" autoLayout flow="horizontal" padX="md" padY="sm" fill="primary" radius="md" gap="sm" alignX="center" alignY="center">
+            <Image src="https://api.iconify.design/lucide/shopping-cart.svg?color=%23FFFFFF" width={16} height={16} />
+            <Text name="AddToCartText" variant="button" fill="text">Add to cart</Text>
+          </Frame>
+        </Frame>
       </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={8} alignX="center" name="LoginLink">
-        <Text fill="#6B7280" fontSize={14}>Уже есть аккаунт?</Text>
-        <Text fill="#007AFF" fontSize={14} fontWeight="medium">Войти</Text>
+
+      {/* Product Card 5 */}
+      <Frame as="product-card" name="ProductCard" autoLayout flow="vertical" width="fill" height="hug" fill="surface" radius="lg" border="border" padX="md" padY="md" gap="md">
+        <Frame name="ImageContainer" width="fill" height={200} fill="surface-soft" radius="md" alignX="center" alignY="center">
+          <Rect name="ProductSilhouette" width={120} height={120} fill="accent-metallic" radius="md" />
+        </Frame>
+        <Text name="ProductTitle" variant="h3" fill="text">10-inch Jobsite Saw</Text>
+        <Text name="ProductSpecs" variant="body-sm" fill="text-secondary">15-amp · Portable stand · 24" rip</Text>
+        <Frame name="RatingRow" autoLayout flow="horizontal" gap="xs" alignY="center">
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Text name="RatingCount" variant="caption" fill="text-secondary">(178)</Text>
+        </Frame>
+        <Frame name="PriceRow" autoLayout flow="horizontal" width="fill" alignX="between" alignY="center">
+          <Text name="Price" variant="h2" fill="primary">$349.99</Text>
+          <Frame as="button-primary" name="AddToCartBtn" autoLayout flow="horizontal" padX="md" padY="sm" fill="primary" radius="md" gap="sm" alignX="center" alignY="center">
+            <Image src="https://api.iconify.design/lucide/shopping-cart.svg?color=%23FFFFFF" width={16} height={16} />
+            <Text name="AddToCartText" variant="button" fill="text">Add to cart</Text>
+          </Frame>
+        </Frame>
+      </Frame>
+
+      {/* Product Card 6 */}
+      <Frame as="product-card" name="ProductCard" autoLayout flow="vertical" width="fill" height="hug" fill="surface" radius="lg" border="border" padX="md" padY="md" gap="md">
+        <Frame name="ImageContainer" width="fill" height={200} fill="surface-soft" radius="md" alignX="center" alignY="center">
+          <Rect name="ProductSilhouette" width={120} height={120} fill="accent-metallic" radius="md" />
+        </Frame>
+        <Text name="ProductTitle" variant="h3" fill="text">Compact Recip Saw</Text>
+        <Text name="ProductSpecs" variant="body-sm" fill="text-secondary">10-amp · Variable speed · Tool-less blade</Text>
+        <Frame name="RatingRow" autoLayout flow="horizontal" gap="xs" alignY="center">
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Image src="https://api.iconify.design/lucide/star.svg?color=%23E85D04" width={16} height={16} />
+          <Text name="RatingCount" variant="caption" fill="text-secondary">(203)</Text>
+        </Frame>
+        <Frame name="PriceRow" autoLayout flow="horizontal" width="fill" alignX="between" alignY="center">
+          <Text name="Price" variant="h2" fill="primary">$99.99</Text>
+          <Frame as="button-primary" name="AddToCartBtn" autoLayout flow="horizontal" padX="md" padY="sm" fill="primary" radius="md" gap="sm" alignX="center" alignY="center">
+            <Image src="https://api.iconify.design/lucide/shopping-cart.svg?color=%23FFFFFF" width={16} height={16} />
+            <Text name="AddToCartText" variant="button" fill="text">Add to cart</Text>
+          </Frame>
+        </Frame>
       </Frame>
     </Frame>
   </Frame>
-  <defs>
-    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stopColor="#6C5CE7" />
-      <stop offset="100%" stopColor="#007AFF" />
-    </linearGradient>
-  </defs>
-</Frame>
-<Frame autoLayout flow="vertical" width={768} height={1024} fill="#F9FAFB" name="SignUp_Tablet">
-  <Frame autoLayout flow="vertical" width="fill" height="hug" padX={40} padY={60} gap={48} alignX="center" name="Container">
-    <Frame autoLayout flow="vertical" width="fill" height="hug" gap={24} alignX="center" name="Header">
-      <Frame width={80} height={80} fill="#6C5CE7" radius={20} alignX="center" alignY="center" shadow="card">
-        <Text fill="#FFFFFF" fontSize={32} fontWeight="bold">✨</Text>
-      </Frame>
-      <Frame autoLayout flow="vertical" width="fill" height="hug" gap={12} alignX="center" name="TitleBlock">
-        <Text fill="#111827" fontSize={32} fontWeight="bold" alignX="center">Добро пожаловать!</Text>
-        <Text fill="#6B7280" fontSize={18} alignX="center">Заполните данные для регистрации</Text>
+
+  {/* Feature Bar */}
+  <Frame name="FeatureBar" width="fill" height="hug" padX="xl" padY="lg" fill="surface" border="1 surface-soft" autoLayout flow="horizontal" gap="xl" alignX="center">
+    <Frame name="FeatureItem" autoLayout flow="horizontal" gap="md" alignY="center">
+      <Image src="https://api.iconify.design/lucide/package.svg?color=%23E85D04" width={32} height={32} />
+      <Frame autoLayout flow="vertical" gap="xs">
+        <Text name="FeatureTitle" variant="body" fill="text">10,000+ saws sold</Text>
+        <Text name="FeatureSub" variant="caption" fill="text-secondary">Trusted by pros</Text>
       </Frame>
     </Frame>
-    <Frame autoLayout flow="vertical" width="fill" height="hug" gap={28} name="Form">
-      <Frame autoLayout flow="vertical" width="fill" height="hug" gap={12} name="NameField">
-        <Text fill="#111827" fontSize={16} fontWeight="medium">Полное имя</Text>
-        <Frame width="fill" height={64} fill="#FFFFFF" radius={16} padX={20} alignY="center" shadow="card" name="NameInput">
-          <Text fill="#111827" fontSize={18}>Анна Смирнова</Text>
-        </Frame>
-      </Frame>
-      <Frame autoLayout flow="vertical" width="fill" height="hug" gap={12} name="EmailField">
-        <Text fill="#111827" fontSize={16} fontWeight="medium">Электронная почта</Text>
-        <Frame width="fill" height={64} fill="#FFFFFF" radius={16} padX={20} alignY="center" shadow="card" name="EmailInput">
-          <Text fill="#111827" fontSize={18}>anna@example.com</Text>
-        </Frame>
-      </Frame>
-      <Frame autoLayout flow="vertical" width="fill" height="hug" gap={12} name="PasswordField">
-        <Text fill="#111827" fontSize={16} fontWeight="medium">Пароль</Text>
-        <Frame width="fill" height={64} fill="#FFFFFF" radius={16} padX={20} alignY="center" shadow="card" name="PasswordInput">
-          <Text fill="#111827" fontSize={18}>••••••••</Text>
-        </Frame>
-      </Frame>
-      <Frame width="fill" height={64} fill="#007AFF" radius={16} alignX="center" alignY="center" shadow="button" name="SignupBtn">
-        <Text fill="#FFFFFF" fontSize={18} fontWeight="bold">Создать аккаунт</Text>
-      </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={12} alignX="center" name="LoginLink">
-        <Text fill="#6B7280" fontSize={16}>Уже зарегистрированы?</Text>
-        <Text fill="#007AFF" fontSize={16} fontWeight="bold">Войти</Text>
+    
+    <Frame name="FeatureItem" autoLayout flow="horizontal" gap="md" alignY="center">
+      <Image src="https://api.iconify.design/lucide/ruler.svg?color=%23E85D04" width={32} height={32} />
+      <Frame autoLayout flow="vertical" gap="xs">
+        <Text name="FeatureTitle" variant="body" fill="text">30-day test cuts</Text>
+        <Text name="FeatureSub" variant="caption" fill="text-secondary">Satisfaction guaranteed</Text>
       </Frame>
     </Frame>
-    <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={24} alignX="center" name="SocialAuth">
-      <Frame width="fill" height={56} fill="#FFFFFF" radius={14} alignX="center" alignY="center" gap={12} shadow="card">
-        <Image src="https://thesvg.org/icons/google/default.svg" width={24} height={24} />
-        <Text fill="#111827" fontSize={15} fontWeight="medium">Google</Text>
-      </Frame>
-      <Frame width="fill" height={56} fill="#FFFFFF" radius={14} alignX="center" alignY="center" gap={12} shadow="card">
-        <Image src="https://thesvg.org/icons/apple/dark.svg" width={24} height={24} />
-        <Text fill="#111827" fontSize={15} fontWeight="medium">Apple</Text>
+    
+    <Frame name="FeatureItem" autoLayout flow="horizontal" gap="md" alignY="center">
+      <Image src="https://api.iconify.design/lucide/settings.svg?color=%23E85D04" width={32} height={32} />
+      <Frame autoLayout flow="vertical" gap="xs">
+        <Text name="FeatureTitle" variant="body" fill="text">Lifetime blade service</Text>
+        <Text name="FeatureSub" variant="caption" fill="text-secondary">Free sharpening</Text>
       </Frame>
     </Frame>
   </Frame>
-</Frame>
-<Frame autoLayout flow="vertical" width={375} height={812} fill="url(#glassGradient)" name="SignUp_Mobile">
-  <Frame autoLayout flow="vertical" width="fill" height="fill" padX={20} padY={80} gap={32} alignX="center" name="GlassContainer">
-    <Frame autoLayout flow="vertical" width="fill" height="hug" gap={16} alignX="center" name="Header">
-      <Frame width={64} height={64} fill="#6C5CE7" radius={32} alignX="center" alignY="center" shadow="modal">
-        <Text fill="#FFFFFF" fontSize={28}>📱</Text>
-      </Frame>
-      <Text fill="#FFFFFF" fontSize={28} fontWeight="bold" alignX="center">Регистрация</Text>
-      <Text fill="rgba(255,255,255,0.8)" fontSize={14} alignX="center">Присоединяйтесь сейчас</Text>
+
+  {/* Newsletter / Trust Section */}
+  <Frame name="TrustSection" width="fill" height="hug" padX="xl" padY="xl" autoLayout flow="vertical" gap="xl" alignX="center">
+    <Frame name="Testimonial" autoLayout flow="vertical" alignX="center" gap="md" width="fill" padX="2xl">
+      <Text name="QuoteIcon" variant="display" fill="primary">"</Text>
+      <Text name="TestimonialText" variant="body-lg" fill="text" alignX="center">We switched to SawSales for all our crew. Saved 18% on tools that actually last.</Text>
+      <Text name="TestimonialAuthor" variant="body" fill="text-secondary" alignX="center">— Mike Thompson, General Contractor</Text>
     </Frame>
-    <Frame autoLayout flow="vertical" width="fill" height="hug" gap={20} name="Form">
-      <Frame width="fill" height={56} fill="rgba(255,255,255,0.95)" radius={14} padX={16} alignY="center" name="NameInput">
-        <Text fill="#6B7280" fontSize={15}>Имя</Text>
-      </Frame>
-      <Frame width="fill" height={56} fill="rgba(255,255,255,0.95)" radius={14} padX={16} alignY="center" name="EmailInput">
-        <Text fill="#6B7280" fontSize={15}>Email</Text>
-      </Frame>
-      <Frame width="fill" height={56} fill="rgba(255,255,255,0.95)" radius={14} padX={16} alignY="center" name="PasswordInput">
-        <Text fill="#6B7280" fontSize={15}>Пароль</Text>
-      </Frame>
-      <Frame width="fill" height={52} fill="#007AFF" radius={14} alignX="center" alignY="center" shadow="button" name="SignupBtn">
-        <Text fill="#FFFFFF" fontSize={16} fontWeight="bold">Зарегистрироваться</Text>
-      </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={12} alignX="center" name="Divider">
-        <Line length="fill" stroke="rgba(255,255,255,0.3)" strokeWidth={1} />
-        <Text fill="rgba(255,255,255,0.7)" fontSize={13}>или</Text>
-        <Line length="fill" stroke="rgba(255,255,255,0.3)" strokeWidth={1} />
-      </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={16} alignX="center" name="SocialIcons">
-        <Frame width={48} height={48} fill="rgba(255,255,255,0.9)" radius={24} alignX="center" alignY="center">
-          <Image src="https://thesvg.org/icons/google/default.svg" width={24} height={24} />
+    
+    <Frame name="Newsletter" autoLayout flow="vertical" alignX="center" gap="md" width="fill" padX="2xl">
+      <Text name="NewsletterTitle" variant="h3" fill="text" alignX="center">Get new saw alerts + 10% off first order</Text>
+      <Frame name="SignupForm" autoLayout flow="horizontal" gap="md" width="fill" alignX="center">
+        <Frame name="EmailInput" width={320} height={48} fill="surface" radius="md" border="border" padX="md" alignY="center">
+          <Text name="EmailPlaceholder" variant="body" fill="text-secondary">your@email.com</Text>
         </Frame>
-        <Frame width={48} height={48} fill="rgba(255,255,255,0.9)" radius={24} alignX="center" alignY="center">
-          <Image src="https://thesvg.org/icons/apple/dark.svg" width={24} height={24} />
+        <Frame as="button-primary" name="SubscribeBtn" autoLayout flow="horizontal" padX="lg" padY="sm" fill="primary" radius="md" alignX="center" alignY="center">
+          <Text name="SubscribeText" variant="button" fill="text">Subscribe</Text>
         </Frame>
-        <Frame width={48} height={48} fill="rgba(255,255,255,0.9)" radius={24} alignX="center" alignY="center">
-          <Image src="https://thesvg.org/icons/github/dark.svg" width={24} height={24} />
-        </Frame>
-      </Frame>
-      <Frame autoLayout flow="horizontal" width="fill" height="hug" gap={8} alignX="center" name="LoginLink">
-        <Text fill="rgba(255,255,255,0.7)" fontSize={14}>Уже есть аккаунт?</Text>
-        <Text fill="#FFFFFF" fontSize={14} fontWeight="bold">Войти</Text>
       </Frame>
     </Frame>
   </Frame>
-  <defs>
-    <linearGradient id="glassGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stopColor="#1A1A2E" />
-      <stop offset="100%" stopColor="#16213E" />
-    </linearGradient>
-  </defs>
+
+  {/* Footer */}
+  <Frame name="Footer" width="fill" height="hug" padX="xl" padY="lg" fill="surface" border="1 surface-soft" autoLayout flow="horizontal" alignX="between" alignY="center">
+    <Frame name="Copyright" autoLayout flow="vertical" gap="xs">
+      <Text name="CopyrightText" variant="body-sm" fill="text-secondary">© 2024 SawSales — industrial-grade cutting tools</Text>
+      <Frame name="FooterLinks" autoLayout flow="horizontal" gap="md">
+        <Text name="LinkReturns" variant="caption" fill="text-secondary">Returns</Text>
+        <Text name="LinkWarranty" variant="caption" fill="text-secondary">Warranty</Text>
+        <Text name="LinkContact" variant="caption" fill="text-secondary">Contact</Text>
+      </Frame>
+    </Frame>
+    
+    <Frame name="SocialIcons" autoLayout flow="horizontal" gap="md">
+      <Image src="https://api.iconify.design/lucide/youtube.svg?color=%23FFFFFF" width={24} height={24} />
+      <Image src="https://api.iconify.design/lucide/instagram.svg?color=%23FFFFFF" width={24} height={24} />
+      <Image src="https://api.iconify.design/lucide/twitter.svg?color=%23FFFFFF" width={24} height={24} />
+    </Frame>
+  </Frame>
 </Frame>
