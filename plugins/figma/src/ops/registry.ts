@@ -34,6 +34,7 @@ import { handler as clearFrameChildren } from "./clear-frame-children";
 import { handler as createComponent } from "./create-component";
 import { handler as createComponentSet } from "./create-component-set";
 import { handler as createInstance } from "./create-instance";
+import { handler as wipeDesign } from "./wipe-design";
 
 const handlers: OpHandler[] = [
     ensureColorVariables,
@@ -68,6 +69,7 @@ const handlers: OpHandler[] = [
     createComponent,
     createComponentSet,
     createInstance,
+    wipeDesign,
 ];
 
 const handlerByType = new Map<string, OpHandler>();

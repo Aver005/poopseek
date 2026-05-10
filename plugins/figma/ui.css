@@ -453,3 +453,53 @@ textarea:focus {
   border: 1px solid rgba(255,255,255,.18);
   display: block;
 }
+
+/* Post-generation action row (Перегенерировать / Новый дизайн) */
+.msg.actions {
+  display: flex;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 4px 0 8px;
+  align-self: stretch;
+  flex-wrap: wrap;
+  animation: none;
+}
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .18s var(--ease-out-expo),
+              color .18s var(--ease-out-expo),
+              border-color .18s var(--ease-out-expo),
+              transform .25s var(--spring);
+}
+.action-btn svg { flex-shrink: 0; opacity: .85; }
+.action-btn:hover:not(:disabled) {
+  background: var(--bg3);
+  color: var(--text);
+  border-color: rgba(46, 168, 255, .45);
+  transform: translateY(-1px);
+}
+.action-btn:hover:not(:disabled) svg { opacity: 1; }
+.action-btn:active:not(:disabled) { transform: translateY(0) scale(.97); }
+.action-btn:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+/* Regenerate gets a soft amber accent on hover — distinct from "fresh"
+ * (blue accent via inherited :hover above). */
+.action-btn-regen:hover:not(:disabled) {
+  border-color: rgba(255, 167, 38, .55);
+  color: #ffb74d;
+}
