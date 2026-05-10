@@ -75,6 +75,7 @@
   let attachedImages = []; // { data: string (base64), mimeType: string }[]
   let lastUserPrompt = null;     // for "Перегенерировать"
   let lastUserImages = null;
+  let lastBuilderJsx = null;     // for "JSX" button in debug-log card
 
   const dot = document.getElementById('dot');
   const statusLabel = document.getElementById('statusLabel');
@@ -486,6 +487,7 @@
     // Snapshot for "Перегенерировать" — re-uses this exact request.
     lastUserPrompt = text;
     lastUserImages = imagesToSend.slice();
+    lastBuilderJsx = null;       // reset — fresh turn, new JSX coming
 
     resetTurnOps();
     addUserMsg(text, imagesToSend);
@@ -567,6 +569,11 @@
               case 'tokens':
                 anim.setLabel('Строитель уже кладёт кирпичики');
                 break;
+              case 'jsx':
+                if (typeof eData.jsx === 'string' && eData.jsx.length > 0) {
+                  lastBuilderJsx = eData.jsx;
+                }
+                break;
               case 'ops':
                 if (eData.ops?.length > 0) {
                   totalOpsThisTurn += eData.ops.length;
@@ -635,40 +642,74 @@
     if (msg.type === 'DEBUG_LOG' && Array.isArray(msg.lines)) renderDebugLogCard(msg.lines);
   };
 
-  // Render the per-batch log buffer as a copyable card with a single
-  // "Copy" button. One click puts the whole log on the clipboard ready
-  // to paste back into chat with the assistant.
+  // Reusable clipboard-with-fallback helper. Returns `true` on success.
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      document.body.removeChild(ta);
+      return ok;
+    }
+  }
+
+  // Bind a 1.5s "✓ Copied" / "✗ Failed" feedback flash to a button.
+  function flashCopyResult(btn, ok, defaultLabel) {
+    btn.textContent = ok ? '✓ Copied' : '✗ Failed';
+    setTimeout(() => { btn.textContent = defaultLabel; }, 1500);
+  }
+
+  // Render the per-batch log buffer as a copyable card. Two buttons:
+  //   "📋 Copy" — full debug log (errors + traces) for paste-to-assistant
+  //   "{} JSX"  — original JSX tree from the builder, for inspection
+  // The JSX button is only rendered when we actually have a captured JSX
+  // for the most recent turn.
   function renderDebugLogCard(lines) {
     if (lines.length === 0) return;
     const errCount = lines.filter(l => l.startsWith('ERR')).length;
     const okCount = lines.length - errCount;
     const blob = lines.join('\n');
+    const jsxAtRender = lastBuilderJsx;   // capture by value — turn-scoped
 
     const el = document.createElement('div');
     el.className = 'msg debug-log';
     const summary = document.createElement('div');
     summary.className = 'debug-log-summary';
     summary.textContent = '🔍 Debug log: ' + lines.length + ' lines (' + okCount + ' ok, ' + errCount + ' err)';
-    const btn = document.createElement('button');
-    btn.className = 'debug-log-copy';
-    btn.textContent = '📋 Copy';
-    btn.onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(blob);
-        btn.textContent = '✓ Copied';
-        setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
-      } catch (err) {
-        // Fallback: select the hidden textarea.
-        const ta = document.createElement('textarea');
-        ta.value = blob; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
-        try { document.execCommand('copy'); btn.textContent = '✓ Copied'; }
-        catch { btn.textContent = '✗ Failed'; }
-        document.body.removeChild(ta);
-        setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
-      }
+
+    const buttonsRow = document.createElement('span');
+    buttonsRow.className = 'debug-log-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'debug-log-copy';
+    copyBtn.textContent = '📋 Copy';
+    copyBtn.onclick = async () => {
+      const ok = await copyToClipboard(blob);
+      flashCopyResult(copyBtn, ok, '📋 Copy');
     };
-    summary.appendChild(btn);
+    buttonsRow.appendChild(copyBtn);
+
+    if (jsxAtRender) {
+      const jsxBtn = document.createElement('button');
+      jsxBtn.className = 'debug-log-copy debug-log-jsx';
+      jsxBtn.textContent = '{} JSX';
+      jsxBtn.title = 'Скопировать оригинальный JSX-ответ агента';
+      jsxBtn.onclick = async () => {
+        const ok = await copyToClipboard(jsxAtRender);
+        flashCopyResult(jsxBtn, ok, '{} JSX');
+      };
+      buttonsRow.appendChild(jsxBtn);
+    }
+
+    summary.appendChild(buttonsRow);
     el.appendChild(summary);
     messagesEl.appendChild(el);
     messagesEl.scrollTop = messagesEl.scrollHeight;

@@ -32,6 +32,7 @@
 | Бренд-цвет акцента | `fill="primary"` / `stroke="primary"` | `fill="#7C3AED"` |
 | Стандартный gap | `gap="md"` | `gap={16}` |
 | Стандартный padding | `padX="md"` `padY="lg"` | `padX={16}` `padY={24}` |
+| Одинаковый padding со всех сторон | `pad="md"` (= padX + padY) | повтор `padX="md" padY="md"` |
 | Скругление углов | `radius="lg"` | `radius={20}` |
 | Рамка (стандарт) | `border={1}` или `border="border"` | `stroke="..." strokeWidth={1}` явно (можно, но дольше) |
 | Рамка с цветом | `border="primary"` или `border="1 primary"` | — |

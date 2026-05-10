@@ -72,7 +72,7 @@ const FRAME_PROPS = new Set([
     "gradient", "radius",
     "radiusTL", "radiusTR", "radiusBL", "radiusBR",
     "shadow", "dropShadow", "innerShadow", "opacity", "clip",
-    "gap", "padX", "padY", "padTop", "padRight", "padBottom", "padLeft",
+    "gap", "pad", "padX", "padY", "padTop", "padRight", "padBottom", "padLeft",
     "alignX", "alignY", "center",
     "wrap",
     "detach",

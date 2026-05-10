@@ -286,6 +286,17 @@ function compileFrame(node: JsxNode, state: State, opType: string = "create_fram
 {
     applyComponentAs(node);
     const p = node.props;
+
+    // Shorthand: `pad="md"` → padX="md" + padY="md" (uniform padding on
+    // all four sides). Doesn't override explicit padX/padY/padTop/etc.
+    // so you can still write `pad="md" padX="lg"` to override one axis.
+    if (p.pad !== undefined)
+    {
+        if (p.padX === undefined) p.padX = p.pad;
+        if (p.padY === undefined) p.padY = p.pad;
+        delete p.pad;
+    }
+
     const parent = top(state);
     const isComponent = opType === "create_component" || opType === "create_component_set";
     const idPrefix = opType === "create_component" ? "cmp"
