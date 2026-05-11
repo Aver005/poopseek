@@ -189,7 +189,12 @@
 
 ### ignoreAutoLayout — абсолютное позиционирование
 
-Элемент выходит из потока auto-layout. Всегда требует явных `x`, `y`, `width`, `height`.
+Элемент выходит из потока auto-layout. Всегда требует явных `x`, `y`, `width`, `height` (px-числа).
+
+🚨 **Жёсткие правила:**
+1. Имеет смысл **ТОЛЬКО** если родитель — auto-layout. На детях обычного фрейма этот пропс бесполезен.
+2. **Никогда** не используй `width="fill"`/`height="fill"` на узле с `ignoreAutoLayout` — Figma отвергает (узел абсолютно позиционирован, у него нет «оси родителя» для fill). Только px-числа.
+3. Применяй экономно — для badge / floating-кнопки / декоративной плашки поверх hero. **Не пытайся** позиционировать абсолютно сразу 5+ детей — это сигнал что нужен auto-layout по-нормальному.
 
 ```jsx
 <Frame autoLayout flow="vertical" width={390} height={200} fill="#2563EB" name="Hero">
@@ -200,6 +205,21 @@
   </Frame>
 </Frame>
 ```
+
+### Графики, диаграммы, кривые — НЕ примитивами
+
+🚨 **Не пытайся рисовать чарт точками `<Rect>` и сегментами `<Line>` в абсолютных координатах.** Это почти всегда даст мусорный результат — `<Line>` поддерживает только `x/y/length/vertical`, никаких `x1/y1/x2/y2` (валидатор отвергнет). Curves/полилинии вообще не поддерживаются.
+
+✅ **Что делать вместо:**
+- Плейсхолдер-картинка: `<Image src="https://placehold.co/600x300/png?text=Sales+Chart" alt="Sales chart 2022–2026" />`
+- Или семантический фрейм-плейсхолдер с подписью:
+  ```jsx
+  <Frame name="ChartPlaceholder" width="fill" height={240} fill="surface-muted"
+         autoLayout center>
+    <Text variant="caption" fill="text-secondary">[Chart: Inference cost 2022–2026]</Text>
+  </Frame>
+  ```
+- Простые горизонтальные/вертикальные оси и сепараторы — да, `<Line length="fill" stroke="border-strong" />` уместен.
 
 ---
 

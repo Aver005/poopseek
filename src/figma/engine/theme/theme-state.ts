@@ -251,6 +251,20 @@ export function getActiveTheme(): ThemeDefinition
     return activeTheme;
 }
 
+/**
+ * Reset the active theme back to the fallback. The next `setActiveTheme`
+ * call will replace tokens wholesale (since it sees the fallback marker)
+ * instead of merging on top.
+ *
+ * Call this at the start of every new `create` flow — without it, tokens
+ * from previous designs (e.g. a cyberpunk `background=#0D1117`) survive
+ * forever and pollute the token-table the LLM reads in its prompt.
+ */
+export function resetActiveTheme(): void
+{
+    activeTheme = { name: "fallback", tokens: FALLBACK_TOKENS };
+}
+
 export function variableNameFor(kind: TokenKind, key: string): string
 {
     if (kind === "color") return `theme/${key}`;

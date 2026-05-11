@@ -14,7 +14,7 @@ import { SubAgentRunner } from "@/agent/sub-agent";
 import { compileJsx } from "@/figma/engine/jsx/jsx-compiler";
 import { parseJsx } from "@/figma/engine/jsx/jsx-parser";
 import { validateJsxTree, formatJsxValidationErrors } from "@/figma/engine/jsx/jsx-validator";
-import { setActiveTheme, describeActiveTokensForPrompt, getActiveDesignDoc } from "@/figma/engine/theme/theme-state";
+import { setActiveTheme, resetActiveTheme, describeActiveTokensForPrompt, getActiveDesignDoc } from "@/figma/engine/theme/theme-state";
 import { mapKeyToId } from "@/figma/engine/jsx/jsx-key-mapper";
 import { loadNodesIntoBuffer } from "@/figma/engine/handyman/handyman-tools";
 import { chatResponse, invalidJson, jsonWithCors, type FigmaHttpContext } from "./common";
@@ -195,6 +195,13 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
 
                 if (intent === "create")
                 {
+                    // Fresh design intent → fresh theme. Otherwise tokens
+                    // from previous sessions linger via the first-wins
+                    // merge in setActiveTheme (e.g. background=#0D1117
+                    // from a cyberpunk theme still showing in the prompt
+                    // when the new design is an editorial light layout).
+                    resetActiveTheme();
+
                     const designerOut = await runDesigner(
                         subAgentRunner, enhanced, designerPrompt, undefined,
                         visionAttached ? images : undefined,

@@ -333,8 +333,25 @@ function compileFrame(node: JsxNode, state: State, opType: string = "create_fram
     const flow: "HORIZONTAL" | "VERTICAL" = isVertical ? "VERTICAL" : "HORIZONTAL";
 
     const parentIsAL = parent?.isAutoLayout ?? false;
-    const widthSzRaw  = resolveFill(resolveSize(p.width  ?? p.w), parentIsAL, parent?.width  ?? 0);
-    const heightSzRaw = resolveFill(resolveSize(p.height ?? p.h), parentIsAL, parent?.height ?? 0);
+
+    // `ignoreAutoLayout` on a child of an auto-layout parent makes the node
+    // absolute-positioned within that parent. Figma then rejects FILL
+    // sizing on it: "FILL cannot be set on absolute positioned auto-layout
+    // children". Coerce width/height="fill" → undefined here so the HUG
+    // default kicks in (the LLM's intent is usually "size me to my
+    // explicit x/y/w/h", not "stretch to parent").
+    const ignoreAL = !!p.ignoreAutoLayout;
+    const stripFill = (sz: SizeMode | undefined): SizeMode | undefined =>
+        sz === "fill" ? undefined : sz;
+
+    const widthRaw  = resolveSize(p.width  ?? p.w);
+    const heightRaw = resolveSize(p.height ?? p.h);
+    const widthSzRaw  = ignoreAL
+        ? stripFill(widthRaw)
+        : resolveFill(widthRaw,  parentIsAL, parent?.width  ?? 0);
+    const heightSzRaw = ignoreAL
+        ? stripFill(heightRaw)
+        : resolveFill(heightRaw, parentIsAL, parent?.height ?? 0);
 
     // When a frame is auto-layouted but no explicit width/height is given,
     // default to HUG. Without this, Figma keeps the frame at its default
@@ -703,8 +720,15 @@ function compileRect(node: JsxNode, state: State): void
     const id = str(p.id) ?? uid(state, "rect");
 
     const parentIsAL = parent?.isAutoLayout ?? false;
-    const widthSz  = resolveFill(resolveSize(p.width  ?? p.w), parentIsAL, parent?.width  ?? 0);
-    const heightSz = resolveFill(resolveSize(p.height ?? p.h), parentIsAL, parent?.height ?? 0);
+    const ignoreAL = !!p.ignoreAutoLayout;
+    const widthRaw  = resolveSize(p.width  ?? p.w);
+    const heightRaw = resolveSize(p.height ?? p.h);
+    const widthSz  = ignoreAL
+        ? (widthRaw  === "fill" ? undefined : widthRaw)
+        : resolveFill(widthRaw,  parentIsAL, parent?.width  ?? 0);
+    const heightSz = ignoreAL
+        ? (heightRaw === "fill" ? undefined : heightRaw)
+        : resolveFill(heightRaw, parentIsAL, parent?.height ?? 0);
     const fillParent       = widthSz  === "fill";
     const fillParentHeight = heightSz === "fill";
     const width  = typeof widthSz  === "number" ? widthSz  : undefined;

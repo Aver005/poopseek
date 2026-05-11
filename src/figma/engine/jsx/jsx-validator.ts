@@ -32,7 +32,11 @@ function pushError(
 
 function getTextContent(node: JsxNode): string
 {
-    return node.children.filter((child): child is string => typeof child === "string").join("").trim();
+    // NOTE: no `.trim()` — a single-space `<Text> </Text>` is intentional in
+    // syntax-highlighted IDE mock-ups (separator between tokens), and the
+    // builder uses it legitimately. Trimming here flagged those as "empty"
+    // and the LLM had no way to "fix" because the JSX was already correct.
+    return node.children.filter((child): child is string => typeof child === "string").join("");
 }
 
 function hasElementChildren(node: JsxNode): boolean
@@ -74,10 +78,32 @@ function validateNode(node: JsxNode, path: string, errors: JsxValidationError[])
             pushError(errors, node, path, "<Image> requires a non-empty src prop");
     }
 
+    if (node.type === "Line" || node.type === "Divider")
+    {
+        // Hard-fail SVG-style geometry. The compiler ignores x1/y1/x2/y2
+        // and friends (they're not in LINE_PROPS), so what looks like
+        // "draw a curve" in the JSX becomes invisible noise at render
+        // time. Force the LLM to retry with a coherent approach
+        // (placeholder image / abstract chart frame) instead of silently
+        // wasting ops.
+        const svgProps = ["x1", "y1", "x2", "y2", "strokeDashArray", "dashArray", "d", "points", "polyline"];
+        for (const prop of svgProps)
+        {
+            if (node.props[prop] !== undefined)
+                pushError(errors, node, path, `<Line> does not support SVG geometry props (got "${prop}"). Use <Line x=… y=… length=… vertical?/> for axis lines. For complex charts/curves, use a placeholder <Image src="https://placehold.co/...?text=Chart" /> instead.`);
+        }
+    }
+
     if (node.type === "Text")
     {
+        // Whitespace-only text IS valid (e.g. single space for visual gap
+        // between tokens in a syntax-highlighted code mock). Only flag
+        // when there's truly nothing — no content prop AND no text child
+        // characters at all.
         const content = node.props.content ?? node.props.text;
-        if ((typeof content !== "string" || content.trim().length === 0) && getTextContent(node).length === 0)
+        const hasContentProp = typeof content === "string" && content.length > 0;
+        const hasTextChild = getTextContent(node).length > 0;
+        if (!hasContentProp && !hasTextChild)
             pushError(errors, node, path, "<Text> requires text content or a text child");
     }
 
