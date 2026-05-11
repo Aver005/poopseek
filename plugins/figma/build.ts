@@ -1,27 +1,35 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import * as esbuild from "esbuild";
 
 const pluginDir = import.meta.dir;
 const outDir = path.resolve(pluginDir, "../../build/plugins/figma");
 
 await fs.mkdir(outDir, { recursive: true });
 
-const proc = Bun.spawn({
-    cmd: [
-        "bunx", "esbuild",
-        "src/code.ts",
-        "--bundle",
-        `--outfile=${path.join(outDir, "code.js")}`,
-        "--target=es2015",
-        "--platform=browser",
-    ],
-    stdout: "inherit",
-    stderr: "inherit",
-    cwd: pluginDir,
+// esbuild is used (NOT Bun.build) because Figma's plugin sandbox runs an
+// older JavaScript engine that doesn't support ES2020 syntax like `??`
+// (nullish coalescing) or `?.` (optional chaining). We need target=es2015
+// to downlevel that syntax. Bun.build emits modern ES — Figma chokes with
+// "Unexpected token ?" at runtime. esbuild handles the transpilation
+// cleanly. It's installed as a local devDependency so there's no flaky
+// `bunx esbuild@latest` download per run.
+const result = await esbuild.build({
+    entryPoints: [path.join(pluginDir, "src/code.ts")],
+    outfile: path.join(outDir, "code.js"),
+    bundle: true,
+    target: "es2015",
+    platform: "browser",
+    format: "iife",
+    logLevel: "info",
 });
 
-const code = await proc.exited;
-if (code !== 0) process.exit(code ?? 1);
+if (result.errors.length > 0)
+{
+    console.error("✗ esbuild errors:");
+    for (const err of result.errors) console.error(err);
+    process.exit(1);
+}
 
 await fs.copyFile(
     path.join(pluginDir, "manifest.json"),

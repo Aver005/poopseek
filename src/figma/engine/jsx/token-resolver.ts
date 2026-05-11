@@ -56,6 +56,39 @@ export function resolveColor(v: JsxPropValue | undefined): ResolvedColor | undef
  *   "md"           → token lookup → { value, variableName }
  *   undefined      → undefined
  */
+// Fallback values when the design-system scale didn't define a key.
+// Builder regularly uses `2xl`/`3xl` even if designer only emitted up
+// to `xl` — silently dropping these would erase whole-section padding
+// (the "section padY ignored" bug). Defaults match tailwind / common
+// design-system convention.
+const STANDARD_SPACING: Record<string, number> = {
+    "0":   0,
+    "xs":  4,
+    "sm":  8,
+    "md":  16,
+    "lg":  24,
+    "xl":  32,
+    "2xl": 48,
+    "3xl": 64,
+    "4xl": 96,
+    "5xl": 128,
+};
+
+const STANDARD_RADIUS: Record<string, number> = {
+    "0":    0,
+    "none": 0,
+    "xs":   2,
+    "sm":   4,
+    "md":   8,
+    "lg":   16,
+    "xl":   24,
+    "2xl":  32,
+    "3xl":  48,
+    "full": 9999,
+};
+
+const STANDARD_SCALES = { spacing: STANDARD_SPACING, radius: STANDARD_RADIUS };
+
 export function resolveNumber(v: JsxPropValue | undefined, kind: "spacing" | "radius"): ResolvedNumber | undefined
 {
     if (v === undefined) return undefined;
@@ -67,6 +100,18 @@ export function resolveNumber(v: JsxPropValue | undefined, kind: "spacing" | "ra
     if (Number.isFinite(n)) return { value: n };
     const tok = resolveNumericToken(kind, s);
     if (tok) return { value: tok.value, variableName: tok.variableName };
+
+    // Designer didn't emit this key, but it's a well-known scale slot —
+    // fall back to the standard value so padX/padY/gap/radius don't
+    // silently collapse to 0. Variable binding is skipped (no token to
+    // bind to), so this is a static fallback, not a live var link.
+    const standard = STANDARD_SCALES[kind][s.toLowerCase()];
+    if (standard !== undefined)
+    {
+        console.warn(`[token-resolver] ${kind}="${s}" not in active theme — using standard fallback ${standard}px`);
+        return { value: standard };
+    }
+    console.warn(`[token-resolver] ${kind}="${s}" did not resolve — value will be DROPPED (no padding/gap applied)`);
     return undefined;
 }
 

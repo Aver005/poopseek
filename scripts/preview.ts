@@ -132,7 +132,24 @@ log("");
 
 // ─── Compile ──────────────────────────────────────────────────────────────────
 
-const ops = compileJsx(nodes);
+const rawOps = compileJsx(nodes);
+
+// `compileJsx` always prepends `ensure_token_variables` + `ensure_text_styles`
+// computed from THIS process's local `activeTheme`. In preview.ts that's
+// always the fallback theme (we never call setActiveTheme here), so the ops
+// would OVERWRITE the file's real LLM-customised tokens/styles back to
+// defaults — every replay would reset colors to fallback blue and typography
+// to fallback Inter sizes. Strip them so the existing Figma file's theme
+// stays intact. Pass --reset-theme to keep them and force the fallback.
+const wantsResetTheme = process.argv.includes("--reset-theme");
+const ops = wantsResetTheme
+    ? rawOps
+    : rawOps.filter((op) => op.type !== "ensure_token_variables" && op.type !== "ensure_text_styles");
+
+const stripped = rawOps.length - ops.length;
+if (stripped > 0)
+    log(dim(`  (stripped ${stripped} ensure_*token/style ops — preserving the file's theme; pass --reset-theme to override)`));
+
 const opTypes = ops.reduce<Record<string, number>>((acc, op) =>
 {
     acc[op.type] = (acc[op.type] ?? 0) + 1;

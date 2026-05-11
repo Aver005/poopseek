@@ -1,4 +1,5 @@
-﻿import path from "node:path";
+﻿import fs from "node:fs/promises";
+import { resolveExistingAssetPath } from "@/cli/prompt-files";
 import type { FigmaChatRequest, FigmaChatResponse } from "@/figma/api/contracts";
 import type { FigmaSession } from "@/figma/application/session/session-types";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
@@ -55,8 +56,8 @@ function looksLikeEdit(message: string): boolean
 
 async function readPrompt(name: string): Promise<string>
 {
-    const file = Bun.file(path.join(WORKSPACE_ROOT, "assets", "prompts", "figma", name));
-    return file.text();
+    const resolved = resolveExistingAssetPath(`assets/prompts/figma/${name}`);
+    return fs.readFile(resolved, "utf8");
 }
 
 function sseEvent(event: string, data: unknown): string

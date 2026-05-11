@@ -78,7 +78,7 @@ function collectAssetCandidates(relativePath: string): string[]
     return Array.from(new Set([...resolvedPaths, cwdResolvedPath]));
 }
 
-function resolveExistingAssetPath(relativePath: string): string
+export function resolveExistingAssetPath(relativePath: string): string
 {
     const candidates = collectAssetCandidates(relativePath);
     for (const candidatePath of candidates)
