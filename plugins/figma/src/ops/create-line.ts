@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap } from "../cache";
-import { resolveParent, solidPaintWithBinding, applyLayoutSizing, ensureCorrectParent } from "../helpers";
+import { resolveParent, solidPaintWithBinding, applyLayoutSizing, ensureCorrectParent, assignLogicalId } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -57,6 +57,7 @@ export const handler: OpHandler = {
         if (linePaint) line.strokes = [linePaint];
         line.strokeWeight = op.weight !== undefined ? Number(op.weight) : 1;
         if (op.name) line.name = String(op.name);
+        assignLogicalId(line, op.id);
         applyLayoutSizing(line, op);
         if (op.x !== undefined) line.x = Number(op.x);
         if (op.y !== undefined) line.y = Number(op.y);

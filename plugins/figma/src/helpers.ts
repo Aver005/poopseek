@@ -4,6 +4,8 @@ import { dlog, derr, describeNode } from "./debug";
 
 // ── ID mapping ─────────────────────────────────────────────────
 
+export const LOGICAL_ID_KEY = "logicalId";
+
 export function getLogicalId(figmaId: string): string
 {
     for (const [logicalId, mappedId] of nodeMap.entries())
@@ -11,6 +13,28 @@ export function getLogicalId(figmaId: string): string
         if (mappedId === figmaId) return logicalId;
     }
     return figmaId;
+}
+
+/**
+ * Persist the server-side logical id on the figma node via pluginData.
+ * The server uniquifies names (Pricing/Pricing_2/Pricing_3) but those
+ * suffixes are derived from DFS order at snapshot time — fragile when
+ * nodes move. A pluginData id is stable across re-parents and survives
+ * snapshot round-trips, which is what makes `ensure_existing` actually
+ * pick the right figma node when several siblings share a name.
+ */
+export function assignLogicalId(node: SceneNode, logicalId: unknown): void
+{
+    if (typeof logicalId !== "string" || !logicalId) return;
+    if (typeof (node as { setPluginData?: unknown }).setPluginData !== "function") return;
+    (node as SceneNode & { setPluginData: (k: string, v: string) => void })
+        .setPluginData(LOGICAL_ID_KEY, logicalId);
+}
+
+export function readLogicalId(node: SceneNode): string
+{
+    if (typeof (node as { getPluginData?: unknown }).getPluginData !== "function") return "";
+    return (node as SceneNode & { getPluginData: (k: string) => string }).getPluginData(LOGICAL_ID_KEY);
 }
 
 // ── Color utilities ────────────────────────────────────────────
@@ -120,14 +144,32 @@ export function escapeJsxText(value: string): string
 
 // ── JSX generation ─────────────────────────────────────────────
 
+/**
+ * Prefix parts list with `key="<logicalId>"` when the node has been
+ * tagged. `loadNodesIntoBuffer` on the server prefers the explicit id
+ * over name-derived ones, so once a node has a logicalId it stays
+ * bound through snapshots — even if another sibling shares the same
+ * `name`. Existing untagged designs fall back to name-derived keys
+ * (the parser's first-fit suffixing), tagged on the next edit.
+ */
+function keyAttr(node: SceneNode): string | null
+{
+    const id = readLogicalId(node);
+    if (!id) return null;
+    return `key="${id.replace(/"/g, "&quot;")}"`;
+}
+
 export function nodeToFullJsx(node: SceneNode, depth: number): string
 {
     const indent = "  ".repeat(depth);
     const t = node.type;
+    const keyPart = keyAttr(node);
 
     if (t === "TEXT") {
         const tn = node as TextNode;
-        const parts: string[] = [`name="${tn.name.replace(/"/g, "&quot;")}"`];
+        const parts: string[] = [];
+        if (keyPart) parts.push(keyPart);
+        parts.push(`name="${tn.name.replace(/"/g, "&quot;")}"`);
         const lsh = "layoutSizingHorizontal" in tn
             ? (tn as unknown as { layoutSizingHorizontal: string }).layoutSizingHorizontal
             : "FIXED";
@@ -169,7 +211,9 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
 
     if (t === "ELLIPSE") {
         const el = node as EllipseNode;
-        const parts = [`name="${el.name.replace(/"/g, "&quot;")}"`, `width={${Math.round(el.width)}}`, `height={${Math.round(el.height)}}`];
+        const parts: string[] = [];
+        if (keyPart) parts.push(keyPart);
+        parts.push(`name="${el.name.replace(/"/g, "&quot;")}"`, `width={${Math.round(el.width)}}`, `height={${Math.round(el.height)}}`);
         const fillTok = getPrimaryColorTokenKey(el.fills);
         if (fillTok) parts.push(`fill="${fillTok}"`);
         else { const fc = getPrimaryColor(el.fills); if (fc) parts.push(`fill="${fc}"`); }
@@ -181,7 +225,9 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
 
     if (t === "LINE") {
         const ln = node as LineNode;
-        const parts = [`name="${ln.name.replace(/"/g, "&quot;")}"`, `length={${Math.round(Math.max(ln.width, ln.height))}}`];
+        const parts: string[] = [];
+        if (keyPart) parts.push(keyPart);
+        parts.push(`name="${ln.name.replace(/"/g, "&quot;")}"`, `length={${Math.round(Math.max(ln.width, ln.height))}}`);
         if (ln.height > ln.width) parts.push("vertical");
         const strokeTok = getPrimaryColorTokenKey(ln.strokes);
         const sc = strokeTok ?? getPrimaryColor(ln.strokes);
@@ -193,7 +239,9 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
         const rect = node as RectangleNode;
         const fills = Array.isArray(rect.fills) ? rect.fills as Paint[] : [];
         const imgFill = fills.find((p): p is ImagePaint => p.type === "IMAGE");
-        const parts = [`name="${rect.name.replace(/"/g, "&quot;")}"`];
+        const parts: string[] = [];
+        if (keyPart) parts.push(keyPart);
+        parts.push(`name="${rect.name.replace(/"/g, "&quot;")}"`);
         const lsh = "layoutSizingHorizontal" in rect
             ? (rect as unknown as { layoutSizingHorizontal: string }).layoutSizingHorizontal
             : "FIXED";
@@ -231,14 +279,18 @@ export function nodeToFullJsx(node: SceneNode, depth: number): string
     const svgSrc = f.getPluginData ? f.getPluginData("svgSrc") : "";
     if (svgSrc)
     {
-        const iconParts: string[] = [`name="${f.name.replace(/"/g, "&quot;")}"`];
+        const iconParts: string[] = [];
+        if (keyPart) iconParts.push(keyPart);
+        iconParts.push(`name="${f.name.replace(/"/g, "&quot;")}"`);
         if (f.width  > 0) iconParts.push(`width={${Math.round(f.width)}}`);
         if (f.height > 0) iconParts.push(`height={${Math.round(f.height)}}`);
         iconParts.push(`src="${svgSrc.replace(/"/g, "&quot;")}"`);
         return `${indent}<Image ${iconParts.join(" ")} />`;
     }
 
-    const parts: string[] = [`name="${f.name.replace(/"/g, "&quot;")}"`];
+    const parts: string[] = [];
+    if (keyPart) parts.push(keyPart);
+    parts.push(`name="${f.name.replace(/"/g, "&quot;")}"`);
     const isAL = "layoutMode" in f && (f as FrameNode).layoutMode !== "NONE";
     if (isAL) {
         parts.push("autoLayout");
@@ -378,7 +430,92 @@ export function countSnapshotNodes(nodes: FigmaSnapshotNode[]): number
     return nodes.reduce((total, node) => total + 1 + countSnapshotNodes(node.children ?? []), 0);
 }
 
-export function buildPluginSnapshot(): FigmaPluginSnapshot
+type SnapshotTokenKind = "color" | "spacing" | "radius";
+
+interface SnapshotToken
+{
+    kind: SnapshotTokenKind;
+    key: string;
+    value: string;
+    variableName: string;
+}
+
+interface SnapshotTextStyle
+{
+    key: string;
+    fontFamily?: string;
+    fontSize?: number;
+    fontWeight?: string;
+    lineHeight?: number;
+    letterSpacing?: number;
+}
+
+function kindFromVariableName(name: string): SnapshotTokenKind | null
+{
+    if (name.startsWith("theme/"))   return "color";
+    if (name.startsWith("spacing/")) return "spacing";
+    if (name.startsWith("radius/"))  return "radius";
+    return null;
+}
+
+async function collectThemeTokens(): Promise<SnapshotToken[]>
+{
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    const collection  = collections.find((c) => c.name === "PoopSeek Theme");
+    if (!collection) return [];
+
+    const modeId = collection.modes[0]?.modeId;
+    if (!modeId) return [];
+
+    const colorVars = await figma.variables.getLocalVariablesAsync("COLOR");
+    const floatVars = await figma.variables.getLocalVariablesAsync("FLOAT");
+
+    const out: SnapshotToken[] = [];
+    for (const v of [...colorVars, ...floatVars])
+    {
+        if (v.variableCollectionId !== collection.id) continue;
+        const kind = kindFromVariableName(v.name);
+        if (!kind) continue;
+        const raw = v.valuesByMode[modeId];
+        if (raw === undefined) continue;
+        const slashAt = v.name.indexOf("/");
+        const key     = slashAt >= 0 ? v.name.slice(slashAt + 1) : v.name;
+        if (kind === "color")
+        {
+            const c = raw as RGBA;
+            if (typeof c.r !== "number") continue;
+            out.push({ kind, key, value: rgbaToHex(c), variableName: v.name });
+        }
+        else
+        {
+            const n = typeof raw === "number" ? raw : Number(raw);
+            if (!Number.isFinite(n)) continue;
+            out.push({ kind, key, value: String(n), variableName: v.name });
+        }
+    }
+    return out;
+}
+
+async function collectTextStyles(): Promise<SnapshotTextStyle[]>
+{
+    const styles = await figma.getLocalTextStylesAsync();
+    return styles.map((s) =>
+    {
+        const fn = s.fontName as FontName;
+        const lh = s.lineHeight as LineHeight;
+        const ls = s.letterSpacing as LetterSpacing;
+        return {
+            key: s.name,
+            fontFamily: fn?.family,
+            fontWeight: fn ? fontWeightFromStyle(fn.style) : undefined,
+            fontSize: typeof s.fontSize === "number" ? s.fontSize : undefined,
+            lineHeight: lh && lh.unit === "PIXELS" ? lh.value : undefined,
+            letterSpacing: ls && ls.unit === "PIXELS" ? ls.value : undefined,
+        };
+    });
+}
+
+export async function buildPluginSnapshot(): Promise<FigmaPluginSnapshot>
 {
     const allRootNodes = [...figma.currentPage.children];
     const selectedNodes = figma.currentPage.selection.length > 0
@@ -389,6 +526,11 @@ export function buildPluginSnapshot(): FigmaPluginSnapshot
         .map((node) => serializeNode(node))
         .filter((node): node is FigmaSnapshotNode => node !== null);
 
+    const [tokens, textStyles] = await Promise.all([
+        collectThemeTokens().catch(() => [] as SnapshotToken[]),
+        collectTextStyles().catch(() => [] as SnapshotTextStyle[]),
+    ]);
+
     return {
         source: "plugin",
         receivedAt: Date.now(),
@@ -397,6 +539,8 @@ export function buildPluginSnapshot(): FigmaPluginSnapshot
         tree,
         jsx: allRootNodes.map((node) => nodeToFullJsx(node, 0)).filter(Boolean).join("\n"),
         documentName: figma.root.name || undefined,
+        tokens,
+        textStyles,
     };
 }
 

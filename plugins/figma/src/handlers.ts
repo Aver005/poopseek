@@ -88,11 +88,13 @@ figma.ui.onmessage = (msg: { type: string; ops?: FigmaOp[] }) =>
 
     if (msg.type === "REQUEST_SNAPSHOT")
     {
-        const snap = buildPluginSnapshot();
-        dlog("REQUEST_SNAPSHOT", `roots=${snap.tree.length}, selected=${snap.selectedNodeIds.length}`);
-        figma.ui.postMessage({
-            type: "SNAPSHOT",
-            snapshot: snap,
+        buildPluginSnapshot().then((snap) =>
+        {
+            dlog("REQUEST_SNAPSHOT", `roots=${snap.tree.length}, selected=${snap.selectedNodeIds.length}, tokens=${snap.tokens?.length ?? 0}, textStyles=${snap.textStyles?.length ?? 0}`);
+            figma.ui.postMessage({ type: "SNAPSHOT", snapshot: snap });
+        }).catch((err) =>
+        {
+            derr("REQUEST_SNAPSHOT", `failed: ${err instanceof Error ? err.message : String(err)}`);
         });
         return;
     }

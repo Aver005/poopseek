@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, bindNumberVariable, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, bindNumberVariable, ensureCorrectParent, assignLogicalId } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 function vstr(v: unknown): string | undefined { return typeof v === "string" ? v : undefined; }
@@ -63,6 +63,7 @@ export const handler: OpHandler = {
         await bindNumberVariable(rect, "bottomRightRadius", vstr(op.cornerRadiusVariableName), "create_rect");
         applyCornerRadii(rect, op);
         if (op.name) rect.name = String(op.name);
+        assignLogicalId(rect, op.id);
         applyLayoutSizing(rect, op);
         if (op.x !== undefined) rect.x = Number(op.x);
         if (op.y !== undefined) rect.y = Number(op.y);

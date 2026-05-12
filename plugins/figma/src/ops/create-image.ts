@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, ensureCorrectParent, assignLogicalId } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 // Per-batch fetch cache. The same icon (e.g. lucide/star.svg) is often used
@@ -73,6 +73,7 @@ export const handler: OpHandler = {
                 if (op.x !== undefined) node.x = Number(op.x);
                 if (op.y !== undefined) node.y = Number(op.y);
                 if (op.id) nodeMap.set(opId, node.id);
+                assignLogicalId(node, op.id);
                 dlog("create_image", `"${opId}" → NEW (src) under ${describeNode(parent)} → ${describeNode(node)}`);
                 if (parent.type === "PAGE")
                     derr("create_image", `⚠ "${opId}" attached to PAGE. frameId="${op.frameId}" did not resolve.`);
@@ -108,6 +109,7 @@ export const handler: OpHandler = {
         }
         rect.resize(w, h);
         rect.name = String(op.name ?? "Image");
+        assignLogicalId(rect, op.id);
         if (op.cornerRadius !== undefined) rect.cornerRadius = Number(op.cornerRadius);
         applyCornerRadii(rect, op);
         applyLayoutSizing(rect, op);

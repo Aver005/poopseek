@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap, componentRegistry } from "../cache";
-import { resolveParent, componentRegistryKey } from "../helpers";
+import { resolveParent, componentRegistryKey, assignLogicalId } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 // Resolve a master ComponentNode for `of=` + variant attrs. Lookup order:
@@ -114,6 +114,7 @@ export const handler: OpHandler = {
         else if (op.id)
         {
             nodeMap.set(opId, instance.id);
+            assignLogicalId(instance, op.id);
         }
 
         dlog("create_instance", `"${opId}" of "${componentName}" → ${describeNode(instance)}`);

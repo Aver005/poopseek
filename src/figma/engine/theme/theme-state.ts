@@ -134,9 +134,13 @@ export interface EnsureThemeVariablesOp
 const THEME_COLLECTION = "PoopSeek Theme";
 const THEME_MODE = "Base";
 
-// Minimal fallback ONLY if the designer returned nothing usable. This is
-// a safety net, not the default — `setActiveTheme` no longer merges these
-// in on top of LLM output.
+// Minimal fallback layer. Always consulted by `resolveXxxToken` as a
+// second-tier lookup AFTER the active theme — so a token that exists in
+// Figma always wins, and a token the LLM uses but Figma doesn't yet have
+// falls back to these standard values (and gets created on the next
+// ensure_token_variables pass). Not merged into `activeTheme` directly,
+// so `describeActiveTokensForPrompt` can distinguish "live in Figma" vs
+// "available via fallback".
 const FALLBACK_TOKENS: ThemeToken[] = [
     { kind: "color",   key: "background",     value: "#F8FAFC", description: "Page background" },
     { kind: "color",   key: "surface",        value: "#FFFFFF", description: "Cards / panels" },
@@ -155,6 +159,12 @@ const FALLBACK_TOKENS: ThemeToken[] = [
 ];
 
 let activeTheme: ThemeDefinition = { name: "fallback", tokens: FALLBACK_TOKENS };
+
+function fallbackToken(kind: TokenKind, key: string): ThemeToken | undefined
+{
+    const k = key.toLowerCase();
+    return FALLBACK_TOKENS.find(t => t.kind === kind && t.key === k);
+}
 
 function normalizeHex(hex: string): string
 {
@@ -246,6 +256,30 @@ export function setActiveTheme(theme: ThemeDefinition): void
     };
 }
 
+/**
+ * Wholesale replacement of the active theme. Unlike `setActiveTheme`'s
+ * first-wins merge, this trusts the incoming tokens completely — used by
+ * the snapshot path where Figma is the source of truth and the server's
+ * in-memory state must catch up. Prose is preserved (Figma can't tell us
+ * about DESIGN.md prose; only `setActiveTheme` from the designer pipeline
+ * sets that).
+ */
+export function replaceActiveTheme(theme: { tokens: ThemeToken[]; components?: ComponentDefinition[]; name?: string }): void
+{
+    const tokens = theme.tokens.map(t => ({
+        kind: t.kind,
+        key: normalizeKey(t.key),
+        value: normalizeTokenValue(t),
+        description: t.description?.trim(),
+    }));
+    activeTheme = {
+        name: theme.name?.trim() || activeTheme.name || "from-figma",
+        tokens,
+        components: theme.components ?? activeTheme.components,
+        prose: activeTheme.prose,
+    };
+}
+
 export function getActiveTheme(): ThemeDefinition
 {
     return activeTheme;
@@ -271,11 +305,15 @@ export function variableNameFor(kind: TokenKind, key: string): string
     return `${kind}/${key}`;
 }
 
-/** Resolve a bare color key (e.g. "primary") to a variable-color value. */
+/** Resolve a bare color key (e.g. "primary") to a variable-color value.
+ *  Lookup order: active theme → FALLBACK_TOKENS. If only fallback has it,
+ *  we still emit the variable binding — `ensure_token_variables` will
+ *  create that variable in Figma on the next dispatch. */
 export function resolveColorToken(key: string): VariableColorValue | undefined
 {
     const k = normalizeKey(key);
-    const token = activeTheme.tokens.find(t => t.kind === "color" && t.key === k);
+    const token = activeTheme.tokens.find(t => t.kind === "color" && t.key === k)
+               ?? fallbackToken("color", k);
     if (!token) return undefined;
     return {
         kind: "variable-color",
@@ -289,18 +327,23 @@ export function resolveColorToken(key: string): VariableColorValue | undefined
     };
 }
 
-/** Resolve a bare numeric key (e.g. "md" for spacing) to a number + variable name. */
+/** Resolve a bare numeric key (e.g. "md" for spacing) to a number + variable name.
+ *  Lookup order: active theme → FALLBACK_TOKENS. */
 export function resolveNumericToken(kind: "spacing" | "radius", key: string): { value: number; variableName: string } | undefined
 {
     const k = normalizeKey(key);
-    const token = activeTheme.tokens.find(t => t.kind === kind && t.key === k);
+    const token = activeTheme.tokens.find(t => t.kind === kind && t.key === k)
+               ?? fallbackToken(kind, k);
     if (!token) return undefined;
     const n = Number(token.value);
     if (!Number.isFinite(n)) return undefined;
     return { value: n, variableName: variableNameFor(kind, k) };
 }
 
-/** Resolve a typography variant (e.g. "h1") to its prop bundle. */
+/** Resolve a typography variant (e.g. "h1") to its prop bundle.
+ *  No FALLBACK layer — typography tokens are design-specific (no sane
+ *  "default heading style"), so an unknown variant returns undefined
+ *  and the caller decides what to do. */
 export function resolveTypographyToken(key: string): TypographyValue | undefined
 {
     const k = normalizeKey(key);
@@ -321,12 +364,25 @@ export function getThemeCollection(): { collection: string; mode: string }
     return { collection: THEME_COLLECTION, mode: THEME_MODE };
 }
 
-/** Tokens table for prompt injection. Compact human-readable rows by kind. */
+/** Tokens table for prompt injection. Compact human-readable rows by kind.
+ *  Lists EVERYTHING the LLM may use: tokens currently live in Figma plus
+ *  any fallback-only keys (those get created on next ensure pass). Active
+ *  values win — fallback fills gaps. */
 export function describeActiveTokensForPrompt(): string
 {
-    const colors = activeTheme.tokens.filter(t => t.kind === "color");
-    const spacing = activeTheme.tokens.filter(t => t.kind === "spacing");
-    const radius = activeTheme.tokens.filter(t => t.kind === "radius");
+    function unionByKey(kind: TokenKind): ThemeToken[]
+    {
+        const map = new Map<string, ThemeToken>();
+        for (const t of FALLBACK_TOKENS)
+            if (t.kind === kind) map.set(t.key, t);
+        for (const t of activeTheme.tokens)
+            if (t.kind === kind) map.set(t.key, t);
+        return [...map.values()];
+    }
+
+    const colors     = unionByKey("color");
+    const spacing    = unionByKey("spacing");
+    const radius     = unionByKey("radius");
     const typography = activeTheme.tokens.filter(t => t.kind === "typography");
     const components = activeTheme.components ?? [];
 
@@ -359,23 +415,34 @@ export function getActiveDesignDoc(): string
 
 /** Op the plugin uses to ensure all theme variables exist.
  *  Typography is compile-time-only (no figma variable yet), components
- *  are bundle-expansion-only — both excluded from this op. */
+ *  are bundle-expansion-only — both excluded from this op.
+ *
+ *  Union of active + fallback: when active only has `primary` but the LLM
+ *  also uses `surface`, fallback supplies `surface` so the plugin creates
+ *  the variable on first use. The plugin's `if (isNew)` guard ensures we
+ *  never overwrite values the user (or a previous theme) put there. */
 export function createEnsureTokenVariablesOp(): EnsureTokenVariablesOp
 {
+    const collected = new Map<string, ThemeToken>();
+    for (const t of FALLBACK_TOKENS)
+        if (t.kind === "color" || t.kind === "spacing" || t.kind === "radius")
+            collected.set(`${t.kind}:${t.key}`, t);
+    for (const t of activeTheme.tokens)
+        if (t.kind === "color" || t.kind === "spacing" || t.kind === "radius")
+            collected.set(`${t.kind}:${t.key}`, t);
+
     return {
         type: "ensure_token_variables",
         collection: THEME_COLLECTION,
         mode: THEME_MODE,
         themeName: activeTheme.name?.trim() || "custom",
-        tokens: activeTheme.tokens
-            .filter(t => t.kind === "color" || t.kind === "spacing" || t.kind === "radius")
-            .map(t => ({
-                kind: t.kind,
-                key: t.key,
-                variableName: variableNameFor(t.kind, t.key),
-                value: t.kind === "color" ? normalizeHex(t.value as string) : String(t.value),
-                description: t.description,
-            })),
+        tokens: [...collected.values()].map(t => ({
+            kind: t.kind,
+            key: t.key,
+            variableName: variableNameFor(t.kind, t.key),
+            value: t.kind === "color" ? normalizeHex(t.value as string) : String(t.value),
+            description: t.description,
+        })),
     };
 }
 

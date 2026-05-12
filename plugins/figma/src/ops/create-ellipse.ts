@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent, assignLogicalId } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -56,6 +56,7 @@ export const handler: OpHandler = {
             if (paint) ellipse.fills = [paint];
         }
         if (op.name) ellipse.name = String(op.name);
+        assignLogicalId(ellipse, op.id);
         applyLayoutSizing(ellipse, op);
         if (op.x !== undefined) ellipse.x = Number(op.x);
         if (op.y !== undefined) ellipse.y = Number(op.y);

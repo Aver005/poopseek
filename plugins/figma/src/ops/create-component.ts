@@ -8,6 +8,7 @@ import {
     componentRegistryKey,
     ensureUiKitPage,
     resolveParent,
+    assignLogicalId,
 } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
@@ -91,6 +92,7 @@ export const handler: OpHandler = {
         // Component name in Figma uses slash for variant grouping ("Button/state=hover,size=md")
         // — Figma's Assets panel groups slash-separated names automatically.
         component.name = regKey;
+        assignLogicalId(component, op.id);
 
         component.resize(Number(op.width ?? 100), Number(op.height ?? 100));
         if (typeof op.fill === "string")

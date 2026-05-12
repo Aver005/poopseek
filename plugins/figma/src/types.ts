@@ -15,6 +15,24 @@ export interface FigmaSnapshotNode
     children?: FigmaSnapshotNode[];
 }
 
+export interface ThemeTokenSnapshot
+{
+    kind: "color" | "spacing" | "radius";
+    key: string;
+    value: string;
+    variableName: string;
+}
+
+export interface TextStyleSnapshot
+{
+    key: string;
+    fontFamily?: string;
+    fontSize?: number;
+    fontWeight?: string;
+    lineHeight?: number;
+    letterSpacing?: number;
+}
+
 export interface FigmaPluginSnapshot
 {
     source: "plugin";
@@ -24,6 +42,8 @@ export interface FigmaPluginSnapshot
     tree: FigmaSnapshotNode[];
     jsx: string;
     documentName?: string;
+    tokens?: ThemeTokenSnapshot[];
+    textStyles?: TextStyleSnapshot[];
 }
 
 // ── Operation types ─────────────────────────────────────────────

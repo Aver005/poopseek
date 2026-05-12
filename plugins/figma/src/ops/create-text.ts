@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent, findTextStyleByName } from "../helpers";
+import { resolveParent, applyLayoutSizing, solidPaintWithBinding, ensureCorrectParent, findTextStyleByName, assignLogicalId } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 export const handler: OpHandler = {
@@ -123,6 +123,7 @@ export const handler: OpHandler = {
             if (paint) text.fills = [paint];
         }
         if (op.name) text.name = String(op.name);
+        assignLogicalId(text, op.id);
         applyLayoutSizing(text, op);
         if (op.x !== undefined) text.x = Number(op.x);
         if (op.y !== undefined) text.y = Number(op.y);

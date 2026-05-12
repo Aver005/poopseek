@@ -1,6 +1,6 @@
 import type { OpHandler } from "./types";
 import { nodeMap } from "../cache";
-import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, bindNumberVariable, ensureCorrectParent } from "../helpers";
+import { resolveParent, applyLayoutSizing, applyCornerRadii, solidPaintWithBinding, bindNumberVariable, ensureCorrectParent, assignLogicalId } from "../helpers";
 import { dlog, derr, describeNode } from "../debug";
 
 function vstr(v: unknown): string | undefined { return typeof v === "string" ? v : undefined; }
@@ -62,6 +62,7 @@ export const handler: OpHandler = {
         }
 
         frame.name = String(op.name ?? "Frame");
+        assignLogicalId(frame, op.id);
         frame.resize(Number(op.width ?? 100), Number(op.height ?? 100));
         if (typeof op.fill === "string") {
             const paint = await solidPaintWithBinding(op.fill, vstr(op.fillVariableName));
