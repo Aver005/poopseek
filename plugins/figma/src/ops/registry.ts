@@ -14,6 +14,7 @@ import { handler as createText } from "./create-text";
 import { handler as createLine } from "./create-line";
 import { handler as moveNode } from "./move-node";
 import { handler as setChildIndex } from "./set-child-index";
+import { handler as ensureExisting } from "./ensure-existing";
 import { handler as resizeNode } from "./resize-node";
 import { handler as deleteNode } from "./delete-node";
 import { handler as cloneNode } from "./clone-node";
@@ -51,6 +52,7 @@ const handlers: OpHandler[] = [
     createLine,
     moveNode,
     setChildIndex,
+    ensureExisting,
     resizeNode,
     deleteNode,
     cloneNode,

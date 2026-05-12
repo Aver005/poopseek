@@ -49,6 +49,36 @@ function computeNextRootX(snapshot?: FigmaPluginSnapshot | null): number
     return rightmost > 0 ? rightmost + 80 : 0;
 }
 
+/**
+ * Serialize a single buffer node as JSX with NO children. Used by the
+ * surgical edit path so we can re-compile just the props of an existing
+ * node (gap, fill, padding…) and let the plugin REUSE the figma node
+ * without wiping its descendants. The plugin's `create_*` handlers
+ * overwrite only what's in the op, so untouched descendants survive.
+ */
+function singleNodeJsx(node: { id: string; type: string; props: Record<string, unknown> }): string
+{
+    const tag = node.type;
+    const skipKeys = new Set(["text", "content", "id"]);
+    const parts: string[] = [`key="${node.id}"`];
+    for (const [key, value] of Object.entries(node.props))
+    {
+        if (skipKeys.has(key)) continue;
+        if (value === undefined || value === null || value === false) continue;
+        if (value === true) parts.push(key);
+        else if (typeof value === "number") parts.push(`${key}={${value}}`);
+        else
+        {
+            const s = String(value);
+            parts.push(s.includes('"') ? `${key}='${s}'` : `${key}="${s}"`);
+        }
+    }
+    const textVal = node.props.text ?? node.props.content;
+    if (typeof textVal === "string" && textVal.trim() !== "")
+        return `<${tag} ${parts.join(" ")}>${textVal.trim()}</${tag}>`;
+    return `<${tag} ${parts.join(" ")} />`;
+}
+
 function looksLikeEdit(message: string): boolean
 {
     const lower = message.toLowerCase();
@@ -438,8 +468,18 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         for (const id of beforeNodes.keys())
                             if (!afterNodes.has(id)) deletedIds.add(id);
 
-                        const surgical = editedIds.size === 0 && deletedIds.size === 0;
-                        const hasChanges = createdIds.size > 0 || reorderedParentIds.size > 0;
+                        // Surgical edits handle prop changes on existing
+                        // nodes by emitting `ensure_existing` (find figma
+                        // node by name, populate nodeMap) + a single-node
+                        // re-compile (which the plugin treats as REUSE-by-id
+                        // and re-applies only the props in the op). Children
+                        // are not touched. The only thing we still don't
+                        // surgically handle is deletions — those fall back
+                        // to wipe+recreate.
+                        const surgical = deletedIds.size === 0;
+                        const hasChanges = createdIds.size > 0
+                            || editedIds.size > 0
+                            || reorderedParentIds.size > 0;
 
                         if (surgical && hasChanges)
                         {
@@ -486,6 +526,33 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                                         }
                                     }
                                 }
+                            }
+
+                            // Edits. For each node whose props changed
+                            // (or that moved to a new parent), emit a tiny
+                            // recompile of JUST that node — no children.
+                            // The plugin sees `ensure_existing` first
+                            // (populates nodeMap with the figma id, found
+                            // via deep findOne by name), then a `create_*`
+                            // op that REUSEs the node and re-applies only
+                            // the props in the op. Existing descendants and
+                            // siblings are untouched. This is what stopped
+                            // the gap="xl" edit on StillsScroll from wiping
+                            // the whole LandingPage and losing token bindings.
+                            for (const id of editedIds)
+                            {
+                                const node = afterNodes.get(id);
+                                if (!node) continue;
+                                const parentId = node.parentId;
+                                const parentFrameId = parentId ?? undefined;
+
+                                opsToDispatch.push({
+                                    type: "ensure_existing",
+                                    logicalId: id,
+                                    name: String(node.props.name ?? id),
+                                });
+                                const jsx = singleNodeJsx(node);
+                                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(jsx)), parentFrameId));
                             }
 
                             // Reorders. For each parent with a changed

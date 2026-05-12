@@ -907,19 +907,30 @@ export function resolveNode(nodeId: unknown, map?: Map<string, string>): BaseNod
 export function ensureCorrectParent(node: SceneNode, frameId: unknown, tag: string): void
 {
     const desired = resolveParent(frameId);
-    if (node.parent !== desired)
+    if (node.parent === desired) return;
+
+    // Defensive: when `resolveParent` couldn't find the requested parent it
+    // falls back to `currentPage`. In the surgical-edit path that means a
+    // typo / stale name would otherwise rip the node out of its real,
+    // correctly-nested parent and dump it at page root. Skip the reparent
+    // when the only thing we can offer is PAGE and the node is already
+    // nested somewhere meaningful.
+    if (desired.type === "PAGE" && node.parent && node.parent.type !== "PAGE")
     {
-        const oldParent = node.parent ? `${node.parent.type}#${node.parent.id}/"${(node.parent as BaseNode & { name?: string }).name ?? "?"}"` : "null";
-        const newParent = `${desired.type}#${desired.id}/"${(desired as BaseNode & { name?: string }).name ?? "?"}"`;
-        try
-        {
-            (desired as FrameNode | PageNode).appendChild(node);
-            derr(tag, `re-parented ${describeNode(node)} from ${oldParent} → ${newParent} (REUSE found node at wrong parent)`);
-        }
-        catch (err)
-        {
-            derr(tag, `❌ failed to re-parent ${describeNode(node)} (was at ${oldParent}, wanted ${newParent}): ${err instanceof Error ? err.message : String(err)}`);
-        }
+        derr(tag, `desired parent for frameId="${String(frameId)}" resolved to PAGE — refusing to detach ${describeNode(node)} from existing parent ${describeNode(node.parent as BaseNode)}`);
+        return;
+    }
+
+    const oldParent = node.parent ? `${node.parent.type}#${node.parent.id}/"${(node.parent as BaseNode & { name?: string }).name ?? "?"}"` : "null";
+    const newParent = `${desired.type}#${desired.id}/"${(desired as BaseNode & { name?: string }).name ?? "?"}"`;
+    try
+    {
+        (desired as FrameNode | PageNode).appendChild(node);
+        derr(tag, `re-parented ${describeNode(node)} from ${oldParent} → ${newParent} (REUSE found node at wrong parent)`);
+    }
+    catch (err)
+    {
+        derr(tag, `❌ failed to re-parent ${describeNode(node)} (was at ${oldParent}, wanted ${newParent}): ${err instanceof Error ? err.message : String(err)}`);
     }
 }
 
