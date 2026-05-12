@@ -1,0 +1,19 @@
+{
+    "runs":
+    [
+        {
+            "name": "test",
+            "promptPath": "assets/bench-runs/test/prompt.md",
+            "outputPath": "assets/bench-runs/test",
+            "count": 10,
+            "cooldown": 1000
+        },
+        {
+            "name": "test2",
+            "promptPath": "assets/bench-runs/test2/prompt.md",
+            "outputPath": "assets/bench-runs/test2",
+            "count": 10,
+            "cooldown": 200
+        }
+    ]
+}
