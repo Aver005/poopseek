@@ -5,6 +5,7 @@ import type { FigmaSession } from "@/figma/application/session/session-types";
 import type { FigmaServerDeps } from "@/figma/application/server-deps";
 import type { FigmaPluginSnapshot } from "@/figma/domain/plugin/snapshot-types";
 import { runIntentClassifier } from "@/figma/application/pipeline/intent";
+import { isStructuredBrief } from "@/figma/application/pipeline/brief-heuristics";
 import { runDesigner } from "@/figma/application/pipeline/designer";
 import { runBuilderOneShot } from "@/figma/application/pipeline/builder";
 import { runHandymanEdit } from "@/figma/application/pipeline/handyman";
@@ -142,22 +143,34 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
     }
     else
     {
-        // Skip enhance-cache when images are present — same text + different
-        // image must produce a fresh enhanced prompt.
-        const cached = !images ? context.enhanceCache.get(body.message) : null;
-        if (cached)
+        // User already wrote a detailed brief — don't paraphrase it through
+        // the enhancer (would lose specificity). Schema-section sniff also
+        // gives us the intent for free, no LLM round-trip.
+        const brief = isStructuredBrief(body.message);
+        if (brief.yes)
         {
-            intent = "create";
-            enhanced = cached.enhanced;
+            intent = brief.score.intent ?? (hasDesign ? "edit" : "create");
+            enhanced = body.message;
         }
         else
         {
-            const result = await runIntentClassifier(
-                subAgentRunner, body.message, currentJsx, intentPrompt, undefined,
-                visionAttached ? images : undefined,
-            );
-            intent = result.intent;
-            enhanced = result.enhanced;
+            // Skip enhance-cache when images are present — same text + different
+            // image must produce a fresh enhanced prompt.
+            const cached = !images ? context.enhanceCache.get(body.message) : null;
+            if (cached)
+            {
+                intent = "create";
+                enhanced = cached.enhanced;
+            }
+            else
+            {
+                const result = await runIntentClassifier(
+                    subAgentRunner, body.message, currentJsx, intentPrompt, undefined,
+                    visionAttached ? images : undefined,
+                );
+                intent = result.intent;
+                enhanced = result.enhanced;
+            }
         }
     }
 

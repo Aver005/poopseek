@@ -11,6 +11,7 @@ import { handlePollOps, handlePushOps } from "@/figma/infrastructure/http/handle
 import { handlePushSnapshot } from "@/figma/infrastructure/http/handlers/snapshot";
 import { handleStatus } from "@/figma/infrastructure/http/handlers/status";
 import { handleRequestScreenshot, handleScreenshotResult } from "@/figma/infrastructure/http/handlers/screenshot";
+import { handleCensor } from "@/figma/infrastructure/http/handlers/censor";
 import type { PendingScreenshot } from "@/figma/infrastructure/http/handlers/common";
 
 const DEFAULT_PORT = 7331;
@@ -114,6 +115,9 @@ export class FigmaServerManager
 
         if (req.method === "POST" && url.pathname === "/v1/screenshot-result")
             return handleScreenshotResult(req, httpContext);
+
+        if (req.method === "POST" && url.pathname === "/v1/censor")
+            return handleCensor(req, httpContext);
 
         return new Response("Not Found", { status: 404, headers: this.corsHeaders() });
     }

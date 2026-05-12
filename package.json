@@ -17,7 +17,9 @@
     "build:all": "bun run build:windows && bun run build:plugin",
 
     "compile":     "bun run build:windows",
-    "compile:mac": "bun run build:macos"
+    "compile:mac": "bun run build:macos",
+
+    "all": "bun compile && bun build:plugin && bun start"
   },
   "devDependencies": {
     "@types/bun": "latest",

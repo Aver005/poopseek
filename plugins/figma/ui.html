@@ -48,6 +48,9 @@
     <button class="toolbar-btn" id="screenshotBtn" title="Снимок нод Figma (выделенных или всей страницы)">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
     </button>
+    <button class="toolbar-btn" id="censorBtn" title="Визуальный цензор: после генерации делает скриншот, оценивает и автоматически исправляет (до 3 итераций)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
     <div class="toolbar-spacer"></div>
     <button class="toolbar-btn" id="undoBtn" title="Отменить ввод (Ctrl+Z)">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
@@ -77,6 +80,21 @@
   let lastUserImages = null;
   let lastBuilderJsx = null;     // for "JSX" button in debug-log card
 
+  // ── Censor (visual QA) state ──────────────────────────
+  // censorEnabled persists across sessions via localStorage.
+  // censorPending: a finished chat turn (or censor-fix turn) is waiting
+  //   for the plugin's OPS_DONE so we can screenshot + run another pass.
+  // censorIteration: 0..MAX-1, bumped each time we send a /v1/censor.
+  // currentCensorCard: the in-progress card element (so we can update its
+  //   status line as we go through "screenshot → review → fix").
+  let censorEnabled = false;
+  let censorPending = false;
+  let censorIteration = 0;
+  let currentCensorCard = null;
+  let gotOpsThisTurn = false;
+  const MAX_CENSOR_ITERATIONS = 3;
+  try { censorEnabled = localStorage.getItem('censorEnabled') === '1'; } catch { /* ignore */ }
+
   const dot = document.getElementById('dot');
   const statusLabel = document.getElementById('statusLabel');
   const messagesEl = document.getElementById('messages');
@@ -85,6 +103,7 @@
   const attachBtn = document.getElementById('attachBtn');
   const fileInput = document.getElementById('fileInput');
   const screenshotBtn = document.getElementById('screenshotBtn');
+  const censorBtn = document.getElementById('censorBtn');
   const undoBtn = document.getElementById('undoBtn');
   const redoBtn = document.getElementById('redoBtn');
   const eraserBtn = document.getElementById('eraserBtn');
@@ -97,14 +116,38 @@
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 
   // ── Status ──────────────────────────────────────────
+  // Single source of truth for the disabled state of every interactive
+  // control. `busy` covers the whole agent loop (chat → ops → optional
+  // censor iterations); `connected` covers server reachability. Anything
+  // that should freeze the user during agent work goes through here.
+  function applyBusyState() {
+    sendBtn.disabled = !connected || busy;
+    attachBtn.disabled = busy;
+    screenshotBtn.disabled = !connected || busy;
+    if (censorBtn) censorBtn.disabled = busy;
+    inputEl.disabled = busy;
+  }
+
+  function setBusy(value) {
+    busy = value;
+    applyBusyState();
+  }
+
   function setStatus(ok, label) {
     connected = ok;
     dot.className = 'dot ' + (ok ? 'ok' : 'err');
     statusLabel.textContent = label;
-    sendBtn.disabled = !ok || busy;
-    attachBtn.disabled = busy;          // file/paste/drop always available locally
-    screenshotBtn.disabled = !ok || busy;
+    applyBusyState();
   }
+
+  // Reflect persisted toggle state on mount.
+  if (censorEnabled) censorBtn.classList.add('active');
+  censorBtn.addEventListener('click', () => {
+    if (busy) return;
+    censorEnabled = !censorEnabled;
+    try { localStorage.setItem('censorEnabled', censorEnabled ? '1' : '0'); } catch { /* ignore */ }
+    censorBtn.classList.toggle('active', censorEnabled);
+  });
 
   // ── Image helpers ─────────────────────────────────────
   const MAX_IMAGE_PX = 1280;
@@ -472,11 +515,8 @@
     const text = inputEl.value.trim();
     if (!text || busy) return;
 
-    busy = true;
+    setBusy(true);
     usingSse = false;
-    sendBtn.disabled = true;
-    attachBtn.disabled = true;
-    screenshotBtn.disabled = true;
     inputEl.value = '';
     autoResize();
 
@@ -490,6 +530,11 @@
     lastBuilderJsx = null;       // reset — fresh turn, new JSX coming
 
     resetTurnOps();
+    // Each new user turn starts a fresh censor cycle.
+    censorPending = false;
+    censorIteration = 0;
+    currentCensorCard = null;
+    gotOpsThisTurn = false;
     addUserMsg(text, imagesToSend);
     const thinkEl = addMsg('', 'thinking');
     const anim = startStatusAnim(
@@ -505,7 +550,7 @@
       const resp = await fetch(serverUrl + '/v1/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-        body: JSON.stringify({ sessionId, message: text, images: imagesToSend.length > 0 ? imagesToSend : undefined }),
+        body: JSON.stringify({ sessionId, message: text, images: imagesToSend.length > 0 ? imagesToSend : undefined, censor: censorEnabled }),
         signal: AbortSignal.timeout(600_000),
       });
 
@@ -577,6 +622,16 @@
               case 'ops':
                 if (eData.ops?.length > 0) {
                   totalOpsThisTurn += eData.ops.length;
+                  gotOpsThisTurn = true;
+                  // Arm the censor BEFORE we hand ops to the plugin. Plugin
+                  // batch runs async — OPS_DONE can fire before the SSE
+                  // "done" event lands, and if censorPending isn't already
+                  // true at that moment, the OPS_DONE handler misses the
+                  // chance to start the loop.
+                  if (censorEnabled) {
+                    censorPending = true;
+                    censorIteration = 0;
+                  }
                   parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: eData.ops } }, '*');
                 }
                 break;
@@ -595,6 +650,8 @@
                 anim.stop();
                 thinkEl.className = 'msg error';
                 thinkEl.textContent = 'Ошибка: ' + (eData.error || 'неизвестная ошибка');
+                // Don't run censor on a failed turn.
+                censorPending = false;
                 break outer;
             }
           }
@@ -620,10 +677,10 @@
       setStatus(false, 'Нет соединения');
     } finally {
       usingSse = false;
-      busy = false;
-      sendBtn.disabled = !connected;
-      attachBtn.disabled = false;
-      screenshotBtn.disabled = !connected;
+      // Censor takes over `busy` from here. If a censor cycle is queued,
+      // the loop's terminal exit (severity=ok / max iterations / error)
+      // will release. Otherwise release immediately.
+      if (!censorPending) setBusy(false);
     }
   }
 
@@ -634,6 +691,10 @@
     if (msg.type === 'OPS_DONE')  {
       addMsg('✓ ' + msg.count + ' элемент(ов) на канвасе', 'system');
       syncSnapshotToServer();
+      if (censorPending) {
+        censorPending = false;
+        runCensorIteration();
+      }
     }
     if (msg.type === 'OPS_ERROR') addMsg('Ошибка холста: ' + msg.error, 'error');
     if (msg.type === 'SNAPSHOT' && pendingSnapshotResolve) pendingSnapshotResolve(msg.snapshot);
@@ -713,6 +774,139 @@
     el.appendChild(summary);
     messagesEl.appendChild(el);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // ── Censor (visual QA) loop ───────────────────────────
+  // Triggered after a chat turn's ops have actually landed on the canvas
+  // (OPS_DONE), provided censorEnabled was true when the turn started.
+  // Each iteration: screenshot → POST /v1/censor → render verdict card.
+  // If the server returns ops (i.e. handyman produced a fix), dispatch
+  // them and the NEXT OPS_DONE re-enters this loop with iteration++.
+  function createCensorCard(iteration) {
+    const el = document.createElement('div');
+    el.className = 'msg censor';
+    el.innerHTML = '<div class="censor-head">'
+      + '<span class="censor-badge ok">…</span>'
+      + '<div class="censor-meta">'
+      + '  <span class="censor-iter">Цензор · итерация ' + (iteration + 1) + '/' + MAX_CENSOR_ITERATIONS + '</span>'
+      + '  <span class="censor-summary censor-status">Готовлю проверку…</span>'
+      + '</div>'
+      + '<svg class="censor-chevron" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
+      + '</div>'
+      + '<div class="censor-issues"></div>';
+    el.querySelector('.censor-head').addEventListener('click', () => el.classList.toggle('open'));
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return el;
+  }
+
+  function setCensorStatus(card, text) {
+    const sum = card.querySelector('.censor-summary');
+    sum.className = 'censor-summary censor-status';
+    sum.textContent = text;
+  }
+
+  function renderCensorVerdict(card, verdict, iteration, done, errorText) {
+    const badge = card.querySelector('.censor-badge');
+    const summary = card.querySelector('.censor-summary');
+    const iter = card.querySelector('.censor-iter');
+    const issuesBox = card.querySelector('.censor-issues');
+
+    const sev = verdict?.severity || (errorText ? 'minor' : 'ok');
+    badge.className = 'censor-badge ' + sev;
+    badge.textContent = sev === 'ok' ? '✓ ok' : sev === 'minor' ? '⚠ minor' : '✕ major';
+
+    iter.textContent = 'Цензор · итерация ' + (iteration + 1) + '/' + MAX_CENSOR_ITERATIONS
+      + (done ? ' · завершено' : ' · применяю правки');
+
+    summary.className = 'censor-summary';
+    summary.textContent = errorText
+      ? ('Ошибка цензора: ' + errorText)
+      : (verdict?.summary || '(нет описания)');
+
+    issuesBox.innerHTML = '';
+    const issues = verdict?.issues ?? [];
+    for (const issue of issues) {
+      const row = document.createElement('div');
+      row.className = 'censor-issue ' + (issue.severity || 'minor');
+      const head = document.createElement('div');
+      head.className = 'censor-issue-head';
+      const cat = document.createElement('span');
+      cat.className = 'censor-issue-cat';
+      cat.textContent = (issue.category || 'other') + ' · ' + (issue.severity || 'minor');
+      const tgt = document.createElement('span');
+      tgt.className = 'censor-issue-target';
+      tgt.textContent = issue.target || '?';
+      head.appendChild(cat);
+      head.appendChild(tgt);
+      row.appendChild(head);
+      const obs = document.createElement('div');
+      obs.className = 'censor-issue-obs';
+      obs.textContent = issue.observation || '';
+      row.appendChild(obs);
+      if (issue.suggested_fix) {
+        const fix = document.createElement('div');
+        fix.className = 'censor-issue-fix';
+        fix.textContent = issue.suggested_fix;
+        row.appendChild(fix);
+      }
+      issuesBox.appendChild(row);
+    }
+    if (issues.length > 0) card.classList.add('open');
+  }
+
+  async function runCensorIteration() {
+    if (censorIteration >= MAX_CENSOR_ITERATIONS) {
+      setBusy(false);
+      return;
+    }
+
+    // Keep busy=true through every iteration. The cycle started in send()
+    // and stays "working" until severity=ok / max iter / error releases it.
+    setBusy(true);
+    currentCensorCard = createCensorCard(censorIteration);
+
+    let images;
+    try {
+      setCensorStatus(currentCensorCard, '📸 Делаю снимок холста…');
+      images = await requestScreenshot();
+      if (!images?.length) throw new Error('пустой ответ скриншота');
+    } catch (err) {
+      renderCensorVerdict(currentCensorCard, null, censorIteration, true, err.message);
+      setBusy(false);
+      return;
+    }
+
+    try {
+      setCensorStatus(currentCensorCard, '🔎 Оцениваю результат…');
+      const resp = await fetch(serverUrl + '/v1/censor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          image: { data: images[0], mimeType: 'image/png' },
+          iteration: censorIteration,
+          userRequest: lastUserPrompt || '',
+        }),
+        signal: AbortSignal.timeout(180_000),
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+
+      renderCensorVerdict(currentCensorCard, data.verdict, censorIteration, data.done, data.error);
+
+      if (!data.done && data.ops?.length > 0) {
+        censorIteration = Number.isFinite(data.iteration) ? data.iteration : censorIteration + 1;
+        censorPending = true;          // OPS_DONE re-enters runCensorIteration
+        parent.postMessage({ pluginMessage: { type: 'EXECUTE_OPS', ops: data.ops } }, '*');
+        // busy stays true — we're mid-cycle, waiting for OPS_DONE.
+      } else {
+        setBusy(false);
+      }
+    } catch (err) {
+      renderCensorVerdict(currentCensorCard, null, censorIteration, true, err.message);
+      setBusy(false);
+    }
   }
 
   // ── Input helpers ─────────────────────────────────────

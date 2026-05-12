@@ -14,6 +14,8 @@ export interface FigmaChatRequest
     sessionId?: string;
     message: string;
     images?: ChatImage[];
+    /** When true, plugin will run the visual-censor loop after ops apply. */
+    censor?: boolean;
 }
 
 export interface FigmaChatResponse

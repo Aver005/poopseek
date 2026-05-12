@@ -112,7 +112,7 @@ figma.ui.onmessage = (msg: { type: string; ops?: FigmaOp[] }) =>
 
         Promise.all(
             targets.slice(0, 4).map((node) =>
-                node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 0.5 } })
+                node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 0.8 } })
                     .then((bytes) => figma.base64Encode(bytes)),
             ),
         ).then((images) =>

@@ -71,7 +71,13 @@ export const handler: OpHandler = {
         const safeFillV = canFill && op.fillParentHeight;
         if (isVertical) {
             f.layoutSizingVertical = op.hugMain ? "HUG" : (safeFillV ? "FILL" : "FIXED");
-            f.layoutSizingHorizontal = safeFillH ? "FILL" : "FIXED";
+            // hugCross controls the cross axis. For VERTICAL flow the cross
+            // axis is horizontal — without honoring it here, a Frame with
+            // only `padX/padY` (no `flow=`, no `width=`) gets stuck at the
+            // default 100px from frame.resize(100,100) and clipsContent
+            // chops off the text. The HORIZONTAL branch below has always
+            // mirrored both hug flags; this side was the asymmetric one.
+            f.layoutSizingHorizontal = safeFillH ? "FILL" : (op.hugCross ? "HUG" : "FIXED");
         } else {
             f.layoutSizingHorizontal = safeFillH ? "FILL" : (op.hugMain ? "HUG" : "FIXED");
             f.layoutSizingVertical = safeFillV ? "FILL" : (op.hugCross ? "HUG" : "FIXED");

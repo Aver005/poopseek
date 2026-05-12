@@ -286,6 +286,10 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(46,168,255,.1), 0 0 20px rgba(46,168,255,.06);
   background: var(--bg);
 }
+textarea:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
 
 .send-btn {
   background: linear-gradient(135deg, var(--blue) 0%, #0d7fd8 100%);
@@ -515,4 +519,128 @@ textarea:focus {
 .action-btn-regen:hover:not(:disabled) {
   border-color: rgba(255, 167, 38, .55);
   color: #ffb74d;
+}
+
+/* ── Toolbar toggle: visual censor ────────────────────── */
+.toolbar-btn.active {
+  background: rgba(46,168,255,.12);
+  color: var(--blue);
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(46,168,255,.35), 0 0 12px rgba(46,168,255,.18);
+}
+.toolbar-btn.active:hover:not(:disabled) {
+  background: rgba(46,168,255,.18);
+  transform: scale(1.08);
+}
+
+/* ── Censor verdict card ──────────────────────────────── */
+.msg.censor {
+  background: var(--bg2);
+  align-self: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.censor-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.censor-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.censor-badge.ok    { background: rgba(27,196,125,.15); color: var(--green); }
+.censor-badge.minor { background: rgba(255,167,38,.15); color: #ffb74d; }
+.censor-badge.major { background: rgba(242,72,34,.18);  color: #ff7a5a; }
+.censor-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.censor-iter {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: .2px;
+}
+.censor-summary {
+  color: var(--text);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.censor-chevron {
+  color: var(--text-dim);
+  transition: transform .2s var(--ease-out-expo);
+  flex-shrink: 0;
+}
+.msg.censor.open .censor-chevron { transform: rotate(180deg); }
+.censor-issues {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255,255,255,.08);
+}
+.msg.censor.open .censor-issues { display: flex; }
+.censor-issue {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  background: rgba(255,255,255,.025);
+  border-radius: 6px;
+  border-left: 2px solid var(--border);
+}
+.censor-issue.minor { border-left-color: #ffb74d; }
+.censor-issue.major { border-left-color: #ff7a5a; }
+.censor-issue-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+}
+.censor-issue-cat {
+  font-weight: 600;
+  text-transform: lowercase;
+  color: var(--text);
+}
+.censor-issue-target {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--blue);
+  background: rgba(46,168,255,.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.censor-issue-obs,
+.censor-issue-fix {
+  color: var(--text);
+  line-height: 1.4;
+  font-size: 11px;
+}
+.censor-issue-fix {
+  color: var(--text-dim);
+}
+.censor-issue-fix::before {
+  content: "→ ";
+  color: var(--blue);
+}
+.censor-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
 }
