@@ -36,5 +36,5 @@
             "#/*": ["src/deepseek-client/*"]
         }
     },
-    "exclude": ["node_modules", "build", "plugins"]
+    "exclude": ["node_modules", "build", "plugins", "assets/bench-runs"]
 }

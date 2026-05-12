@@ -5,6 +5,12 @@ import type { EnhanceCache } from "@/figma/application/pipeline/enhance-cache";
 
 export interface SseEvent { event: string; data: unknown; }
 
+export interface PendingScreenshot
+{
+    resolve: (images: string[]) => void;
+    reject: (error: string) => void;
+}
+
 export interface FigmaHttpContext
 {
     sessions: Map<string, FigmaSession>;
@@ -13,6 +19,7 @@ export interface FigmaHttpContext
     getCorsHeaders: () => Record<string, string>;
     deps: FigmaServerDeps;
     enhanceCache: EnhanceCache;
+    pendingScreenshots: Map<string, PendingScreenshot>;
 }
 
 export function jsonWithCors(body: unknown, init?: ResponseInit & { status?: number }, getCorsHeaders?: () => Record<string, string>): Response

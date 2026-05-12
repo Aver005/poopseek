@@ -37,3 +37,4 @@ build/*
 *.bun-build
 
 session-*.md
+assets/bench-runs/*

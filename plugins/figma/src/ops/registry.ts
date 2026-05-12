@@ -35,6 +35,7 @@ import { handler as createComponent } from "./create-component";
 import { handler as createComponentSet } from "./create-component-set";
 import { handler as createInstance } from "./create-instance";
 import { handler as wipeDesign } from "./wipe-design";
+import { handler as requestScreenshot } from "./request-screenshot";
 
 const handlers: OpHandler[] = [
     ensureColorVariables,
@@ -70,6 +71,7 @@ const handlers: OpHandler[] = [
     createComponentSet,
     createInstance,
     wipeDesign,
+    requestScreenshot,
 ];
 
 const handlerByType = new Map<string, OpHandler>();

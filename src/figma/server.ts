@@ -10,6 +10,8 @@ import type { FigmaHttpContext } from "@/figma/infrastructure/http/handlers/comm
 import { handlePollOps, handlePushOps } from "@/figma/infrastructure/http/handlers/ops";
 import { handlePushSnapshot } from "@/figma/infrastructure/http/handlers/snapshot";
 import { handleStatus } from "@/figma/infrastructure/http/handlers/status";
+import { handleRequestScreenshot, handleScreenshotResult } from "@/figma/infrastructure/http/handlers/screenshot";
+import type { PendingScreenshot } from "@/figma/infrastructure/http/handlers/common";
 
 const DEFAULT_PORT = 7331;
 const SESSION_TTL_MS = 60 * 60 * 1000;
@@ -25,6 +27,7 @@ export class FigmaServerManager
     private cleanupTimer: ReturnType<typeof setInterval> | null = null;
     private readonly deps: FigmaServerDeps;
     private readonly enhanceCache = new EnhanceCache();
+    private readonly pendingScreenshots = new Map<string, PendingScreenshot>();
 
     constructor(deps: FigmaServerDeps, port: number = DEFAULT_PORT)
     {
@@ -79,6 +82,7 @@ export class FigmaServerManager
             getCorsHeaders: () => this.corsHeaders(),
             deps: this.deps,
             enhanceCache: this.enhanceCache,
+            pendingScreenshots: this.pendingScreenshots,
         };
     }
 
@@ -104,6 +108,12 @@ export class FigmaServerManager
 
         if (req.method === "GET" && url.pathname === "/v1/status")
             return handleStatus(httpContext);
+
+        if (req.method === "POST" && url.pathname === "/v1/screenshot")
+            return handleRequestScreenshot(req, httpContext);
+
+        if (req.method === "POST" && url.pathname === "/v1/screenshot-result")
+            return handleScreenshotResult(req, httpContext);
 
         return new Response("Not Found", { status: 404, headers: this.corsHeaders() });
     }
