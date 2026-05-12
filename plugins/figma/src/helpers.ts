@@ -524,16 +524,25 @@ export async function ensureTextStyles(op: EnsureTextStylesOp): Promise<void>
         }
 
         let ts = byName.get(s.name);
+        const isNew = !ts;
         if (!ts)
         {
             ts = figma.createTextStyle();
             ts.name = s.name;
             byName.set(s.name, ts);
         }
-        ts.fontName = { family, style };
-        if (s.fontSize !== undefined) ts.fontSize = s.fontSize;
-        if (s.lineHeight !== undefined) ts.lineHeight = { value: s.lineHeight, unit: "PIXELS" };
-        if (s.letterSpacing !== undefined) ts.letterSpacing = { value: s.letterSpacing, unit: "PIXELS" };
+        // Same rationale as ensureTokenVariables: only seed props when the
+        // style is newly created. Existing styles are owned by the user —
+        // re-running on every edit-batch would silently undo any manual
+        // tweak in Figma's text-style panel and visually reset every bound
+        // text node.
+        if (isNew)
+        {
+            ts.fontName = { family, style };
+            if (s.fontSize !== undefined) ts.fontSize = s.fontSize;
+            if (s.lineHeight !== undefined) ts.lineHeight = { value: s.lineHeight, unit: "PIXELS" };
+            if (s.letterSpacing !== undefined) ts.letterSpacing = { value: s.letterSpacing, unit: "PIXELS" };
+        }
         textStyleCache.set(s.name, ts);
     }
 
@@ -591,26 +600,40 @@ export async function ensureTokenVariables(op: EnsureTokenVariablesOp): Promise<
         if (t.kind === "color")
         {
             let variable = colorByName.get(t.variableName);
+            const isNew = !variable;
             if (!variable)
             {
                 variable = figma.variables.createVariable(t.variableName, collection, "COLOR");
                 colorByName.set(t.variableName, variable);
             }
-            const c = parseColor(t.value);
-            if (c) variable.setValueForMode(modeId, c);
+            // Only seed the value when we just created the variable. Once a
+            // variable exists, its value belongs to the user — re-running
+            // this op on every edit-batch must NOT undo manual tweaks made
+            // in Figma's variable panel. Without this guard, every LLM edit
+            // visually resets every node bound to a token whose value the
+            // user had nudged.
+            if (isNew)
+            {
+                const c = parseColor(t.value);
+                if (c) variable.setValueForMode(modeId, c);
+            }
             try { variable.scopes = scopesForKind("color"); } catch { /* ignore */ }
             colorVariableCache.set(`${op.collection}::${t.variableName}`, variable);
         }
         else
         {
             let variable = floatByName.get(t.variableName);
+            const isNew = !variable;
             if (!variable)
             {
                 variable = figma.variables.createVariable(t.variableName, collection, "FLOAT");
                 floatByName.set(t.variableName, variable);
             }
-            const n = Number(t.value);
-            if (Number.isFinite(n)) variable.setValueForMode(modeId, n);
+            if (isNew)
+            {
+                const n = Number(t.value);
+                if (Number.isFinite(n)) variable.setValueForMode(modeId, n);
+            }
             try { variable.scopes = scopesForKind(t.kind); } catch { /* ignore */ }
             numberVariableCache.set(`${op.collection}::${t.variableName}`, variable);
         }
@@ -773,7 +796,7 @@ export function resolveParent(frameId: unknown): ParentLike
         dlog("resolveParent", `"${frameId}" → no nodeMap entry`);
     }
 
-    // Fallback: search top-level page children by name (handles stale/empty nodeMap)
+    // Fallback 1: top-level page children by name (cheap, common case).
     const byName = figma.currentPage.children.find(
         n => n.name === frameId && (n.type === "FRAME" || n.type === "COMPONENT" || n.type === "COMPONENT_SET"),
     ) as FrameNode | ComponentNode | ComponentSetNode | undefined;
@@ -782,6 +805,22 @@ export function resolveParent(frameId: unknown): ParentLike
         nodeMap.set(frameId, byName.id);
         dlog("resolveParent", `"${frameId}" → page-child name match → ${describeNode(byName)}`);
         return byName;
+    }
+
+    // Fallback 2: deep search across the whole page. Surgical edit batches
+    // emit ops with `frameId="CreatorsSection"` for a NESTED existing
+    // parent (e.g. LandingPage > Hero > CreatorsSection). The top-level
+    // scan above misses it, so without this deep lookup the new subtree
+    // gets parented to the page root and the user sees it appear as a
+    // detached frame on the canvas.
+    const deepFound = figma.currentPage.findOne(
+        n => n.name === frameId && (n.type === "FRAME" || n.type === "COMPONENT" || n.type === "COMPONENT_SET"),
+    ) as FrameNode | ComponentNode | ComponentSetNode | null;
+    if (deepFound)
+    {
+        nodeMap.set(frameId, deepFound.id);
+        dlog("resolveParent", `"${frameId}" → deep findOne → ${describeNode(deepFound)}`);
+        return deepFound;
     }
 
     derr("resolveParent", `❌ "${frameId}" UNRESOLVED, falling back to currentPage. Children of new node will be parented to the page (NOT auto-layout) and layoutSizing ops will fail.`);

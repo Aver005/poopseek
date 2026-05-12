@@ -358,39 +358,187 @@ export async function handleChat(req: Request, context: FigmaHttpContext): Promi
                         if (bufferJsx) session.lastJsx = bufferJsx;
 
                         const opsToDispatch: ReturnType<typeof compileJsx> = [];
-
-                        // All frame names we own — sent on each clear so the
-                        // plugin's orphan cleanup doesn't wipe sibling roots
-                        // that belong to OTHER designs created with `create`
-                        // earlier in the session.
                         const allRoots = session.buffer.roots();
                         const keepNames = allRoots
                             .map((r) => String(r.props.name ?? r.id))
                             .filter(Boolean);
 
-                        // Only touch roots that were actually edited. Untouched
-                        // roots (typically marked `old` in the diff) would
-                        // otherwise be wiped + re-created from the buffer JSX —
-                        // and that round-trip silently strips SVG icon content
-                        // because the snapshot serializer can't preserve vector
-                        // children produced by figma.createNodeFromSvg. Result
-                        // before this guard: editing screen B re-rendered
-                        // screen A and made its icons disappear.
-                        const dirtyMap = session.buffer.getDirtyLevel1Map();
-                        const dirtyRoots = allRoots.filter((r) => dirtyMap.has(r.id));
+                        // Diff buffer state before/after to categorize each
+                        // node as created / edited / deleted. The previous
+                        // implementation always wiped + recreated the entire
+                        // dirty root, which round-tripped untouched nodes
+                        // through compileJsx and lost any plugin-side detail
+                        // the JSON snapshot couldn't capture (SVG icons, fine
+                        // padding/color bindings the serializer doesn't fully
+                        // restore). The fix: detect the common "pure additive"
+                        // case (only new subtrees, no existing-node edits or
+                        // deletions) and surgically attach the new subtrees
+                        // to existing parents — leaving every other node on
+                        // the canvas untouched.
+                        const beforeNodes = snap.nodes;
+                        const afterNodes  = session.buffer.snapshot().nodes;
 
-                        for (const root of dirtyRoots)
+                        const createdIds = new Set<string>();
+                        const editedIds  = new Set<string>();
+                        const deletedIds = new Set<string>();
+                        // Parents whose children-array order changed (no
+                        // creates/deletes affecting that parent — just a
+                        // reorder via `buffer.reorder`, e.g. when the LLM
+                        // emits a positional diff like
+                        //   <Frame key="LandingPage">
+                        //     <Frame key="Footer" old />
+                        //     <Frame key="BooksSection" />
+                        //   </Frame>
+                        // Without this set, the diff would fall through to
+                        // wipe+recreate even though only positions changed.
+                        const reorderedParentIds = new Set<string>();
+
+                        for (const [id, node] of afterNodes)
                         {
-                            const frameName = String(root.props.name ?? root.id);
-                            if (frameName)
-                                opsToDispatch.push({ type: "clear_frame_children", frameName, keepNames });
+                            const before = beforeNodes.get(id);
+                            if (!before)
+                            {
+                                createdIds.add(id);
+                                continue;
+                            }
+                            if (before.parentId !== node.parentId)
+                            {
+                                editedIds.add(id);
+                                continue;
+                            }
+                            const allPropKeys = new Set([
+                                ...Object.keys(before.props),
+                                ...Object.keys(node.props),
+                            ]);
+                            for (const key of allPropKeys)
+                            {
+                                if (key === "id") continue;
+                                if (before.props[key] !== node.props[key])
+                                {
+                                    editedIds.add(id);
+                                    break;
+                                }
+                            }
+                            if (editedIds.has(id)) continue;
+                            // Children-order check (same length → reorder).
+                            // Different length = adds/removes which are
+                            // already categorized via createdIds/deletedIds.
+                            if (before.children.length === node.children.length)
+                            {
+                                for (let i = 0; i < before.children.length; i++)
+                                {
+                                    if (before.children[i] !== node.children[i])
+                                    {
+                                        reorderedParentIds.add(id);
+                                        break;
+                                    }
+                                }
+                            }
                         }
+                        for (const id of beforeNodes.keys())
+                            if (!afterNodes.has(id)) deletedIds.add(id);
 
-                        for (const root of dirtyRoots)
+                        const surgical = editedIds.size === 0 && deletedIds.size === 0;
+                        const hasChanges = createdIds.size > 0 || reorderedParentIds.size > 0;
+
+                        if (surgical && hasChanges)
                         {
-                            const subtreeJsx = session.buffer.subtreeToJsx(root.id);
-                            if (subtreeJsx)
-                                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
+                            // Surgical path. For every created node whose
+                            // parent is NOT also new (= top of a new subtree),
+                            // emit `compileJsx(…, parentFrameId)` so the plugin
+                            // attaches the new ops to the existing parent
+                            // frame via resolveParent. Nothing else is touched.
+                            for (const id of createdIds)
+                            {
+                                const node = afterNodes.get(id)!;
+                                const parentId = node.parentId;
+                                const parentIsNew = parentId !== null && createdIds.has(parentId);
+                                if (parentIsNew) continue;
+
+                                const subtreeJsx = session.buffer.subtreeToJsx(id);
+                                if (!subtreeJsx) continue;
+                                const parentFrameId = parentId ?? undefined;
+                                opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx)), parentFrameId));
+
+                                // Plugin's create_* handlers always
+                                // `appendChild`, so by default the new
+                                // subtree lands at the END of the parent's
+                                // children. If the diff placed it earlier
+                                // in the order (e.g. before a `Footer old`),
+                                // we need to reorder explicitly. Emit a
+                                // `set_child_index` op pointing at the new
+                                // top-of-subtree with its target position
+                                // taken from the buffer state.
+                                if (parentId)
+                                {
+                                    const parentNode = afterNodes.get(parentId);
+                                    if (parentNode)
+                                    {
+                                        const targetIndex = parentNode.children.indexOf(id);
+                                        const lastIndex   = parentNode.children.length - 1;
+                                        if (targetIndex >= 0 && targetIndex < lastIndex)
+                                        {
+                                            opsToDispatch.push({
+                                                type: "set_child_index",
+                                                nodeId: id,
+                                                index: targetIndex,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Reorders. For each parent with a changed
+                            // children-array order, emit `set_child_index`
+                            // for every position that differs from before.
+                            // The plugin's `insertChild` cascades naturally:
+                            // moving a node to index N shifts the rest, and
+                            // the next op corrects the next position if
+                            // needed. Untouched children stay put.
+                            for (const parentId of reorderedParentIds)
+                            {
+                                const parentBefore = beforeNodes.get(parentId);
+                                const parentAfter  = afterNodes.get(parentId);
+                                if (!parentBefore || !parentAfter) continue;
+                                for (let i = 0; i < parentAfter.children.length; i++)
+                                {
+                                    if (parentBefore.children[i] !== parentAfter.children[i])
+                                    {
+                                        opsToDispatch.push({
+                                            type: "set_child_index",
+                                            nodeId: parentAfter.children[i],
+                                            index: i,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Mixed case (props changed on existing nodes or
+                            // deletions present): fall back to root-level
+                            // wipe + recreate. Surgical per-prop set_* ops
+                            // would be cleaner but require buffer-side
+                            // per-prop change tracking — a deeper change
+                            // deferred for now.
+                            const dirtyMap = session.buffer.getDirtyLevel1Map();
+                            const dirtyRootIds = new Set<string>();
+                            for (const [id, info] of dirtyMap)
+                                dirtyRootIds.add(info.parentId ?? id);
+                            const dirtyRoots = allRoots.filter((r) => dirtyRootIds.has(r.id));
+
+                            for (const root of dirtyRoots)
+                            {
+                                const frameName = String(root.props.name ?? root.id);
+                                if (frameName)
+                                    opsToDispatch.push({ type: "clear_frame_children", frameName, keepNames });
+                            }
+                            for (const root of dirtyRoots)
+                            {
+                                const subtreeJsx = session.buffer.subtreeToJsx(root.id);
+                                if (subtreeJsx)
+                                    opsToDispatch.push(...compileJsx(parseJsx(mapKeyToId(subtreeJsx))));
+                            }
                         }
 
                         if (opsToDispatch.length > 0)

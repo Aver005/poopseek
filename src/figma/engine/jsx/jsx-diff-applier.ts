@@ -98,11 +98,25 @@ function applyNodes(
 {
     let changes = 0;
 
+    // Track listed child ids (including `old` references) in the order they
+    // appear in the diff. We use this AFTER processing this level to
+    // realign the parent's children list — `buffer.create` always pushes
+    // to the end, so without a reorder a new node like `<NewSection>`
+    // placed before `<Footer old />` in the diff would silently land
+    // AFTER Footer on the canvas.
+    const listedIds: string[] = [];
+
     for (const node of nodes)
     {
         // `old` = node and entire subtree are preserved as-is.
-        // No prop merge, no descent into children.
-        if (node.props.old === true) continue;
+        // No prop merge, no descent into children. We still record the
+        // id for positional ordering.
+        if (node.props.old === true)
+        {
+            const oldId = String(node.props.id ?? "").trim();
+            if (oldId && buffer.get(oldId)) listedIds.push(oldId);
+            continue;
+        }
 
         const nodeId = String(node.props.id ?? "");
         const subChildren = node.children.filter((c): c is JsxNode => typeof c === "object");
@@ -140,12 +154,44 @@ function applyNodes(
             targetId = newNode.id;
         }
 
+        listedIds.push(targetId);
         changes++;
 
         // Listed children processed recursively. Unlisted children stay put;
         // deletions only happen through REMOVED.
         if (subChildren.length > 0)
             changes += applyNodes(buffer, subChildren, targetId);
+    }
+
+    // Realign parent's children: walk the current order, replacing each
+    // listed slot with the next listed-id in DIFF order. Unlisted children
+    // keep their absolute positions (they're not mentioned, so the diff
+    // makes no claim about them). Result: listed children obey the diff's
+    // order while everything else stays where it was.
+    if (parentId && listedIds.length > 0)
+    {
+        const parent = buffer.get(parentId);
+        if (parent)
+        {
+            const listedSet = new Set(listedIds);
+            const currentOrder = [...parent.children];
+            const newOrder: string[] = [];
+            let diffIndex = 0;
+            for (const id of currentOrder)
+            {
+                if (listedSet.has(id) && diffIndex < listedIds.length)
+                    newOrder.push(listedIds[diffIndex++]!);
+                else
+                    newOrder.push(id);
+            }
+            // Only commit if it actually changed (avoid spurious touchLevel1).
+            let differs = false;
+            for (let i = 0; i < newOrder.length; i++)
+            {
+                if (newOrder[i] !== currentOrder[i]) { differs = true; break; }
+            }
+            if (differs) buffer.reorder(parentId, newOrder);
+        }
     }
 
     return changes;

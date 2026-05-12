@@ -17,8 +17,17 @@ export const handler: OpHandler = {
         };
         const weightKey = String(op.fontWeight ?? "Regular").toLowerCase().trim();
         const style = weightMap[weightKey] ?? "Regular";
+        // Load both Inter Regular AND the target style. `figma.createText()`
+        // produces a fresh node with default fontName=Inter Regular, and
+        // `text.characters = …` requires the CURRENT font to be loaded —
+        // so without Regular loaded, every text node with a non-Regular
+        // target weight throws "Cannot write to node with unloaded font
+        // 'Inter Regular'". Loading both is cheap (loadFontAsync is cached
+        // by Figma).
         try {
-            await figma.loadFontAsync({ family: "Inter", style });
+            await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+            if (style !== "Regular")
+                await figma.loadFontAsync({ family: "Inter", style });
         }
         catch (err) {
             derr("create_text", `❌ "${opId}" loadFontAsync({Inter, ${style}}) failed: ${err instanceof Error ? err.message : String(err)}`);

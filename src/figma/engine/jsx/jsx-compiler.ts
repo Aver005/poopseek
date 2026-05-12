@@ -514,9 +514,14 @@ function compileText(node: JsxNode, state: State): void
     const id = str(p.id) ?? uid(state, "txt");
     const parent = top(state);
     // Pass-through hint to the plugin: bind the matching text-style by name.
-    // Plugin uses it as primary signal; the expanded font props above are
-    // defense-in-depth if the style hasn't materialized yet.
-    const textStyleName = variant && variantName ? variantName : undefined;
+    // Emit whenever the LLM wrote `variant="…"`, even if the server's
+    // activeTheme doesn't have that token cached. On a session restored
+    // without re-running the designer, `resolveVariant` returns undefined
+    // but the matching figma TextStyle still exists from the original
+    // create batch — the plugin's `findTextStyleByName` will pick it up by
+    // name and binding works. Without this, every edit batch re-rendered
+    // text nodes with bare Inter Regular, dropping the typography stack.
+    const textStyleName = variantName || undefined;
 
     const parentIsAL = parent?.isAutoLayout ?? false;
     const widthSz  = resolveFill(resolveSize(p.width  ?? p.w), parentIsAL, parent?.width  ?? 0);
