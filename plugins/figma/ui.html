@@ -79,6 +79,7 @@
   let lastUserPrompt = null;     // for "Перегенерировать"
   let lastUserImages = null;
   let lastBuilderJsx = null;     // for "JSX" button in debug-log card
+  let lastAssistantText = null;  // raw LLM response (REMOVED + DIFF for edit turns)
 
   // ── Censor (visual QA) state ──────────────────────────
   // censorEnabled persists across sessions via localStorage.
@@ -397,6 +398,127 @@
     return el;
   }
 
+  // Parse a handyman response into { summary, removedCount, touchedCount,
+  // keptCount, diffJsx }. Best-effort — uses regex over the textual
+  // sections rather than a full JSX parser. Counts ignore the surrounding
+  // root frame entry (LandingPage etc.) since wrapping for context isn't
+  // a real change.
+  function parseEditResponse(text) {
+    if (!text) return null;
+    const removedRaw = (text.match(/##\s+REMOVED\b[^\n]*\n([\s\S]*?)(?=\n##|\s*$)/i)?.[1] || '').trim();
+    const diffRaw   = (text.match(/##\s+DIFF\b[^\n]*\n([\s\S]*?)(?=\n##|\s*$)/i)?.[1] || '').trim();
+
+    const removedKeys = removedRaw && removedRaw !== '(none)'
+      ? removedRaw.split(/[\n,]+/)
+          .map(s => s.replace(/^[-*]\s*/, '').trim())
+          .filter(s => s && s !== '(none)')
+      : [];
+
+    const diffJsx = (diffRaw.match(/```(?:jsx)?\s*([\s\S]*?)```/)?.[1] || diffRaw).trim();
+    const keyMatches = [...diffJsx.matchAll(/<\w+\s[^>]*\bkey="([^"]+)"/g)];
+    const totalKeys  = keyMatches.length;
+    const keptMatches = diffJsx.match(/<\w+\s[^>]*\bold\b(?:\s|\/|>)/g) || [];
+    const keptCount  = keptMatches.length;
+    // First key is usually the wrapping root for context — don't count it
+    // toward "touched" if it has no own props/children except the children
+    // list (i.e. the LLM just descended into it).
+    const touchedCount = Math.max(0, totalKeys - keptCount);
+
+    return {
+      removedKeys,
+      removedCount: removedKeys.length,
+      touchedCount,
+      keptCount,
+      diffJsx,
+    };
+  }
+
+  // Inline collapsible block: a small chip-style button + a `<pre>` panel.
+  // Click toggles the panel. Returns the wrapper element.
+  function makeToggleSection(label, content) {
+    const wrap = document.createElement('span');
+    wrap.className = 'inline-toggle';
+
+    const btn = document.createElement('button');
+    btn.className = 'inline-toggle-btn';
+    btn.textContent = label;
+    btn.title = 'Развернуть / скопировать';
+
+    const panel = document.createElement('div');
+    panel.className = 'inline-toggle-panel';
+    panel.style.display = 'none';
+
+    const pre = document.createElement('pre');
+    pre.className = 'inline-toggle-content';
+    pre.textContent = content;
+    panel.appendChild(pre);
+
+    const copy = document.createElement('button');
+    copy.className = 'inline-toggle-copy';
+    copy.textContent = '📋 Скопировать';
+    copy.onclick = async (e) => {
+      e.stopPropagation();
+      const ok = await copyToClipboard(content);
+      flashCopyResult(copy, ok, '📋 Скопировать');
+    };
+    panel.appendChild(copy);
+
+    btn.onclick = () => {
+      const isHidden = panel.style.display === 'none';
+      panel.style.display = isHidden ? 'block' : 'none';
+      btn.classList.toggle('open', isHidden);
+    };
+
+    wrap.appendChild(btn);
+    wrap.appendChild(panel);
+    return wrap;
+  }
+
+  // Build the post-turn assistant card. For `edit` intent we parse the
+  // LLM's structured response and show counts; for `create` we just show
+  // a confirmation line. In both cases we attach toggle buttons exposing
+  // the raw JSX/diff on demand, instead of dumping them inline.
+  function renderAssistantSummary(el, intent, rawText) {
+    const head = document.createElement('div');
+    head.className = 'msg-summary-head';
+
+    if (intent === 'create') {
+      head.textContent = '✓ Дизайн создан и выложен на холст';
+    } else {
+      const parsed = parseEditResponse(rawText);
+      const parts = [];
+      if (parsed) {
+        if (parsed.touchedCount > 0) parts.push(parsed.touchedCount + ' изменено / добавлено');
+        if (parsed.removedCount > 0) parts.push(parsed.removedCount + ' удалено');
+        if (parsed.keptCount    > 0) parts.push(parsed.keptCount    + ' сохранено');
+      }
+      head.textContent = parts.length > 0
+        ? '✓ Применено: ' + parts.join(', ')
+        : '✓ Изменения применены';
+    }
+    el.appendChild(head);
+
+    const row = document.createElement('div');
+    row.className = 'msg-summary-actions';
+
+    // DIFF / response toggle — raw LLM output. Useful for debugging what
+    // the model actually asked for.
+    if (rawText && rawText.trim().length > 0) {
+      row.appendChild(makeToggleSection(
+        intent === 'create' ? '{} JSX-ответ' : '{} Diff',
+        rawText.trim(),
+      ));
+    }
+
+    // Tree toggle — current state of the buffer (post-apply for edit, the
+    // builder's JSX for create).
+    if (lastBuilderJsx) {
+      row.appendChild(makeToggleSection('🌳 Дерево', lastBuilderJsx));
+    }
+
+    if (row.children.length > 0) el.appendChild(row);
+  }
+
   function addPostGenerationActions() {
     const wrap = document.createElement('div');
     wrap.className = 'msg actions';
@@ -528,6 +650,7 @@
     lastUserPrompt = text;
     lastUserImages = imagesToSend.slice();
     lastBuilderJsx = null;       // reset — fresh turn, new JSX coming
+    lastAssistantText = null;    // reset — fresh turn, new response coming
 
     resetTurnOps();
     // Each new user turn starts a fresh censor cycle.
@@ -636,14 +759,20 @@
                 }
                 break;
               case 'debug-jsx':
-                if (eData.jsx) addMsg(eData.jsx, 'debug');
+                // Edit-flow tree snapshot. Don't render directly — spamming
+                // the entire post-edit tree as monospace gunk is what the
+                // user complained about. Stash it; the JSX/Tree toggle on
+                // the assistant message exposes it on demand.
+                if (typeof eData.jsx === 'string' && eData.jsx.length > 0) {
+                  lastBuilderJsx = eData.jsx;
+                }
                 break;
               case 'done':
                 anim.stop();
                 thinkEl.className = 'msg assistant';
-                thinkEl.textContent = currentIntent === 'create'
-                  ? '✓ Дизайн создан и выложен на холст'
-                  : (eData.text?.trim() || '✓ Изменения применены');
+                thinkEl.innerHTML = '';
+                if (typeof eData.text === 'string') lastAssistantText = eData.text;
+                renderAssistantSummary(thinkEl, currentIntent, eData.text);
                 addPostGenerationActions();
                 break outer;
               case 'error':

@@ -236,6 +236,84 @@ body {
   background: rgba(46, 168, 255, .28);
 }
 
+/* Assistant summary block. Replaces the older raw-text dump for edit
+ * turns. The head is the one-line "what happened" sentence; the actions
+ * row holds the toggle chips that expand the full diff / tree on demand. */
+.msg-summary-head {
+  line-height: 1.45;
+}
+.msg-summary-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Inline collapsible chip. Used for "Diff" / "Дерево" / "JSX-ответ" on the
+ * assistant summary card. Closed state is dim and chrome-y; opened state
+ * gets the teal accent matching other JSX affordances. */
+.inline-toggle {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+.inline-toggle-btn {
+  align-self: flex-start;
+  padding: 3px 9px;
+  background: rgba(255, 255, 255, .05);
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .2s var(--ease-out-expo), color .2s var(--ease-out-expo), border-color .2s var(--ease-out-expo);
+}
+.inline-toggle-btn:hover {
+  background: rgba(255, 255, 255, .10);
+  color: var(--text);
+}
+.inline-toggle-btn.open {
+  background: rgba(46, 168, 255, .15);
+  color: var(--text);
+  border-color: rgba(46, 168, 255, .35);
+}
+.inline-toggle-panel {
+  margin-top: 6px;
+  width: 100%;
+}
+.inline-toggle-content {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, .25);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.inline-toggle-copy {
+  margin-top: 6px;
+  padding: 3px 9px;
+  background: rgba(46, 168, 255, .12);
+  color: var(--text);
+  border: 1px solid rgba(46, 168, 255, .30);
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.inline-toggle-copy:hover {
+  background: rgba(46, 168, 255, .24);
+}
+
 .input-area {
   display: flex;
   flex-direction: column;
