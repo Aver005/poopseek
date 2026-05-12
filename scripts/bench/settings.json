@@ -1,19 +1,187 @@
 {
+    "_meta":
+    {
+        "comment": "25 промптов разной сложности, формальности и идиотизма. Тuning: count=4 на каждый промпт = 100 дизайнов суммарно. При ~3 мин/итерация ≈ 5-7 часов overnight. cooldown=3000ms — щадящий темп для DeepSeek Web rate-limit. Простые промпты держим count=5-6 (быстро + больше signal по variance), сложные многоэкранные — count=3 чтобы не утопиться по времени.",
+        "totalEstimatedDesigns": 100,
+        "totalEstimatedHours": "5-8"
+    },
+
     "runs":
     [
         {
-            "name": "test",
-            "promptPath": "assets/bench-runs/test/prompt.md",
-            "outputPath": "assets/bench-runs/test",
-            "count": 10,
-            "cooldown": 1000
+            "name": "minimal-card",
+            "promptPath": "assets/bench-runs/minimal-card/prompt.md",
+            "outputPath": "assets/bench-runs/minimal-card",
+            "count": 5,
+            "cooldown": 400
         },
         {
-            "name": "test2",
-            "promptPath": "assets/bench-runs/test2/prompt.md",
-            "outputPath": "assets/bench-runs/test2",
-            "count": 10,
-            "cooldown": 200
+            "name": "dodo-pizza-flow",
+            "promptPath": "assets/bench-runs/dodo-pizza-flow/prompt.md",
+            "outputPath": "assets/bench-runs/dodo-pizza-flow",
+            "count": 3,
+            "cooldown": 400
+        },
+        {
+            "name": "editorial-insight",
+            "promptPath": "assets/bench-runs/editorial-insight/prompt.md",
+            "outputPath": "assets/bench-runs/editorial-insight",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "cyberpunk-dashboard",
+            "promptPath": "assets/bench-runs/cyberpunk-dashboard/prompt.md",
+            "outputPath": "assets/bench-runs/cyberpunk-dashboard",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "portfolio-landing",
+            "promptPath": "assets/bench-runs/portfolio-landing/prompt.md",
+            "outputPath": "assets/bench-runs/portfolio-landing",
+            "count": 5,
+            "cooldown": 400
+        },
+        {
+            "name": "e-commerce-product",
+            "promptPath": "assets/bench-runs/e-commerce-product/prompt.md",
+            "outputPath": "assets/bench-runs/e-commerce-product",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "settings-preferences",
+            "promptPath": "assets/bench-runs/settings-preferences/prompt.md",
+            "outputPath": "assets/bench-runs/settings-preferences",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "chat-app-teens",
+            "promptPath": "assets/bench-runs/chat-app-teens/prompt.md",
+            "outputPath": "assets/bench-runs/chat-app-teens",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "fitness-watch-face",
+            "promptPath": "assets/bench-runs/fitness-watch-face/prompt.md",
+            "outputPath": "assets/bench-runs/fitness-watch-face",
+            "count": 6,
+            "cooldown": 400
+        },
+        {
+            "name": "error-404",
+            "promptPath": "assets/bench-runs/error-404/prompt.md",
+            "outputPath": "assets/bench-runs/error-404",
+            "count": 6,
+            "cooldown": 400
+        },
+        {
+            "name": "saas-pricing-table",
+            "promptPath": "assets/bench-runs/saas-pricing-table/prompt.md",
+            "outputPath": "assets/bench-runs/saas-pricing-table",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "meditation-onboarding",
+            "promptPath": "assets/bench-runs/meditation-onboarding/prompt.md",
+            "outputPath": "assets/bench-runs/meditation-onboarding",
+            "count": 3,
+            "cooldown": 400
+        },
+        {
+            "name": "email-newsletter",
+            "promptPath": "assets/bench-runs/email-newsletter/prompt.md",
+            "outputPath": "assets/bench-runs/email-newsletter",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "brutalist-blog",
+            "promptPath": "assets/bench-runs/brutalist-blog/prompt.md",
+            "outputPath": "assets/bench-runs/brutalist-blog",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "kids-zoo-game",
+            "promptPath": "assets/bench-runs/kids-zoo-game/prompt.md",
+            "outputPath": "assets/bench-runs/kids-zoo-game",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "lottery-bazaar",
+            "promptPath": "assets/bench-runs/lottery-bazaar/prompt.md",
+            "outputPath": "assets/bench-runs/lottery-bazaar",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "dog-cosmonaut",
+            "promptPath": "assets/bench-runs/dog-cosmonaut/prompt.md",
+            "outputPath": "assets/bench-runs/dog-cosmonaut",
+            "count": 6,
+            "cooldown": 400
+        },
+        {
+            "name": "tax-return-form",
+            "promptPath": "assets/bench-runs/tax-return-form/prompt.md",
+            "outputPath": "assets/bench-runs/tax-return-form",
+            "count": 3,
+            "cooldown": 400
+        },
+        {
+            "name": "michelin-menu",
+            "promptPath": "assets/bench-runs/michelin-menu/prompt.md",
+            "outputPath": "assets/bench-runs/michelin-menu",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "retro-terminal",
+            "promptPath": "assets/bench-runs/retro-terminal/prompt.md",
+            "outputPath": "assets/bench-runs/retro-terminal",
+            "count": 5,
+            "cooldown": 400
+        },
+        {
+            "name": "clinic-dashboard",
+            "promptPath": "assets/bench-runs/clinic-dashboard/prompt.md",
+            "outputPath": "assets/bench-runs/clinic-dashboard",
+            "count": 3,
+            "cooldown": 400
+        },
+        {
+            "name": "music-now-playing",
+            "promptPath": "assets/bench-runs/music-now-playing/prompt.md",
+            "outputPath": "assets/bench-runs/music-now-playing",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "handwritten-recipe",
+            "promptPath": "assets/bench-runs/handwritten-recipe/prompt.md",
+            "outputPath": "assets/bench-runs/handwritten-recipe",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "festival-poster",
+            "promptPath": "assets/bench-runs/festival-poster/prompt.md",
+            "outputPath": "assets/bench-runs/festival-poster",
+            "count": 4,
+            "cooldown": 400
+        },
+        {
+            "name": "loading-skeleton",
+            "promptPath": "assets/bench-runs/loading-skeleton/prompt.md",
+            "outputPath": "assets/bench-runs/loading-skeleton",
+            "count": 5,
+            "cooldown": 400
         }
     ]
 }
