@@ -30,4 +30,5 @@ export interface FigmaSnapshotRequest
 {
     sessionId?: string;
     snapshot: FigmaPluginSnapshot;
+    syncTheme?: boolean;
 }

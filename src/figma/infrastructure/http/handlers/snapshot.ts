@@ -73,7 +73,8 @@ export async function handlePushSnapshot(req: Request, context: FigmaHttpContext
     if (body.snapshot.jsx)
         session.lastJsx = body.snapshot.jsx;
 
-    syncThemeFromSnapshot(body.snapshot);
+    if (body.syncTheme)
+        syncThemeFromSnapshot(body.snapshot);
 
     const documentName = body.snapshot.documentName ?? "";
     if (documentName && documentName !== session.documentName)

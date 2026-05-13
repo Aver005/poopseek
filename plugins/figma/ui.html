@@ -394,7 +394,7 @@
     });
   }
 
-  async function syncSnapshotToServer() {
+  async function syncSnapshotToServer(syncTheme = false) {
     if (!connected) return;
 
     try {
@@ -402,7 +402,7 @@
       const resp = await fetch(serverUrl + '/v1/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, snapshot }),
+        body: JSON.stringify({ sessionId, snapshot, syncTheme }),
         signal: AbortSignal.timeout(5000),
       });
       if (resp.ok && !sessionId) {
@@ -715,7 +715,7 @@
     let currentIntent = null;
 
     try {
-      await syncSnapshotToServer();
+      await syncSnapshotToServer(true);
 
       const resp = await fetch(serverUrl + '/v1/chat', {
         method: 'POST',
